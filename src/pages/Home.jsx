@@ -7,7 +7,7 @@ export default function Home({ navigate }) {
     <div className="home">
       <div className="home-hero">
         <div className="home-hero-glow" />
-        <h1 className="home-title">⚔ RolApp</h1>
+        <h1 className="home-title">🎲 Tinta y Dados</h1>
         <p className="home-subtitle">Tu mesa de rol escrita. Sin límites, sin IA. Solo tu historia.</p>
         <button className="btn-primary btn-lg" onClick={() => navigate('universos')}>
           Comenzar →

@@ -50,8 +50,8 @@ export default function Auth() {
     <div className="auth-screen">
       <div className="auth-glow" />
       <div className="auth-box">
-        <h1 className="auth-title">⚔ RolApp</h1>
-        <p className="auth-subtitle">Tu mesa de rol escrita</p>
+        <h1 className="auth-title">🎲 Tinta y Dados</h1>
+<p className="auth-subtitle">Tu mesa de rol escrita</p>
 
         {tokenPendiente && (
           <div className="auth-mensaje" style={{ marginBottom: '1.2rem' }}>

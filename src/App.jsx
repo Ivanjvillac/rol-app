@@ -32,19 +32,18 @@ function AppInner({ page, navigate, selectedUniverso, setSelectedUniverso, cerra
   return (
     <div className="app">
       <nav className="navbar">
-        <span className="nav-brand" onClick={() => navigate('home')}>⚔ Rol App</span>
+        <span className="nav-brand" onClick={() => navigate('home')}>🎲 Tinta y Dados</span>
         <div className="nav-links">
-          <button onClick={() => navigate('home')} className={page === 'home' ? 'active' : ''}>Inicio</button>
-          <button onClick={() => navigate('universos')} className={page === 'universos' ? 'active' : ''}>Universos</button>
-          <button onClick={() => navigate('personajes')} className={page === 'personajes' ? 'active' : ''}>Personajes</button>
-          <button onClick={() => navigate('mesa')} className={page === 'mesa' ? 'active' : ''}>Mesa de Rol</button>
+<button onClick={() => navigate('home')} className={page === 'home' ? 'active' : ''}>🏠 Inicio</button>
+<button onClick={() => navigate('universos')} className={page === 'universos' ? 'active' : ''}>🌍 Universos</button>
+<button onClick={() => navigate('personajes')} className={page === 'personajes' ? 'active' : ''}>👤 Personajes</button>
+<button onClick={() => navigate('mesa')} className={page === 'mesa' ? 'active' : ''}>⚔️ Mesa de Rol</button>
       <button onClick={() => navigate('perfil')} className={page === 'perfil' ? 'active' : ''}>👤 Perfil</button>
          {userEmail === import.meta.env.VITE_SUPERADMIN_EMAIL && (
  
  <button onClick={() => navigate('admin')} className={page === 'admin' ? 'active' : ''}>⚡ Admin</button>
 )}
-          <button onClick={cerrarSesion} className="btn-cerrar">Salir</button>
-        </div>
+<button onClick={cerrarSesion} className="btn-cerrar">🚪 Salir</button>        </div>
       </nav>
 
       {msgInvitacion && (
