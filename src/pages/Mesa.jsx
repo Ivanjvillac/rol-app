@@ -205,40 +205,53 @@ export default function Mesa({ navigate, selectedUniverso }) {
     return () => supabase.removeChannel(channel)
   }, [selectedUniverso?.id, userId])
 
-  useEffect(() => {
-    if (!selectedUniverso || !userId) return
-    const canal = supabase.channel(`presencia-${selectedUniverso.id}`, {
-      config: { presence: { key: userId } }
-    })
-    canal
-      .on('presence', { event: 'sync' }, () => {
-        const estado = canal.presenceState()
-        const conectados = Object.values(estado).flat().map(u => u.nombre || u.user_id?.slice(0, 8))
-        setUsuariosConectados(conectados)
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          const perfil = await supabase.from('perfiles').select('nombre').eq('id', userId).single()
-          await canal.track({ user_id: userId, nombre: perfil.data?.nombre || 'Jugador' })
-        }
-      })
-    return () => supabase.removeChannel(canal)
-  }, [selectedUniverso?.id, userId])
+useEffect(() => {
+  if (!selectedUniverso || !userId) return
+  const canal = supabase.channel(`presencia-${selectedUniverso.id}`, {
+    config: { presence: { key: userId } }
+  })
 
-  useEffect(() => {
-    if (!selectedUniverso || !userId || !sesionActiva) return
-    const canal = supabase.channel(`escribiendo-${selectedUniverso.id}`)
-      .on('broadcast', { event: 'escribiendo' }, ({ payload }) => {
-        if (payload.userId === userId) return
-        setOtrosEscribiendo(prev => {
-          const sin = prev.filter(x => x.userId !== payload.userId)
-          if (payload.activo) return [...sin, { userId: payload.userId, nombre: payload.nombre }]
-          return sin
-        })
+  canal
+    .on('presence', { event: 'sync' }, () => {
+      const estado = canal.presenceState()
+      const conectados = Object.values(estado).flat().map(u => u.nombre || u.user_id?.slice(0, 8))
+      setUsuariosConectados(conectados)
+    })
+    .on('presence', { event: 'join' }, ({ newPresences }) => {
+      newPresences.forEach(p => {
+        if (p.user_id === userId) return
+        const nombre = p.nombre || 'Alguien'
+        const notif = {
+          id: `entrada-${p.user_id}-${Date.now()}`,
+          texto: `${nombre} se ha unido a la mesa`,
+          color: '#2ecc71'
+        }
+        setNotificaciones(prev => [...prev, notif])
+        setTimeout(() => setNotificaciones(prev => prev.filter(n => n.id !== notif.id)), 4000)
       })
-      .subscribe()
-    return () => supabase.removeChannel(canal)
-  }, [selectedUniverso?.id, sesionActiva?.id, userId])
+    })
+    .on('presence', { event: 'leave' }, ({ leftPresences }) => {
+      leftPresences.forEach(p => {
+        if (p.user_id === userId) return
+        const nombre = p.nombre || 'Alguien'
+        const notif = {
+          id: `salida-${p.user_id}-${Date.now()}`,
+          texto: `${nombre} ha abandonado la mesa`,
+          color: '#e74c3c'
+        }
+        setNotificaciones(prev => [...prev, notif])
+        setTimeout(() => setNotificaciones(prev => prev.filter(n => n.id !== notif.id)), 4000)
+      })
+    })
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        const perfil = await supabase.from('perfiles').select('nombre').eq('id', userId).single()
+        await canal.track({ user_id: userId, nombre: perfil.data?.nombre || 'Jugador' })
+      }
+    })
+
+  return () => supabase.removeChannel(canal)
+}, [selectedUniverso?.id, userId])
 
   useEffect(() => {
     if (historialRef.current) historialRef.current.scrollTop = historialRef.current.scrollHeight
