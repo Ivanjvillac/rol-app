@@ -730,34 +730,157 @@ input, textarea, select {
 
 /* ===== RESPONSIVE ===== */
 @media (max-width: 700px) {
-  .navbar { padding: 0 1rem; }
-  .nav-links button { padding: 0.4rem 0.5rem; font-size: 0.85rem; }
+  /* NAVBAR */
+  .navbar {
+    padding: 0 0.8rem;
+    height: auto;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
 
-  .mesa { flex-direction: column; height: auto; min-height: calc(100vh - 56px); }
+  .nav-brand {
+    font-size: 0.95rem;
+  }
+
+  .nav-links {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+    padding-bottom: 0.3rem;
+  }
+
+  .nav-links button {
+    font-size: 0.75rem;
+    padding: 0.3rem 0.5rem;
+    flex: 1;
+    text-align: center;
+    min-width: 60px;
+  }
+
+  /* HOME */
+  .home {
+    padding: 2rem 1rem;
+  }
+
+  .home-title {
+    font-size: 2.2rem;
+  }
+
+  .home-cards {
+    grid-template-columns: 1fr;
+  }
+
+  /* PAGE */
+  .page {
+    padding: 1rem 0.8rem;
+  }
+
+  .page-header {
+    flex-direction: column;
+    gap: 0.8rem;
+  }
+
+  .page-header button {
+    width: 100%;
+  }
+
+  /* GRID */
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* MESA */
+  .mesa {
+    flex-direction: column;
+    height: auto;
+    min-height: calc(100vh - 100px);
+  }
 
   .mesa-sidebar {
     width: 100%;
     border-right: none;
     border-bottom: 1px solid var(--border);
-    padding: 0;
     display: flex;
+    flex-direction: row;
     overflow-x: auto;
     overflow-y: hidden;
+    padding: 0;
+    flex-shrink: 0;
   }
 
-  .sidebar-section { border-bottom: none; border-right: 1px solid var(--border); white-space: nowrap; flex-shrink: 0; }
-  .personaje-btn { display: inline-flex; width: auto; }
-  .modo-btns { flex-direction: row; }
-  .comandos-list { flex-direction: row; }
+  .sidebar-section {
+    border-bottom: none;
+    border-right: 1px solid var(--border);
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-width: 120px;
+    padding: 0.6rem 0.8rem;
+  }
 
-  .mesa-main { min-height: 70vh; }
-  .historial { max-height: 50vh; }
+  .personaje-btn {
+    display: inline-flex;
+    width: auto;
+    margin-bottom: 0;
+  }
 
-  .page { padding: 1.2rem 1rem; }
-  .page-header { flex-direction: column; }
-  .home-cards { grid-template-columns: 1fr; }
+  .modo-btns {
+    flex-direction: row;
+    gap: 0.3rem;
+  }
 
-  .entrada-burbuja { max-width: 90%; }
+  .dados-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.3rem;
+  }
+
+  .comandos-list {
+    flex-direction: column;
+  }
+
+  .mesa-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .historial {
+    max-height: 45vh;
+    min-height: 200px;
+  }
+
+  .entrada-burbuja {
+    max-width: 85%;
+  }
+
+  /* MODAL */
+  .modal {
+    padding: 1.2rem;
+    margin: 0.5rem;
+  }
+
+  .modal-chat {
+    height: 90vh;
+  }
+
+  .chat-sidebar {
+    width: 150px;
+  }
+
+  /* NOTIF */
+  .notif-stack {
+    bottom: 0.8rem;
+    right: 0.5rem;
+    left: 0.5rem;
+  }
+
+  .notif-toast {
+    min-width: unset;
+    max-width: 100%;
+  }
 }
 
 /* ===== DADOS ===== */
