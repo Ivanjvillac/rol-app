@@ -101,7 +101,22 @@ export default function Auth() {
 
         {error && <div className="auth-error">{error}</div>}
         {mensaje && <div className="auth-mensaje">{mensaje}</div>}
-
+{modo === 'login' && (
+  <button
+    className="btn-ghost"
+    style={{ width: '100%', marginBottom: '0.5rem', fontSize: '0.9rem' }}
+    onClick={async () => {
+      if (!email.trim()) { setError('Escribe tu email primero.'); return }
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`
+      })
+      if (error) setError('Error al enviar el email.')
+      else setMensaje('Te hemos enviado un email para recuperar tu contraseña.')
+    }}
+  >
+    ¿Olvidaste tu contraseña?
+  </button>
+)}
         <button className="btn-primary" style={{ width: '100%' }} onClick={handleSubmit} disabled={cargando}>
   {cargando ? 'Cargando...' : modo === 'login' ? '→ Entrar' : '→ Crear cuenta'}
 </button>
