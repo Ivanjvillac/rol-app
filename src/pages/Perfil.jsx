@@ -10,7 +10,10 @@ export default function Perfil({ userId, userEmail }) {
   const [guardado, setGuardado] = useState(false)
   const [cargando, setCargando] = useState(true)
   const fileInputRef = useRef(null)
-
+const [passwordActual, setPasswordActual] = useState('')
+const [passwordNueva, setPasswordNueva] = useState('')
+const [guardandoPassword, setGuardandoPassword] = useState(false)
+const [msgPassword, setMsgPassword] = useState(null)
   useEffect(() => {
     cargarPerfil()
   }, [userId])
@@ -65,7 +68,23 @@ export default function Perfil({ userId, userEmail }) {
     }
     setGuardando(false)
   }
-
+const handleCambiarPassword = async () => {
+  if (!passwordNueva || passwordNueva.length < 6) {
+    setMsgPassword({ tipo: 'error', texto: 'La contraseña debe tener al menos 6 caracteres.' })
+    return
+  }
+  setGuardandoPassword(true)
+  setMsgPassword(null)
+  const { error } = await supabase.auth.updateUser({ password: passwordNueva })
+  if (error) {
+    setMsgPassword({ tipo: 'error', texto: 'Error al cambiar la contraseña.' })
+  } else {
+    setMsgPassword({ tipo: 'ok', texto: '✓ Contraseña cambiada correctamente.' })
+    setPasswordNueva('')
+    setTimeout(() => setMsgPassword(null), 3000)
+  }
+  setGuardandoPassword(false)
+}
   if (cargando) return <div className="page"><div className="empty-state"><p>Cargando perfil...</p></div></div>
 
   return (
@@ -115,6 +134,29 @@ export default function Perfil({ userId, userEmail }) {
           <button className="btn-primary" onClick={handleGuardar} disabled={guardando} style={{ marginTop: '0.5rem' }}>
             {guardado ? '✓ Guardado' : guardando ? 'Guardando...' : 'Guardar perfil'}
           </button>
+          <div style={{ borderTop: '1px solid var(--border)', marginTop: '1.5rem', paddingTop: '1.5rem' }}>
+  <h4 style={{ fontFamily: 'Cinzel, serif', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text3)', marginBottom: '1rem' }}>
+    Cambiar contraseña
+  </h4>
+  <div className="form-group">
+    <label>Nueva contraseña</label>
+    <input
+      type="password"
+      placeholder="Mínimo 6 caracteres"
+      value={passwordNueva}
+      onChange={e => setPasswordNueva(e.target.value)}
+      onKeyDown={e => e.key === 'Enter' && handleCambiarPassword()}
+    />
+  </div>
+  {msgPassword && (
+    <div className={msgPassword.tipo === 'ok' ? 'auth-mensaje' : 'auth-error'} style={{ marginBottom: '0.8rem' }}>
+      {msgPassword.texto}
+    </div>
+  )}
+  <button className="btn-ghost" onClick={handleCambiarPassword} disabled={guardandoPassword}>
+    {guardandoPassword ? 'Cambiando...' : 'Cambiar contraseña'}
+  </button>
+</div>
         </div>
       </div>
     </div>

@@ -12,9 +12,12 @@ export default function Admin() {
   const [cargando, setCargando] = useState(true)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [showImportador, setShowImportador] = useState(false)
-  const [transferiendo, setTransferiendo] = useState(null) // personaje que se está transfiriendo
+  const [transferiendo, setTransferiendo] = useState(null)
   const [nuevoUserId, setNuevoUserId] = useState('')
   const [msgTransfer, setMsgTransfer] = useState(null)
+  const [cambiandoPassword, setCambiandoPassword] = useState(null)
+  const [nuevaPassword, setNuevaPassword] = useState('')
+  const [msgPassword, setMsgPassword] = useState(null)
 
   useEffect(() => { cargarTodo() }, [])
 
@@ -63,25 +66,30 @@ export default function Admin() {
   const transferirPersonaje = async () => {
     if (!transferiendo || !nuevoUserId.trim()) return
     setMsgTransfer(null)
-
-    // Buscar usuario por email
     const usuario = usuarios.find(u => u.email === nuevoUserId.trim())
-    if (!usuario) {
-      setMsgTransfer({ tipo: 'error', texto: 'No se encontró ningún usuario con ese email.' })
-      return
-    }
-
-    const { error } = await supabase
-      .from('personajes')
-      .update({ user_id: usuario.id, es_npc: false })
-      .eq('id', transferiendo.id)
-
+    if (!usuario) { setMsgTransfer({ tipo: 'error', texto: 'No se encontró ningún usuario con ese email.' }); return }
+    const { error } = await supabase.from('personajes').update({ user_id: usuario.id, es_npc: false }).eq('id', transferiendo.id)
     if (error) {
       setMsgTransfer({ tipo: 'error', texto: 'Error al transferir el personaje.' })
     } else {
       setMsgTransfer({ tipo: 'ok', texto: `✓ ${transferiendo.nombre} transferido a ${usuario.email}` })
       await cargarTodo()
       setTimeout(() => { setTransferiendo(null); setNuevoUserId(''); setMsgTransfer(null) }, 2000)
+    }
+  }
+
+  const handleCambiarPassword = async () => {
+    if (!cambiandoPassword || !nuevaPassword || nuevaPassword.length < 6) return
+    setMsgPassword(null)
+    const { error } = await supabase.rpc('admin_change_password', {
+      user_id: cambiandoPassword.id,
+      new_password: nuevaPassword
+    })
+    if (error) {
+      setMsgPassword({ tipo: 'error', texto: 'Error al cambiar la contraseña.' })
+    } else {
+      setMsgPassword({ tipo: 'ok', texto: '✓ Contraseña cambiada correctamente.' })
+      setTimeout(() => { setCambiandoPassword(null); setNuevaPassword(''); setMsgPassword(null) }, 2000)
     }
   }
 
@@ -98,17 +106,11 @@ export default function Admin() {
       supabase.rpc('get_all_entradas'),
       supabase.rpc('get_all_mensajes'),
     ])
-    const backup = {
-      fecha: new Date().toISOString(),
-      universos: univs || [],
-      personajes: pers || [],
-      entradas: entr || [],
-      mensajes_privados: mens || [],
-    }
+    const backup = { fecha: new Date().toISOString(), universos: univs || [], personajes: pers || [], entradas: entr || [], mensajes_privados: mens || [] }
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = `rolapp-backup-${new Date().toISOString().slice(0,10)}.json`
+    a.download = `tintaydados-backup-${new Date().toISOString().slice(0,10)}.json`
     a.click()
   }
 
@@ -121,7 +123,7 @@ export default function Admin() {
           <h2>Panel de Administración</h2>
           <p className="page-subtitle">Vista completa del sistema</p>
         </div>
-        <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn-ghost" onClick={() => setShowImportador(true)}>📥 Importar Discord</button>
           <button className="btn-ghost" onClick={exportarBackup}>💾 Exportar backup</button>
           <span className="card-badge" style={{ fontSize: '0.8rem', padding: '0.3rem 0.8rem' }}>⚡ Superadmin</span>
@@ -165,16 +167,11 @@ export default function Admin() {
           {tab === 'universos' && (
             <div className="admin-tabla">
               <table>
-                <thead>
-                  <tr><th>Nombre</th><th>Ambientación</th><th>Propietario</th><th>Creado</th><th>Acciones</th></tr>
-                </thead>
+                <thead><tr><th>Nombre</th><th>Ambientación</th><th>Propietario</th><th>Creado</th><th>Acciones</th></tr></thead>
                 <tbody>
                   {universos.map(u => (
                     <tr key={u.id}>
-                      <td>
-                        <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: u.color, marginRight: '0.5rem' }} />
-                        {u.nombre}
-                      </td>
+                      <td><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: u.color, marginRight: '0.5rem' }} />{u.nombre}</td>
                       <td>{u.ambientacion}</td>
                       <td>{emailDeUsuario(u.user_id)}</td>
                       <td>{formatFecha(u.created_at)}</td>
@@ -189,9 +186,7 @@ export default function Admin() {
           {tab === 'usuarios' && (
             <div className="admin-tabla">
               <table>
-                <thead>
-                  <tr><th>Email</th><th>ID</th><th>Universos</th><th>Personajes</th><th>Entradas</th><th>Acciones</th></tr>
-                </thead>
+                <thead><tr><th>Email</th><th>ID</th><th>Universos</th><th>Personajes</th><th>Entradas</th><th>Acciones</th></tr></thead>
                 <tbody>
                   {usuarios.map(u => (
                     <tr key={u.id}>
@@ -200,7 +195,10 @@ export default function Admin() {
                       <td>{u.universos}</td>
                       <td>{u.personajes}</td>
                       <td>{u.entradas}</td>
-                      <td><button className="btn-danger btn-sm" onClick={() => setConfirmDelete({ tabla: 'usuarios', id: u.id, nombre: u.email })}>Eliminar</button></td>
+                      <td style={{ display: 'flex', gap: '0.3rem' }}>
+                        <button className="btn-ghost btn-sm" onClick={() => { setCambiandoPassword(u); setNuevaPassword(''); setMsgPassword(null) }}>🔑</button>
+                        <button className="btn-danger btn-sm" onClick={() => setConfirmDelete({ tabla: 'usuarios', id: u.id, nombre: u.email })}>Eliminar</button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -210,14 +208,10 @@ export default function Admin() {
 
           {tab === 'personajes' && (
             <div>
-              <p style={{ color: 'var(--text2)', fontSize: '0.95rem', marginBottom: '1rem', fontStyle: 'italic' }}>
-                Haz clic en "Transferir" para asignar un personaje a otro usuario.
-              </p>
+              <p style={{ color: 'var(--text2)', fontSize: '0.95rem', marginBottom: '1rem', fontStyle: 'italic' }}>Haz clic en "Transferir" para asignar un personaje a otro usuario.</p>
               <div className="admin-tabla">
                 <table>
-                  <thead>
-                    <tr><th>Personaje</th><th>Tipo</th><th>Rol</th><th>Universo</th><th>Propietario actual</th><th>Acciones</th></tr>
-                  </thead>
+                  <thead><tr><th>Personaje</th><th>Tipo</th><th>Rol</th><th>Universo</th><th>Propietario</th><th>Acciones</th></tr></thead>
                   <tbody>
                     {personajesDetalle.map(p => (
                       <tr key={p.id}>
@@ -225,19 +219,11 @@ export default function Admin() {
                           <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: p.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', color: 'white', fontWeight: 700, flexShrink: 0 }}>{p.iniciales}</div>
                           {p.nombre}
                         </td>
-                        <td>
-                          <span className="card-badge" style={{ fontSize: '0.7rem', ...(p.es_npc ? { background: 'rgba(52,152,219,0.15)', borderColor: '#3498db', color: '#3498db' } : {}) }}>
-                            {p.es_npc ? '🤖 NPC' : '👤 Jugador'}
-                          </span>
-                        </td>
+                        <td><span className="card-badge" style={{ fontSize: '0.7rem', ...(p.es_npc ? { background: 'rgba(52,152,219,0.15)', borderColor: '#3498db', color: '#3498db' } : {}) }}>{p.es_npc ? '🤖 NPC' : '👤 Jugador'}</span></td>
                         <td>{p.rol}</td>
                         <td>{p.universo_nombre}</td>
                         <td style={{ fontSize: '0.85rem' }}>{emailDeUsuario(p.user_id)}</td>
-                        <td>
-                          <button className="btn-ghost btn-sm" onClick={() => { setTransferiendo(p); setNuevoUserId(''); setMsgTransfer(null) }}>
-                            Transferir
-                          </button>
-                        </td>
+                        <td><button className="btn-ghost btn-sm" onClick={() => { setTransferiendo(p); setNuevoUserId(''); setMsgTransfer(null) }}>Transferir</button></td>
                       </tr>
                     ))}
                   </tbody>
@@ -249,16 +235,12 @@ export default function Admin() {
           {tab === 'sesiones' && (
             <div className="admin-tabla">
               <table>
-                <thead>
-                  <tr><th>Tipo</th><th>Contenido</th><th>Personaje</th><th>Fecha</th><th>Acciones</th></tr>
-                </thead>
+                <thead><tr><th>Tipo</th><th>Contenido</th><th>Personaje</th><th>Fecha</th><th>Acciones</th></tr></thead>
                 <tbody>
                   {entradas.slice(0, 100).map(e => (
                     <tr key={e.id}>
                       <td><span className="card-badge" style={{ fontSize: '0.7rem' }}>{e.tipo}</span></td>
-                      <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {e.imagen_url ? '📷 Imagen' : e.contenido}
-                      </td>
+                      <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.imagen_url ? '📷 Imagen' : e.contenido}</td>
                       <td>{e.personaje_nombre || '—'}</td>
                       <td>{formatFecha(e.created_at)}</td>
                       <td><button className="btn-danger btn-sm" onClick={() => setConfirmDelete({ tabla: 'entradas', id: e.id, nombre: 'esta entrada' })}>Eliminar</button></td>
@@ -291,13 +273,8 @@ export default function Admin() {
         <div className="modal-overlay" onClick={() => setTransferiendo(null)}>
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
             <h3>Transferir personaje</h3>
-            <p style={{ color: 'var(--text2)', margin: '0.8rem 0 0.3rem' }}>
-              Asignar <strong>{transferiendo.nombre}</strong> a otro usuario.
-            </p>
-            <p style={{ color: 'var(--text3)', fontSize: '0.85rem', marginBottom: '1.2rem' }}>
-              El personaje pasará a ser de tipo Jugador y será propiedad del usuario indicado.
-            </p>
-
+            <p style={{ color: 'var(--text2)', margin: '0.8rem 0 0.3rem' }}>Asignar <strong>{transferiendo.nombre}</strong> a otro usuario.</p>
+            <p style={{ color: 'var(--text3)', fontSize: '0.85rem', marginBottom: '1.2rem' }}>El personaje pasará a ser de tipo Jugador y será propiedad del usuario indicado.</p>
             <div className="form-group">
               <label>Email del nuevo propietario</label>
               <select value={nuevoUserId} onChange={e => setNuevoUserId(e.target.value)}>
@@ -305,18 +282,39 @@ export default function Admin() {
                 {usuarios.map(u => <option key={u.id} value={u.email}>{u.email}</option>)}
               </select>
             </div>
-
-            {msgTransfer && (
-              <div className={msgTransfer.tipo === 'ok' ? 'auth-mensaje' : 'auth-error'} style={{ marginBottom: '1rem' }}>
-                {msgTransfer.texto}
-              </div>
-            )}
-
+            {msgTransfer && <div className={msgTransfer.tipo === 'ok' ? 'auth-mensaje' : 'auth-error'} style={{ marginBottom: '1rem' }}>{msgTransfer.texto}</div>}
             <div className="modal-actions">
               <button className="btn-ghost" onClick={() => setTransferiendo(null)}>Cancelar</button>
-              <button className="btn-primary" onClick={transferirPersonaje} disabled={!nuevoUserId}>
-                Transferir
-              </button>
+              <button className="btn-primary" onClick={transferirPersonaje} disabled={!nuevoUserId}>Transferir</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal cambiar contraseña */}
+      {cambiandoPassword && (
+        <div className="modal-overlay" onClick={() => setCambiandoPassword(null)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <h3>🔑 Cambiar contraseña</h3>
+            <p style={{ color: 'var(--text2)', margin: '0.8rem 0 1.2rem', fontSize: '0.9rem' }}>
+              Cambiando contraseña de <strong>{cambiandoPassword.email}</strong>.<br/>
+              El usuario deberá cambiarla desde su perfil cuando inicie sesión.
+            </p>
+            <div className="form-group">
+              <label>Nueva contraseña</label>
+              <input
+                type="password"
+                placeholder="Mínimo 6 caracteres"
+                value={nuevaPassword}
+                onChange={e => setNuevaPassword(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleCambiarPassword()}
+                autoFocus
+              />
+            </div>
+            {msgPassword && <div className={msgPassword.tipo === 'ok' ? 'auth-mensaje' : 'auth-error'} style={{ marginBottom: '1rem' }}>{msgPassword.texto}</div>}
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setCambiandoPassword(null)}>Cancelar</button>
+              <button className="btn-primary" onClick={handleCambiarPassword} disabled={nuevaPassword.length < 6}>Cambiar</button>
             </div>
           </div>
         </div>
