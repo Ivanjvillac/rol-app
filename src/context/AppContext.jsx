@@ -63,6 +63,8 @@ export function AppProvider({ userId, children }) {
       descripcion: resto.descripcion,
       color: resto.color,
       iniciales: resto.iniciales,
+       avatar_url: resto.avatar_url || null,
+      es_npc: resto.es_npc || false,
       universo_id: universoId,
       user_id: userId 
     })

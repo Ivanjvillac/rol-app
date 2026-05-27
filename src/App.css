@@ -551,6 +551,7 @@ input, textarea, select {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  min-height: 0;
 }
 
 .historial-empty {
@@ -1518,22 +1519,18 @@ input, textarea, select {
 }
 
 /* Fix scroll interno historial */
-.mesa {
-  height: calc(100vh - 56px);
-  max-height: calc(100vh - 56px);
-  overflow: hidden;
-}
-
 .mesa-main {
   position: relative;
-  overflow: hidden;
-  height: 100%;
 }
 
 .historial {
   flex: 1;
-  overflow-y: scroll;
+  overflow-y: auto;
   min-height: 0;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
 /* Botón ir al final */
@@ -1561,4 +1558,15 @@ input, textarea, select {
   background: var(--accent-glow);
   color: var(--accent);
   border-color: var(--accent2);
+}
+.app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mesa {
+  flex: 1;
+  min-height: 0;
 }
