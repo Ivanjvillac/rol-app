@@ -2112,3 +2112,8 @@ input, textarea, select {
 .personaje-card .card-actions button {
   flex-shrink: 0;
 }
+/* ===== PERSONAJE OCULTO ===== */
+.personaje-oculto {
+  opacity: 0.7;
+  border-style: dashed !important;
+}
