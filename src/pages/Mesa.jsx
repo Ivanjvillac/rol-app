@@ -168,6 +168,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const historialRef = useRef(null)
   const inputRef = useRef(null)
   const timeoutEscribiendoRef = useRef(null)
+  const canalEscribiendoRef = useRef(null)
 
   const personajes = selectedUniverso ? getPersonajesDeUniverso(selectedUniverso.id) : []
   const sesionCompleta = sesionActiva ? getSesion(sesionActiva.id) : []
@@ -185,16 +186,17 @@ export default function Mesa({ navigate, selectedUniverso }) {
     cargarListaSesiones(selectedUniverso.id)
   }, [selectedUniverso?.id])
 
- useEffect(() => {
-  if (!showNuevaSesion || !selectedUniverso) return
-  const cargar = async () => {
-    const { data } = await supabase.rpc('get_miembros_universo', { 
-      p_universo_id: selectedUniverso.id 
-    })
-    setUsuariosUniverso((data || []).filter(u => u.id !== userId))
-  }
-  cargar()
-}, [showNuevaSesion])
+  useEffect(() => {
+    if (!showNuevaSesion || !selectedUniverso) return
+    const cargar = async () => {
+      const { data } = await supabase.from('miembros').select('user_id').eq('universo_id', selectedUniverso.id)
+      const ids = (data || []).map(m => m.user_id)
+      if (ids.length === 0) { setUsuariosUniverso([]); return }
+      const { data: perfs } = await supabase.from('perfiles').select('id, nombre').in('id', ids)
+      setUsuariosUniverso(perfs || [])
+    }
+    cargar()
+  }, [showNuevaSesion])
 
   useEffect(() => {
     if (!sesionActiva) return
@@ -245,7 +247,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
   useEffect(() => {
     if (!selectedUniverso || !userId || !sesionActiva) return
-    const canal = supabase.channel(`escribiendo-${selectedUniverso.id}`)
+    const canal = supabase.channel(`escribiendo-${selectedUniverso.id}-${sesionActiva.id}`)
       .on('broadcast', { event: 'escribiendo' }, ({ payload }) => {
         if (payload.userId === userId) return
         setOtrosEscribiendo(prev => {
@@ -255,7 +257,11 @@ export default function Mesa({ navigate, selectedUniverso }) {
         })
       })
       .subscribe()
-    return () => supabase.removeChannel(canal)
+    canalEscribiendoRef.current = canal
+    return () => {
+      supabase.removeChannel(canal)
+      canalEscribiendoRef.current = null
+    }
   }, [selectedUniverso?.id, sesionActiva?.id, userId])
 
   useEffect(() => {
@@ -273,10 +279,9 @@ export default function Mesa({ navigate, selectedUniverso }) {
   }
 
   const emitirEscribiendo = async (activo) => {
-    if (!selectedUniverso) return
-    const canal = supabase.channel(`escribiendo-${selectedUniverso.id}`)
+    if (!selectedUniverso || !canalEscribiendoRef.current) return
     const perfil = await supabase.from('perfiles').select('nombre').eq('id', userId).single()
-    canal.send({
+    canalEscribiendoRef.current.send({
       type: 'broadcast',
       event: 'escribiendo',
       payload: { userId, nombre: perfil.data?.nombre || 'Alguien', activo }
