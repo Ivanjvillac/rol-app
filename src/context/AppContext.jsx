@@ -172,21 +172,27 @@ export function AppProvider({ userId, children }) {
   }
 
   // TIEMPO REAL
-  const suscribirMesa = (universoId, onNuevaEntrada) => {
-    const channel = supabase
-      .channel(`mesa-${universoId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'entradas',
-        filter: `universo_id=eq.${universoId}`
-      }, (payload) => {
-        const nueva = formatearEntrada(payload.new)
-        onNuevaEntrada(nueva)
+const suscribirMesa = (universoId, onNuevaEntrada) => {
+  const channel = supabase
+    .channel(`mesa-${universoId}`)
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'entradas',
+      filter: `universo_id=eq.${universoId}`
+    }, (payload) => {
+      const nueva = formatearEntrada(payload.new)
+      setSesiones(prev => {
+        const sesionActual = prev[universoId] || []
+        const yaExiste = sesionActual.some(e => e.id === nueva.id)
+        if (yaExiste) return prev
+        return { ...prev, [universoId]: [...sesionActual, nueva] }
       })
-      .subscribe()
-    return () => supabase.removeChannel(channel)
-  }
+      if (onNuevaEntrada) onNuevaEntrada(nueva)
+    })
+    .subscribe()
+  return () => supabase.removeChannel(channel)
+}
 
   const getPersonajesDeUniverso = (universoId) =>
     personajes.filter(p => (p.universo_id || p.universoId) === universoId)

@@ -20,9 +20,10 @@ function AppInner({ page, navigate, selectedUniverso, setSelectedUniverso, cerra
         setMsgInvitacion({ tipo: 'ok', texto: `¡Te has unido a "${universo?.nombre}"!` })
         if (universo) { setSelectedUniverso(universo); navigate('mesa', universo) }
       } else {
-        setMsgInvitacion({ tipo: 'error', texto: error || 'Invitación no válida.' })
+        setMsgInvitacion({ tipo: 'error', texto: error || 'Invitación no válida o ya usada.' })
       }
       setInvitacionToken(null)
+      sessionStorage.removeItem('invitacion_token')
     }
     procesar()
   }, [invitacionToken])
@@ -62,12 +63,25 @@ export default function App() {
   const [invitacionToken, setInvitacionToken] = useState(null)
 
   useEffect(() => {
+    // Leer token de la URL o del sessionStorage
     const params = new URLSearchParams(window.location.search)
-    const token = params.get('invitacion')
-    if (token) { setInvitacionToken(token); window.history.replaceState({}, '', '/') }
+    const tokenUrl = params.get('invitacion')
+    const tokenGuardado = sessionStorage.getItem('invitacion_token')
+    const token = tokenUrl || tokenGuardado
+    if (token) {
+      setInvitacionToken(token)
+      if (tokenUrl) window.history.replaceState({}, '', '/')
+    }
 
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => setSession(session))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+      setSession(session)
+      // Cuando el usuario inicia sesión, activar token pendiente
+      if (session) {
+        const t = sessionStorage.getItem('invitacion_token')
+        if (t) setInvitacionToken(t)
+      }
+    })
     return () => subscription.unsubscribe()
   }, [])
 

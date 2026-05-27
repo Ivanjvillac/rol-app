@@ -1,13 +1,28 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
 export default function Auth() {
-  const [modo, setModo] = useState('login') // login | registro
+  const [modo, setModo] = useState('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState(null)
   const [error, setError] = useState(null)
+  const [tokenPendiente, setTokenPendiente] = useState(null)
+
+  useEffect(() => {
+    // Guardar el token de invitación antes de que se pierda
+    const params = new URLSearchParams(window.location.search)
+    const token = params.get('invitacion')
+    if (token) {
+      setTokenPendiente(token)
+      sessionStorage.setItem('invitacion_token', token)
+      window.history.replaceState({}, '', '/')
+    } else {
+      const guardado = sessionStorage.getItem('invitacion_token')
+      if (guardado) setTokenPendiente(guardado)
+    }
+  }, [])
 
   const handleSubmit = async () => {
     if (!email || !password) return
@@ -21,7 +36,7 @@ export default function Auth() {
     } else {
       const { error } = await supabase.auth.signUp({ email, password })
       if (error) setError('Error al crear la cuenta. Prueba con otro email.')
-      else setMensaje('¡Cuenta creada! Revisa tu email para confirmarla.')
+      else setMensaje('¡Cuenta creada! Revisa tu email para confirmarla y luego inicia sesión.')
     }
 
     setCargando(false)
@@ -37,6 +52,12 @@ export default function Auth() {
       <div className="auth-box">
         <h1 className="auth-title">⚔ RolApp</h1>
         <p className="auth-subtitle">Tu mesa de rol escrita</p>
+
+        {tokenPendiente && (
+          <div className="auth-mensaje" style={{ marginBottom: '1.2rem' }}>
+            🎲 Tienes una invitación pendiente. Inicia sesión o crea una cuenta para unirte.
+          </div>
+        )}
 
         <div className="auth-tabs">
           <button

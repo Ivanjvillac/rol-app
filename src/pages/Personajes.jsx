@@ -1,14 +1,93 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect  } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 
 const COLORES = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#1abc9c', '#3498db', '#9b59b6', '#e91e63']
 const ROLES = ['Guerrero', 'Mago', 'Pícaro', 'Clérigo', 'Explorador', 'Bardo', 'Narrador', 'Otro']
 
+function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userId }) {
+  const [notas, setNotas] = useState('')
+  const [guardando, setGuardando] = useState(false)
+  const [guardado, setGuardado] = useState(false)
+
+  useEffect(() => {
+    const cargar = async () => {
+      const { data } = await supabase
+        .from('notas_privadas')
+        .select('contenido')
+        .eq('personaje_id', personaje.id)
+        .eq('user_id', userId)
+        .single()
+      if (data) setNotas(data.contenido || '')
+    }
+    cargar()
+  }, [personaje.id])
+
+  const handleGuardar = async () => {
+    setGuardando(true)
+    await onGuardarNotas(personaje.id, notas)
+    setGuardando(false)
+    setGuardado(true)
+    setTimeout(() => setGuardado(false), 2000)
+  }
+  return (
+    <div className="modal-overlay" onClick={onCerrar}>
+      <div className="modal modal-detalle" onClick={e => e.stopPropagation()}>
+        <div className="detalle-header">
+          {personaje.avatar_url
+            ? <img src={personaje.avatar_url} alt={personaje.nombre} className="detalle-avatar" />
+            : <div className="detalle-avatar-placeholder" style={{ background: personaje.color }}>{personaje.iniciales}</div>
+          }
+          <div>
+            <div className="card-badge">{personaje.rol}</div>
+            <h2 style={{ fontFamily: 'Cinzel, serif', color: 'var(--accent)', marginTop: '0.3rem' }}>{personaje.nombre}</h2>
+            {universo && (
+              <div className="personaje-universo" style={{ marginTop: '0.3rem' }}>
+                <span style={{ background: universo.color }} className="universo-dot" />
+                {universo.nombre}
+              </div>
+            )}
+          </div>
+          <button className="detalle-cerrar" onClick={onCerrar}>✕</button>
+        </div>
+
+        {personaje.descripcion && (
+          <div className="detalle-seccion">
+            <h4>Descripción</h4>
+            <p style={{ color: 'var(--text2)', fontStyle: 'italic', lineHeight: '1.6' }}>{personaje.descripcion}</p>
+          </div>
+        )}
+
+        <div className="detalle-seccion">
+          <h4>Notas privadas</h4>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text3)', marginBottom: '0.6rem' }}>
+            Solo tú puedes ver estas notas. Úsalas para historia, motivaciones, secretos...
+          </p>
+          <textarea
+            className="notas-textarea"
+            placeholder="Escribe aquí los secretos, motivaciones, historia personal, objetivos... Solo tú los verás."
+            value={notas}
+            onChange={e => setNotas(e.target.value)}
+            rows={10}
+          />
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn-ghost" onClick={onCerrar}>Cerrar</button>
+          <button className="btn-primary" onClick={handleGuardar} disabled={guardando}>
+            {guardado ? '✓ Guardado' : guardando ? 'Guardando...' : 'Guardar notas'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Personajes({ navigate, selectedUniverso }) {
-  const { universos, personajes, addPersonaje, deletePersonaje, updatePersonaje } = useApp()
+  const { universos, personajes, addPersonaje, deletePersonaje, updatePersonaje, userId } = useApp()
   const [showForm, setShowForm] = useState(false)
   const [editando, setEditando] = useState(null)
+  const [verDetalle, setVerDetalle] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [filtroUniverso, setFiltroUniverso] = useState(selectedUniverso?.id || 'todos')
   const [guardando, setGuardando] = useState(false)
@@ -110,6 +189,13 @@ export default function Personajes({ navigate, selectedUniverso }) {
     setConfirmDelete(null)
   }
 
+  const handleGuardarNotas = async (personajeId, contenido) => {
+  await supabase
+    .from('notas_privadas')
+    .upsert({ personaje_id: personajeId, user_id: userId, contenido }, { onConflict: 'personaje_id,user_id' })
+  if (verDetalle?.id === personajeId) setVerDetalle(prev => ({ ...prev, notas: contenido }))
+}
+
   const universoDePersonaje = (universoId) => universos.find(u => u.id === universoId)
 
   return (
@@ -130,12 +216,11 @@ export default function Personajes({ navigate, selectedUniverso }) {
         </select>
       </div>
 
+      {/* Modal crear/editar */}
       {showForm && (
         <div className="modal-overlay" onClick={cerrarForm}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h3>{editando ? 'Editar personaje' : 'Crear personaje'}</h3>
-
-            {/* Avatar upload */}
             <div className="form-group">
               <label>Avatar</label>
               <div className="avatar-upload" onClick={() => fileInputRef.current?.click()}>
@@ -150,15 +235,8 @@ export default function Personajes({ navigate, selectedUniverso }) {
                   <small>{avatarPreview ? 'Cambiar imagen' : 'Subir imagen'}</small>
                 </div>
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                style={{ display: 'none' }}
-                onChange={handleAvatarChange}
-              />
+              <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarChange} />
             </div>
-
             <div className="form-group">
               <label>Universo</label>
               <select value={form.universoId} onChange={e => setForm({ ...form, universoId: e.target.value })}>
@@ -168,11 +246,7 @@ export default function Personajes({ navigate, selectedUniverso }) {
             </div>
             <div className="form-group">
               <label>Nombre</label>
-              <input
-                placeholder="Nombre del personaje..."
-                value={form.nombre}
-                onChange={e => setForm({ ...form, nombre: e.target.value })}
-              />
+              <input placeholder="Nombre del personaje..." value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} />
             </div>
             <div className="form-group">
               <label>Rol</label>
@@ -182,23 +256,13 @@ export default function Personajes({ navigate, selectedUniverso }) {
             </div>
             <div className="form-group">
               <label>Descripción</label>
-              <textarea
-                placeholder="¿Quién es este personaje? ¿Cuál es su historia?"
-                value={form.descripcion}
-                onChange={e => setForm({ ...form, descripcion: e.target.value })}
-                rows={3}
-              />
+              <textarea placeholder="¿Quién es este personaje? ¿Cuál es su historia?" value={form.descripcion} onChange={e => setForm({ ...form, descripcion: e.target.value })} rows={3} />
             </div>
             <div className="form-group">
               <label>Color del personaje</label>
               <div className="color-picker">
                 {COLORES.map(c => (
-                  <div
-                    key={c}
-                    className={`color-dot ${form.color === c ? 'selected' : ''}`}
-                    style={{ background: c }}
-                    onClick={() => setForm({ ...form, color: c })}
-                  />
+                  <div key={c} className={`color-dot ${form.color === c ? 'selected' : ''}`} style={{ background: c }} onClick={() => setForm({ ...form, color: c })} />
                 ))}
               </div>
             </div>
@@ -212,6 +276,7 @@ export default function Personajes({ navigate, selectedUniverso }) {
         </div>
       )}
 
+      {/* Modal confirmar borrado */}
       {confirmDelete && (
         <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
@@ -225,6 +290,17 @@ export default function Personajes({ navigate, selectedUniverso }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Detalle personaje */}
+      {verDetalle && (
+     <DetallePersonaje
+  personaje={verDetalle}
+  universo={universoDePersonaje(verDetalle.universo_id || verDetalle.universoId)}
+  onCerrar={() => setVerDetalle(null)}
+  onGuardarNotas={handleGuardarNotas}
+  userId={userId}
+/>
       )}
 
       <div className="grid">
@@ -247,9 +323,14 @@ export default function Personajes({ navigate, selectedUniverso }) {
                   </div>
                 )}
                 <div className="card-actions">
-                  <button className="btn-ghost btn-sm" onClick={() => abrirEditar(p)}>Editar</button>
-                  <button className="btn-danger btn-sm" onClick={() => setConfirmDelete(p)}>Eliminar</button>
-                </div>
+  <button className="btn-ghost btn-sm" onClick={() => setVerDetalle(p)}>📋 Notas</button>
+  {p.user_id === userId && (
+    <>
+      <button className="btn-ghost btn-sm" onClick={() => abrirEditar(p)}>Editar</button>
+      <button className="btn-danger btn-sm" onClick={() => setConfirmDelete(p)}>Eliminar</button>
+    </>
+  )}
+</div>
               </div>
             </div>
           )

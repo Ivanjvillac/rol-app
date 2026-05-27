@@ -121,7 +121,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
   }
 
   const handleInvitar = async () => {
-    if (!emailInvitar.trim()) return
     setEnviando(true)
     setMsgInvitar(null)
     const { data, error } = await invitarUsuario(selectedUniverso.id, emailInvitar.trim())
