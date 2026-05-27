@@ -8,8 +8,9 @@ import Personajes from './pages/Personajes'
 import Mesa from './pages/Mesa'
 import './App.css'
 import Admin from './pages/Admin'
+import Perfil from './pages/Perfil'
 
-function AppInner({ page, navigate, selectedUniverso, setSelectedUniverso, cerrarSesion, invitacionToken, setInvitacionToken, userEmail }) {  const { aceptarInvitacion } = useApp()
+function AppInner({ page, navigate, selectedUniverso, setSelectedUniverso, cerrarSesion, invitacionToken, setInvitacionToken, userEmail }) {  const { aceptarInvitacion, userId } = useApp()
   const [msgInvitacion, setMsgInvitacion] = useState(null)
 
   useEffect(() => {
@@ -37,8 +38,10 @@ function AppInner({ page, navigate, selectedUniverso, setSelectedUniverso, cerra
           <button onClick={() => navigate('universos')} className={page === 'universos' ? 'active' : ''}>Universos</button>
           <button onClick={() => navigate('personajes')} className={page === 'personajes' ? 'active' : ''}>Personajes</button>
           <button onClick={() => navigate('mesa')} className={page === 'mesa' ? 'active' : ''}>Mesa de Rol</button>
+      <button onClick={() => navigate('perfil')} className={page === 'perfil' ? 'active' : ''}>👤 Perfil</button>
          {userEmail === import.meta.env.VITE_SUPERADMIN_EMAIL && (
-  <button onClick={() => navigate('admin')} className={page === 'admin' ? 'active' : ''}>⚡ Admin</button>
+ 
+ <button onClick={() => navigate('admin')} className={page === 'admin' ? 'active' : ''}>⚡ Admin</button>
 )}
           <button onClick={cerrarSesion} className="btn-cerrar">Salir</button>
         </div>
@@ -51,11 +54,12 @@ function AppInner({ page, navigate, selectedUniverso, setSelectedUniverso, cerra
         </div>
       )}
 
-{page === 'admin' && <Admin />}
+      {page === 'admin' && <Admin />}
       {page === 'home' && <Home navigate={navigate} />}
       {page === 'universos' && <Universos navigate={navigate} setSelectedUniverso={setSelectedUniverso} selectedUniverso={selectedUniverso} />}
       {page === 'personajes' && <Personajes navigate={navigate} selectedUniverso={selectedUniverso} />}
       {page === 'mesa' && <Mesa navigate={navigate} selectedUniverso={selectedUniverso} />}
+      {page === 'perfil' && <Perfil userId={userId} userEmail={userEmail} />}
     </div>
   )
 }

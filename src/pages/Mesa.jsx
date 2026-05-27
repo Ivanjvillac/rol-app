@@ -129,7 +129,7 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
 }
 
 export default function Mesa({ navigate, selectedUniverso }) {
-  const { getPersonajesDeUniverso, addEntrada, getSesion, cargarSesion, suscribirMesa, invitarUsuario, getInvitaciones, esPropietario, userId, cargarListaSesiones, crearSesion, eliminarSesion, listaSesiones } = useApp()
+  const { getPersonajesDeUniverso, addEntrada, getSesion, cargarSesion, suscribirMesa, invitarUsuario, getInvitaciones, esPropietario, userId, cargarListaSesiones, crearSesion, eliminarSesion, listaSesiones, editarEntrada, borrarEntrada } = useApp()
 
   const [personajeActivo, setPersonajeActivo] = useState(null)
   const [texto, setTexto] = useState('')
@@ -146,11 +146,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [notificaciones, setNotificaciones] = useState([])
   const [tieneNoLeidos, setTieneNoLeidos] = useState(false)
   const [sidebarAbierto, setSidebarAbierto] = useState(false)
+  const [editandoEntrada, setEditandoEntrada] = useState(null)
+  const [confirmDeleteEntrada, setConfirmDeleteEntrada] = useState(null)
   const [sesionActiva, setSesionActiva] = useState(null)
   const [showNuevaSesion, setShowNuevaSesion] = useState(false)
   const [nombreNuevaSesion, setNombreNuevaSesion] = useState('')
   const [confirmDeleteSesion, setConfirmDeleteSesion] = useState(null)
-  const [mostrarIrAbajo, setMostrarIrAbajo] = useState(false)
   const historialRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -190,17 +191,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
   useEffect(() => {
     if (historialRef.current) historialRef.current.scrollTop = historialRef.current.scrollHeight
-  }, [sesionActiva])
-
-  const handleScroll = () => {
-    if (!historialRef.current) return
-    const { scrollTop, scrollHeight, clientHeight } = historialRef.current
-    setMostrarIrAbajo(scrollHeight - scrollTop - clientHeight > 200)
-  }
-
-  const irAbajo = () => {
-    if (historialRef.current) historialRef.current.scrollTop = historialRef.current.scrollHeight
-  }
+  }, [sesion])
 
   if (!selectedUniverso) {
     return (
@@ -251,6 +242,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
     await addEntrada(selectedUniverso.id, { tipo, contenido: '', imagen_url: url, personaje: personajeActivo }, sesionActiva.id)
   }
 
+  const handleEditarEntrada = async () => {
+    if (!editandoEntrada) return
+    await editarEntrada(editandoEntrada.id, editandoEntrada.contenido)
+    setEditandoEntrada(null)
+  }
+
   const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }
   const formatHora = (ts) => { const d = new Date(ts); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` }
 
@@ -269,8 +266,17 @@ export default function Mesa({ navigate, selectedUniverso }) {
     a.click()
   }
 
-  const tirarDado = (caras) => setResultadoDado({ caras, resultado: Math.floor(Math.random() * caras) + 1 })
-
+const tirarDado = async (caras) => {
+  const resultado = Math.floor(Math.random() * caras) + 1
+  setResultadoDado({ caras, resultado })
+  if (sesionActiva) {
+    await addEntrada(selectedUniverso.id, {
+      tipo: 'dado',
+      contenido: `🎲 ${personajeActivo?.nombre || 'Narrador'} tiró d${caras} → **${resultado}**`,
+      personaje: personajeActivo
+    }, sesionActiva.id)
+  }
+}
   const abrirInvitar = async () => {
     setShowInvitar(true)
     const invs = await getInvitaciones(selectedUniverso.id)
@@ -411,7 +417,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
           <span className="sesion-count">{sesion.length} entradas</span>
         </div>
 
-        <div className="historial" ref={historialRef} onScroll={handleScroll}>
+        <div className="historial" ref={historialRef}>
           {!sesionActiva && (
             <div className="historial-empty">
               <p>Selecciona o crea una sesión en el panel lateral para empezar.</p>
@@ -426,7 +432,13 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   <span className="entrada-label">📖 Narrador</span>
                   {e.contenido && <p>{e.contenido}</p>}
                   {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '240px', borderRadius: '8px', marginTop: '0.4rem', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
-                  <span className="entrada-hora">{formatHora(e.timestamp)}</span>
+                  <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
+                  {e.user_id === userId && (
+                    <div className="entrada-acciones">
+                      {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
+                      <button onClick={() => setConfirmDeleteEntrada(e)}>🗑️</button>
+                    </div>
+                  )}
                 </div>
               )}
               {e.tipo === 'dialogo' && (
@@ -436,7 +448,13 @@ export default function Mesa({ navigate, selectedUniverso }) {
                     <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
                     {e.contenido && <p>"{e.contenido}"</p>}
                     {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => window.open(e.imagen_url, '_blank')} />}
-                    <span className="entrada-hora">{formatHora(e.timestamp)}</span>
+                    <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
+                    {e.user_id === userId && (
+                      <div className="entrada-acciones">
+                        {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
+                        <button onClick={() => setConfirmDeleteEntrada(e)}>🗑️</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -447,10 +465,27 @@ export default function Mesa({ navigate, selectedUniverso }) {
                     <span style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
                     {e.contenido && <em> {e.contenido}</em>}
                     {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '220px', borderRadius: '8px', marginTop: '0.4rem', display: 'block', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
-                    <span className="entrada-hora">{formatHora(e.timestamp)}</span>
+                    <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
+                    {e.user_id === userId && (
+                      <div className="entrada-acciones">
+                        {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
+                        <button onClick={() => setConfirmDeleteEntrada(e)}>🗑️</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
+               {e.tipo === 'dado' && (
+                <div className="entrada-dado">
+                  <span className="entrada-dado-icono">🎲</span>
+                  <div className="entrada-dado-contenido">
+                    {e.personaje_nombre && <span style={{ color: e.personaje_color, fontFamily: 'Cinzel, serif', fontSize: '0.8rem' }}>{e.personaje_nombre}</span>}
+                    <span>{e.contenido.replace(/\*\*/g, '')}</span>
+                  </div>
+                  <span className="entrada-hora">{formatHora(e.timestamp)}</span>
+                </div>
+              )}
+            
             </div>
           ))}
         </div>
@@ -461,10 +496,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
             {comandoSugerido.tipo === 'dialogo' && <span style={{ color: comandoSugerido.personaje?.color }}>💬 {comandoSugerido.personaje?.nombre}: "{comandoSugerido.contenido}"</span>}
             {comandoSugerido.tipo === 'accion' && <span style={{ color: comandoSugerido.personaje?.color }}>⚡ {comandoSugerido.personaje?.nombre} {comandoSugerido.contenido}</span>}
           </div>
-        )}
-
-        {mostrarIrAbajo && (
-          <button className="btn-ir-abajo" onClick={irAbajo}>↓</button>
         )}
 
         <div className="mesa-input-bar">
@@ -567,6 +598,39 @@ export default function Mesa({ navigate, selectedUniverso }) {
       )}
 
       {showChat && <ChatPrivado universo={selectedUniverso} personajes={personajes} userId={userId} onCerrar={() => setShowChat(false)} />}
+
+      {editandoEntrada && (
+        <div className="modal-overlay" onClick={() => setEditandoEntrada(null)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <h3>Editar mensaje</h3>
+            <div className="form-group" style={{ marginTop: '1rem' }}>
+              <textarea
+                className="notas-textarea"
+                rows={4}
+                value={editandoEntrada.contenido}
+                onChange={e => setEditandoEntrada(prev => ({ ...prev, contenido: e.target.value }))}
+              />
+            </div>
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setEditandoEntrada(null)}>Cancelar</button>
+              <button className="btn-primary" onClick={handleEditarEntrada}>Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteEntrada && (
+        <div className="modal-overlay" onClick={() => setConfirmDeleteEntrada(null)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <h3>¿Borrar mensaje?</h3>
+            <p style={{ color: 'var(--text2)', margin: '0.8rem 0 1.5rem' }}>Esta acción no se puede deshacer.</p>
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setConfirmDeleteEntrada(null)}>Cancelar</button>
+              <button className="btn-danger" onClick={async () => { await borrarEntrada(confirmDeleteEntrada.id); setConfirmDeleteEntrada(null) }}>Sí, borrar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

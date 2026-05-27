@@ -174,7 +174,33 @@ const getSesion = (sesionId) => sesiones[sesionId] || []
     }))
   }
 }
+const editarEntrada = async (id, contenido) => {
+  const { data, error } = await supabase
+    .from('entradas')
+    .update({ contenido, editado: true })
+    .eq('id', id)
+    .select()
+  if (!error && data?.length > 0) {
+    setSesiones(prev => {
+      const nuevo = {}
+      for (const key in prev) {
+        nuevo[key] = prev[key].map(e => e.id === id ? { ...e, contenido, editado: true } : e)
+      }
+      return nuevo
+    })
+  }
+}
 
+const borrarEntrada = async (id) => {
+  await supabase.from('entradas').delete().eq('id', id)
+  setSesiones(prev => {
+    const nuevo = {}
+    for (const key in prev) {
+      nuevo[key] = prev[key].filter(e => e.id !== id)
+    }
+    return nuevo
+  })
+}
   // INVITACIONES
   const invitarUsuario = async (universoId, email) => {
     const { data, error } = await supabase
@@ -257,6 +283,7 @@ const suscribirMesa = (universoId, sesionId, onNuevaEntrada) => {
       suscribirMesa, esPropietario,
       listaSesiones, sesionActivaId, setSesionActivaId,
 cargarListaSesiones, crearSesion, eliminarSesion,
+editarEntrada, borrarEntrada,
     }}>
       {children}
     </AppContext.Provider>
