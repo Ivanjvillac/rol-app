@@ -2080,3 +2080,35 @@ input, textarea, select {
     border-color: var(--accent2) !important;
   }
 }
+
+.avatar-upload .avatar-preview {
+  width: 72px !important;
+  height: 72px !important;
+  object-fit: cover;
+  object-position: top;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.avatar-upload {
+  align-items: center;
+}
+.personaje-card .card-body {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.personaje-card .card-body h3 {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.personaje-card .card-actions {
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.personaje-card .card-actions button {
+  flex-shrink: 0;
+}
