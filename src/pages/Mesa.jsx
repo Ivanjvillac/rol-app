@@ -154,6 +154,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [sesionPrivada, setSesionPrivada] = useState(false)
   const [miembrosPrivados, setMiembrosPrivados] = useState([])
   const [usuariosUniverso, setUsuariosUniverso] = useState([])
+  const [padreSesion, setPadreSesion] = useState(null)
   const [busqueda, setBusqueda] = useState('')
   const [editandoEntrada, setEditandoEntrada] = useState(null)
   const [confirmDeleteEntrada, setConfirmDeleteEntrada] = useState(null)
@@ -187,11 +188,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
  useEffect(() => {
   if (!showNuevaSesion || !selectedUniverso) return
   const cargar = async () => {
-    // Cargar miembros usando una función RPC que bypasea RLS
     const { data } = await supabase.rpc('get_miembros_universo', { 
       p_universo_id: selectedUniverso.id 
     })
-    setUsuariosUniverso(data || [])
+    setUsuariosUniverso((data || []).filter(u => u.id !== userId))
   }
   cargar()
 }, [showNuevaSesion])
@@ -399,11 +399,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
   const handleCrearSesion = async () => {
     if (!nombreNuevaSesion.trim()) return
-    const { data } = await crearSesion(selectedUniverso.id, nombreNuevaSesion.trim(), sesionPrivada, miembrosPrivados)
+    const { data } = await crearSesion(selectedUniverso.id, nombreNuevaSesion.trim(), sesionPrivada, miembrosPrivados, padreSesion?.id || null)
     if (data) setSesionActiva(data)
     setNombreNuevaSesion('')
     setSesionPrivada(false)
     setMiembrosPrivados([])
+    setPadreSesion(null)
     setShowNuevaSesion(false)
   }
 
@@ -425,10 +426,18 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <button className="btn-adjunto" style={{ fontSize: '1rem' }} onClick={() => setShowNuevaSesion(true)}>＋</button>
           </div>
           {sesiones.length === 0 && <p className="sidebar-empty">Sin sesiones. Crea la primera.</p>}
-          {sesiones.map(s => (
-            <div key={s.id} className={`sesion-item ${sesionActiva?.id === s.id ? 'activa' : ''}`} onClick={() => { setSesionActiva(s); setSidebarAbierto(false) }}>
-              <span>{s.es_privada ? '🔒' : '#'} {s.nombre}</span>
-              <button className="sesion-delete" onClick={e => { e.stopPropagation(); setConfirmDeleteSesion(s) }}>✕</button>
+          {sesiones.filter(s => !s.padre_id).map(s => (
+            <div key={s.id}>
+              <div className={`sesion-item ${sesionActiva?.id === s.id ? 'activa' : ''}`} onClick={() => { setSesionActiva(s); setSidebarAbierto(false) }}>
+                <span>{s.es_privada ? '🔒' : '#'} {s.nombre}</span>
+                <button className="sesion-delete" onClick={e => { e.stopPropagation(); setConfirmDeleteSesion(s) }}>✕</button>
+              </div>
+              {sesiones.filter(sub => sub.padre_id === s.id).map(sub => (
+                <div key={sub.id} className={`sesion-item sesion-sub ${sesionActiva?.id === sub.id ? 'activa' : ''}`} onClick={() => { setSesionActiva(sub); setSidebarAbierto(false) }}>
+                  <span>↳ {sub.es_privada ? '🔒' : '#'} {sub.nombre}</span>
+                  <button className="sesion-delete" onClick={e => { e.stopPropagation(); setConfirmDeleteSesion(sub) }}>✕</button>
+                </div>
+              ))}
             </div>
           ))}
         </div>
@@ -681,6 +690,18 @@ export default function Mesa({ navigate, selectedUniverso }) {
               <input placeholder="Día 1, Capítulo 1..." value={nombreNuevaSesion} onChange={e => setNombreNuevaSesion(e.target.value)} onKeyDown={e => e.key === 'Enter' && !sesionPrivada && handleCrearSesion()} autoFocus />
             </div>
             <div className="form-group">
+              <label>Subsesión de (opcional)</label>
+              <select value={padreSesion?.id || ''} onChange={e => {
+                const s = sesiones.find(x => x.id === e.target.value)
+                setPadreSesion(s || null)
+              }}>
+                <option value="">— Sesión principal —</option>
+                {sesiones.filter(s => !s.padre_id).map(s => (
+                  <option key={s.id} value={s.id}>{s.nombre}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
               <label>Tipo</label>
               <div className="tipo-toggle">
                 <button type="button" className={!sesionPrivada ? 'tipo-btn activo' : 'tipo-btn'} onClick={() => setSesionPrivada(false)}>🌍 Pública</button>
@@ -693,14 +714,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
                 <p style={{ fontSize: '0.82rem', color: 'var(--text3)', marginBottom: '0.5rem' }}>Selecciona quién puede ver esta sesión además de ti.</p>
                 {usuariosUniverso.map(u => (
                   <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.3rem 0', cursor: 'pointer', color: 'var(--text2)' }}>
-                    <input
-                      type="checkbox"
-                      checked={miembrosPrivados.includes(u.id)}
-                      onChange={e => {
-                        if (e.target.checked) setMiembrosPrivados(prev => [...prev, u.id])
-                        else setMiembrosPrivados(prev => prev.filter(id => id !== u.id))
-                      }}
-                    />
+                    <input type="checkbox" checked={miembrosPrivados.includes(u.id)} onChange={e => {
+                      if (e.target.checked) setMiembrosPrivados(prev => [...prev, u.id])
+                      else setMiembrosPrivados(prev => prev.filter(id => id !== u.id))
+                    }} />
                     {u.nombre || u.id.slice(0, 8)}
                   </label>
                 ))}
