@@ -151,6 +151,9 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [showNuevaSesion, setShowNuevaSesion] = useState(false)
   const [nombreNuevaSesion, setNombreNuevaSesion] = useState('')
   const [confirmDeleteSesion, setConfirmDeleteSesion] = useState(null)
+  const [sesionPrivada, setSesionPrivada] = useState(false)
+  const [miembrosPrivados, setMiembrosPrivados] = useState([])
+  const [usuariosUniverso, setUsuariosUniverso] = useState([])
   const [busqueda, setBusqueda] = useState('')
   const [editandoEntrada, setEditandoEntrada] = useState(null)
   const [confirmDeleteEntrada, setConfirmDeleteEntrada] = useState(null)
@@ -158,6 +161,9 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [usuariosConectados, setUsuariosConectados] = useState([])
   const [otrosEscribiendo, setOtrosEscribiendo] = useState([])
   const [mostrarIrAbajo, setMostrarIrAbajo] = useState(false)
+  const [showMusica, setShowMusica] = useState(false)
+  const [spotifyUrl, setSpotifyUrl] = useState('')
+  const [spotifyEmbed, setSpotifyEmbed] = useState(null)
   const historialRef = useRef(null)
   const inputRef = useRef(null)
   const timeoutEscribiendoRef = useRef(null)
@@ -177,6 +183,18 @@ export default function Mesa({ navigate, selectedUniverso }) {
     if (!selectedUniverso) return
     cargarListaSesiones(selectedUniverso.id)
   }, [selectedUniverso?.id])
+
+ useEffect(() => {
+  if (!showNuevaSesion || !selectedUniverso) return
+  const cargar = async () => {
+    // Cargar miembros usando una función RPC que bypasea RLS
+    const { data } = await supabase.rpc('get_miembros_universo', { 
+      p_universo_id: selectedUniverso.id 
+    })
+    setUsuariosUniverso(data || [])
+  }
+  cargar()
+}, [showNuevaSesion])
 
   useEffect(() => {
     if (!sesionActiva) return
@@ -205,53 +223,40 @@ export default function Mesa({ navigate, selectedUniverso }) {
     return () => supabase.removeChannel(channel)
   }, [selectedUniverso?.id, userId])
 
-useEffect(() => {
-  if (!selectedUniverso || !userId) return
-  const canal = supabase.channel(`presencia-${selectedUniverso.id}`, {
-    config: { presence: { key: userId } }
-  })
-
-  canal
-    .on('presence', { event: 'sync' }, () => {
-      const estado = canal.presenceState()
-      const conectados = Object.values(estado).flat().map(u => u.nombre || u.user_id?.slice(0, 8))
-      setUsuariosConectados(conectados)
+  useEffect(() => {
+    if (!selectedUniverso || !userId) return
+    const canal = supabase.channel(`presencia-${selectedUniverso.id}`, {
+      config: { presence: { key: userId } }
     })
-    .on('presence', { event: 'join' }, ({ newPresences }) => {
-      newPresences.forEach(p => {
-        if (p.user_id === userId) return
-        const nombre = p.nombre || 'Alguien'
-        const notif = {
-          id: `entrada-${p.user_id}-${Date.now()}`,
-          texto: `${nombre} se ha unido a la mesa`,
-          color: '#2ecc71'
-        }
-        setNotificaciones(prev => [...prev, notif])
-        setTimeout(() => setNotificaciones(prev => prev.filter(n => n.id !== notif.id)), 4000)
+    canal
+      .on('presence', { event: 'sync' }, () => {
+        const estado = canal.presenceState()
+        const conectados = Object.values(estado).flat().map(u => u.nombre || u.user_id?.slice(0, 8))
+        setUsuariosConectados(conectados)
       })
-    })
-    .on('presence', { event: 'leave' }, ({ leftPresences }) => {
-      leftPresences.forEach(p => {
-        if (p.user_id === userId) return
-        const nombre = p.nombre || 'Alguien'
-        const notif = {
-          id: `salida-${p.user_id}-${Date.now()}`,
-          texto: `${nombre} ha abandonado la mesa`,
-          color: '#e74c3c'
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          const perfil = await supabase.from('perfiles').select('nombre').eq('id', userId).single()
+          await canal.track({ user_id: userId, nombre: perfil.data?.nombre || 'Jugador' })
         }
-        setNotificaciones(prev => [...prev, notif])
-        setTimeout(() => setNotificaciones(prev => prev.filter(n => n.id !== notif.id)), 4000)
       })
-    })
-    .subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        const perfil = await supabase.from('perfiles').select('nombre').eq('id', userId).single()
-        await canal.track({ user_id: userId, nombre: perfil.data?.nombre || 'Jugador' })
-      }
-    })
+    return () => supabase.removeChannel(canal)
+  }, [selectedUniverso?.id, userId])
 
-  return () => supabase.removeChannel(canal)
-}, [selectedUniverso?.id, userId])
+  useEffect(() => {
+    if (!selectedUniverso || !userId || !sesionActiva) return
+    const canal = supabase.channel(`escribiendo-${selectedUniverso.id}`)
+      .on('broadcast', { event: 'escribiendo' }, ({ payload }) => {
+        if (payload.userId === userId) return
+        setOtrosEscribiendo(prev => {
+          const sin = prev.filter(x => x.userId !== payload.userId)
+          if (payload.activo) return [...sin, { userId: payload.userId, nombre: payload.nombre }]
+          return sin
+        })
+      })
+      .subscribe()
+    return () => supabase.removeChannel(canal)
+  }, [selectedUniverso?.id, sesionActiva?.id, userId])
 
   useEffect(() => {
     if (historialRef.current) historialRef.current.scrollTop = historialRef.current.scrollHeight
@@ -385,11 +390,20 @@ useEffect(() => {
     setEnviando(false)
   }
 
+  const cargarSpotify = () => {
+    if (!spotifyUrl.trim()) return
+    const url = spotifyUrl.replace('open.spotify.com/', 'open.spotify.com/embed/')
+    setSpotifyEmbed(url)
+    setShowMusica(false)
+  }
+
   const handleCrearSesion = async () => {
     if (!nombreNuevaSesion.trim()) return
-    const { data } = await crearSesion(selectedUniverso.id, nombreNuevaSesion.trim())
+    const { data } = await crearSesion(selectedUniverso.id, nombreNuevaSesion.trim(), sesionPrivada, miembrosPrivados)
     if (data) setSesionActiva(data)
     setNombreNuevaSesion('')
+    setSesionPrivada(false)
+    setMiembrosPrivados([])
     setShowNuevaSesion(false)
   }
 
@@ -413,7 +427,7 @@ useEffect(() => {
           {sesiones.length === 0 && <p className="sidebar-empty">Sin sesiones. Crea la primera.</p>}
           {sesiones.map(s => (
             <div key={s.id} className={`sesion-item ${sesionActiva?.id === s.id ? 'activa' : ''}`} onClick={() => { setSesionActiva(s); setSidebarAbierto(false) }}>
-              <span># {s.nombre}</span>
+              <span>{s.es_privada ? '🔒' : '#'} {s.nombre}</span>
               <button className="sesion-delete" onClick={e => { e.stopPropagation(); setConfirmDeleteSesion(s) }}>✕</button>
             </div>
           ))}
@@ -498,6 +512,7 @@ useEffect(() => {
             {tieneNoLeidos && <span className="notif-dot" />}
           </button>
           {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirInvitar}>✉️ Invitar jugador</button>}
+          <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMusica(true)}>🎵 Música</button>
         </div>
       </aside>
 
@@ -606,6 +621,13 @@ useEffect(() => {
 
         {mostrarIrAbajo && <button className="btn-ir-abajo" onClick={irAbajo}>↓</button>}
 
+        {spotifyEmbed && (
+          <div className="spotify-bar">
+            <iframe src={spotifyEmbed} width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" />
+            <button className="spotify-cerrar" onClick={() => setSpotifyEmbed(null)}>✕</button>
+          </div>
+        )}
+
         <div className="mesa-input-bar">
           <div className="input-contexto">
             {modoEntrada === 'narrador' || !personajeActivo
@@ -656,8 +678,37 @@ useEffect(() => {
             <h3>Nueva sesión</h3>
             <div className="form-group" style={{ marginTop: '1rem' }}>
               <label>Nombre de la sesión</label>
-              <input placeholder="Día 1, Capítulo 1..." value={nombreNuevaSesion} onChange={e => setNombreNuevaSesion(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCrearSesion()} autoFocus />
+              <input placeholder="Día 1, Capítulo 1..." value={nombreNuevaSesion} onChange={e => setNombreNuevaSesion(e.target.value)} onKeyDown={e => e.key === 'Enter' && !sesionPrivada && handleCrearSesion()} autoFocus />
             </div>
+            <div className="form-group">
+              <label>Tipo</label>
+              <div className="tipo-toggle">
+                <button type="button" className={!sesionPrivada ? 'tipo-btn activo' : 'tipo-btn'} onClick={() => setSesionPrivada(false)}>🌍 Pública</button>
+                <button type="button" className={sesionPrivada ? 'tipo-btn activo' : 'tipo-btn'} onClick={() => setSesionPrivada(true)}>🔒 Privada</button>
+              </div>
+            </div>
+            {sesionPrivada && usuariosUniverso.length > 0 && (
+              <div className="form-group">
+                <label>Invitar jugadores</label>
+                <p style={{ fontSize: '0.82rem', color: 'var(--text3)', marginBottom: '0.5rem' }}>Selecciona quién puede ver esta sesión además de ti.</p>
+                {usuariosUniverso.map(u => (
+                  <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.3rem 0', cursor: 'pointer', color: 'var(--text2)' }}>
+                    <input
+                      type="checkbox"
+                      checked={miembrosPrivados.includes(u.id)}
+                      onChange={e => {
+                        if (e.target.checked) setMiembrosPrivados(prev => [...prev, u.id])
+                        else setMiembrosPrivados(prev => prev.filter(id => id !== u.id))
+                      }}
+                    />
+                    {u.nombre || u.id.slice(0, 8)}
+                  </label>
+                ))}
+              </div>
+            )}
+            {sesionPrivada && usuariosUniverso.length === 0 && (
+              <p style={{ color: 'var(--text3)', fontSize: '0.85rem', marginBottom: '0.5rem', fontStyle: 'italic' }}>No hay otros jugadores en este universo todavía.</p>
+            )}
             <div className="modal-actions">
               <button className="btn-ghost" onClick={() => setShowNuevaSesion(false)}>Cancelar</button>
               <button className="btn-primary" onClick={handleCrearSesion}>Crear</button>
@@ -743,6 +794,36 @@ useEffect(() => {
 
       {fichaPersonaje && <FichaPersonaje personaje={fichaPersonaje} userId={userId} onCerrar={() => setFichaPersonaje(null)} />}
       {showChat && <ChatPrivado universo={selectedUniverso} personajes={personajes} userId={userId} onCerrar={() => setShowChat(false)} />}
+
+      {showMusica && (
+        <div className="modal-overlay" onClick={() => setShowMusica(false)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <h3>🎵 Música de fondo</h3>
+            <p style={{ color: 'var(--text2)', fontSize: '0.9rem', marginBottom: '1rem' }}>
+              Pega una URL de Spotify (canción, álbum o playlist).
+            </p>
+            <div className="form-group">
+              <label>URL de Spotify</label>
+              <input
+                placeholder="https://open.spotify.com/playlist/..."
+                value={spotifyUrl}
+                onChange={e => setSpotifyUrl(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && cargarSpotify()}
+                autoFocus
+              />
+            </div>
+            {spotifyEmbed && (
+              <button className="btn-danger btn-sm" style={{ marginBottom: '0.5rem' }} onClick={() => { setSpotifyEmbed(null); setSpotifyUrl(''); setShowMusica(false) }}>
+                Quitar música
+              </button>
+            )}
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setShowMusica(false)}>Cancelar</button>
+              <button className="btn-primary" onClick={cargarSpotify}>Cargar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -103,13 +103,20 @@ const cargarListaSesiones = async (universoId) => {
   return data || []
 }
 
-const crearSesion = async (universoId, nombre) => {
+const crearSesion = async (universoId, nombre, esPrivada = false, miembros = []) => {
   const { data, error } = await supabase
     .from('sesiones')
-    .insert({ universo_id: universoId, user_id: userId, nombre })
+    .insert({ universo_id: universoId, user_id: userId, nombre, es_privada: esPrivada })
     .select()
     .single()
   if (!error) {
+    if (esPrivada) {
+      const inserts = [
+        { sesion_id: data.id, user_id: userId },
+        ...miembros.map(uid => ({ sesion_id: data.id, user_id: uid }))
+      ]
+      await supabase.from('sesion_miembros').insert(inserts)
+    }
     setListaSesiones(prev => ({
       ...prev,
       [universoId]: [...(prev[universoId] || []), data]

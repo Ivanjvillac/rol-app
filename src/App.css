@@ -618,6 +618,9 @@ input, textarea, select {
   border-radius: 0 var(--radius-lg) var(--radius-lg) var(--radius-lg);
   padding: 0.7rem 1rem;
   max-width: 75%;
+  min-width: 80px;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .entrada-nombre {
@@ -630,9 +633,12 @@ input, textarea, select {
 }
 
 .entrada-burbuja p {
-  font-size: 1.05rem;
+  font-size: 0.95rem;
   color: var(--text);
   line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+  text-align: left;
 }
 
 .entrada-accion {
@@ -1347,11 +1353,6 @@ input, textarea, select {
   display: block;
 }
 
-.entrada-burbuja {
-  overflow: hidden;
-  word-break: break-word;
-}
-
 .entrada-burbuja img {
   max-width: 100% !important;
   max-height: 300px !important;
@@ -1492,23 +1493,6 @@ input, textarea, select {
 
 .tipo-btn:hover { background: var(--bg3); }
 .tipo-btn.activo { background: var(--accent-glow); color: var(--accent); }
-
-.entrada-burbuja p {
-  font-size: 0.95rem !important;
-  line-height: 1.5;
-}
-
-.entrada-burbuja {
-  max-width: 65%;
-}
-
-.entrada-nombre {
-  font-size: 0.75rem !important;
-}
-
-.entrada-hora {
-  font-size: 0.68rem !important;
-}
 
 .entrada-accion-texto {
   font-size: 0.9rem !important;
@@ -2116,4 +2100,10 @@ input, textarea, select {
 .personaje-oculto {
   opacity: 0.7;
   border-style: dashed !important;
+}
+.entrada-nombre {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
