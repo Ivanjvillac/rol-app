@@ -87,16 +87,56 @@ export function AppProvider({ userId, children }) {
   }
 
   // ENTRADAS
-  const cargarSesion = async (universoId) => {
-    if (sesiones[universoId]) return
-    const { data } = await supabase
-      .from('entradas')
-      .select('*')
-      .eq('universo_id', universoId)
-      .order('created_at')
-    const formateadas = (data || []).map(formatearEntrada)
-    setSesiones(prev => ({ ...prev, [universoId]: formateadas }))
+ // SESIONES (hilos)
+const [listaSesiones, setListaSesiones] = useState({})
+const [sesionActivaId, setSesionActivaId] = useState({})
+
+const cargarListaSesiones = async (universoId) => {
+  const { data } = await supabase
+    .from('sesiones')
+    .select('*')
+    .eq('universo_id', universoId)
+    .order('created_at')
+  setListaSesiones(prev => ({ ...prev, [universoId]: data || [] }))
+  return data || []
+}
+
+const crearSesion = async (universoId, nombre) => {
+  const { data, error } = await supabase
+    .from('sesiones')
+    .insert({ universo_id: universoId, user_id: userId, nombre })
+    .select()
+    .single()
+  if (!error) {
+    setListaSesiones(prev => ({
+      ...prev,
+      [universoId]: [...(prev[universoId] || []), data]
+    }))
   }
+  return { data, error }
+}
+
+const eliminarSesion = async (sesionId, universoId) => {
+  await supabase.from('sesiones').delete().eq('id', sesionId)
+  setListaSesiones(prev => ({
+    ...prev,
+    [universoId]: (prev[universoId] || []).filter(s => s.id !== sesionId)
+  }))
+  setSesiones(prev => { const n = { ...prev }; delete n[sesionId]; return n })
+}
+
+const cargarSesion = async (sesionId) => {
+  if (sesiones[sesionId]) return
+  const { data } = await supabase
+    .from('entradas')
+    .select('*')
+    .eq('sesion_id', sesionId)
+    .order('created_at')
+  const formateadas = (data || []).map(formatearEntrada)
+  setSesiones(prev => ({ ...prev, [sesionId]: formateadas }))
+}
+
+const getSesion = (sesionId) => sesiones[sesionId] || []
 
   const formatearEntrada = (e) => ({
     ...e,
@@ -109,7 +149,7 @@ export function AppProvider({ userId, children }) {
     timestamp: e.created_at,
   })
 
- const addEntrada = async (universoId, entrada) => {
+ const addEntrada = async (universoId, entrada, sesionId) => {
   const { data, error } = await supabase
     .from('entradas')
     .insert({
@@ -122,6 +162,7 @@ export function AppProvider({ userId, children }) {
       personaje_color: entrada.personaje?.color || null,
       personaje_iniciales: entrada.personaje?.iniciales || null,
       personaje_avatar_url: entrada.personaje?.avatar_url || null,
+      sesion_id: sesionId || null
     })
     .select()
   if (!error && data?.length > 0) {
@@ -172,9 +213,9 @@ export function AppProvider({ userId, children }) {
   }
 
   // TIEMPO REAL
-const suscribirMesa = (universoId, onNuevaEntrada) => {
+const suscribirMesa = (universoId, sesionId, onNuevaEntrada) => {
   const channel = supabase
-    .channel(`mesa-${universoId}`)
+    .channel(`mesa-${universoId}-${sesionId || 'all'}`)
     .on('postgres_changes', {
       event: 'INSERT',
       schema: 'public',
@@ -182,11 +223,12 @@ const suscribirMesa = (universoId, onNuevaEntrada) => {
       filter: `universo_id=eq.${universoId}`
     }, (payload) => {
       const nueva = formatearEntrada(payload.new)
+      if (sesionId && nueva.sesion_id !== sesionId) return
+      const key = sesionId || universoId
       setSesiones(prev => {
-        const sesionActual = prev[universoId] || []
-        const yaExiste = sesionActual.some(e => e.id === nueva.id)
-        if (yaExiste) return prev
-        return { ...prev, [universoId]: [...sesionActual, nueva] }
+        const actual = prev[key] || []
+        if (actual.some(e => e.id === nueva.id)) return prev
+        return { ...prev, [key]: [...actual, nueva] }
       })
       if (onNuevaEntrada) onNuevaEntrada(nueva)
     })
@@ -197,7 +239,6 @@ const suscribirMesa = (universoId, onNuevaEntrada) => {
   const getPersonajesDeUniverso = (universoId) =>
     personajes.filter(p => (p.universo_id || p.universoId) === universoId)
 
-  const getSesion = (universoId) => sesiones[universoId] || []
 
   const esPropietario = (universoId) => {
     const u = universos.find(u => u.id === universoId)
@@ -211,7 +252,9 @@ const suscribirMesa = (universoId, onNuevaEntrada) => {
       updateUniverso, updatePersonaje,
       addEntrada, getPersonajesDeUniverso, getSesion, cargarSesion,
       invitarUsuario, getInvitaciones, aceptarInvitacion,
-      suscribirMesa, esPropietario
+      suscribirMesa, esPropietario,
+      listaSesiones, sesionActivaId, setSesionActivaId,
+cargarListaSesiones, crearSesion, eliminarSesion,
     }}>
       {children}
     </AppContext.Provider>

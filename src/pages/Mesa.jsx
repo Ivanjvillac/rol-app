@@ -20,15 +20,9 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
     cargarMensajes()
     const channel = supabase
       .channel(`privado-${universo.id}-${miPersonaje.id}-${destinatario.id}`)
-      .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'mensajes_privados',
-        filter: `universo_id=eq.${universo.id}`
-      }, (payload) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensajes_privados', filter: `universo_id=eq.${universo.id}` }, (payload) => {
         const m = payload.new
-        if (
-          (m.remitente_id === miPersonaje.id && m.destinatario_id === destinatario.id) ||
-          (m.remitente_id === destinatario.id && m.destinatario_id === miPersonaje.id)
-        ) {
+        if ((m.remitente_id === miPersonaje.id && m.destinatario_id === destinatario.id) || (m.remitente_id === destinatario.id && m.destinatario_id === miPersonaje.id)) {
           setConversaciones(prev => {
             const key = claveConv(miPersonaje.id, destinatario.id)
             const actual = prev[key] || []
@@ -37,8 +31,7 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
           })
           if (m.destinatario_user_id === userId) marcarLeido(m.id)
         }
-      })
-      .subscribe()
+      }).subscribe()
     return () => supabase.removeChannel(channel)
   }, [miPersonaje?.id, destinatario?.id])
 
@@ -47,52 +40,26 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
   }, [conversaciones, destinatario])
 
   const claveConv = (a, b) => [a, b].sort().join('-')
-
   const cargarMensajes = async () => {
     if (!miPersonaje || !destinatario) return
-    const { data } = await supabase
-      .from('mensajes_privados').select('*')
-      .eq('universo_id', universo.id)
-      .or(`and(remitente_id.eq.${miPersonaje.id},destinatario_id.eq.${destinatario.id}),and(remitente_id.eq.${destinatario.id},destinatario_id.eq.${miPersonaje.id})`)
-      .order('created_at')
+    const { data } = await supabase.from('mensajes_privados').select('*').eq('universo_id', universo.id)
+      .or(`and(remitente_id.eq.${miPersonaje.id},destinatario_id.eq.${destinatario.id}),and(remitente_id.eq.${destinatario.id},destinatario_id.eq.${miPersonaje.id})`).order('created_at')
     const key = claveConv(miPersonaje.id, destinatario.id)
     setConversaciones(prev => ({ ...prev, [key]: data || [] }))
     const noLeidos = (data || []).filter(m => m.destinatario_user_id === userId && !m.leido)
     for (const m of noLeidos) marcarLeido(m.id)
   }
-
-  const marcarLeido = async (id) => {
-    await supabase.from('mensajes_privados').update({ leido: true }).eq('id', id)
-  }
-
+  const marcarLeido = async (id) => await supabase.from('mensajes_privados').update({ leido: true }).eq('id', id)
   const enviar = async () => {
     if (!texto.trim() || !miPersonaje || !destinatario) return
     setEnviando(true)
-    await supabase.from('mensajes_privados').insert({
-      universo_id: universo.id,
-      remitente_id: miPersonaje.id,
-      destinatario_id: destinatario.id,
-      remitente_user_id: userId,
-      destinatario_user_id: destinatario.user_id,
-      contenido: texto.trim(),
-    })
-    setTexto('')
-    setEnviando(false)
+    await supabase.from('mensajes_privados').insert({ universo_id: universo.id, remitente_id: miPersonaje.id, destinatario_id: destinatario.id, remitente_user_id: userId, destinatario_user_id: destinatario.user_id, contenido: texto.trim() })
+    setTexto(''); setEnviando(false)
   }
-
   const enviarImagenPrivado = async (url) => {
     if (!miPersonaje || !destinatario) return
-    await supabase.from('mensajes_privados').insert({
-      universo_id: universo.id,
-      remitente_id: miPersonaje.id,
-      destinatario_id: destinatario.id,
-      remitente_user_id: userId,
-      destinatario_user_id: destinatario.user_id,
-      contenido: '',
-      imagen_url: url,
-    })
+    await supabase.from('mensajes_privados').insert({ universo_id: universo.id, remitente_id: miPersonaje.id, destinatario_id: destinatario.id, remitente_user_id: userId, destinatario_user_id: destinatario.user_id, contenido: '', imagen_url: url })
   }
-
   const handleKey = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }
   const formatHora = (ts) => { const d = new Date(ts); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` }
   const mensajesActuales = destinatario && miPersonaje ? (conversaciones[claveConv(miPersonaje.id, destinatario.id)] || []) : []
@@ -100,13 +67,8 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
   return (
     <div className="modal-overlay" onClick={onCerrar}>
       <div className="modal modal-chat" onClick={e => e.stopPropagation()}>
-        <div className="chat-header">
-          <h3>💬 Mensajes privados</h3>
-          <button className="detalle-cerrar" onClick={onCerrar}>✕</button>
-        </div>
-        {misPersonajes.length === 0 ? (
-          <p style={{ color: 'var(--text3)', fontStyle: 'italic', padding: '1rem' }}>Necesitas un personaje en este universo para enviar mensajes privados.</p>
-        ) : (
+        <div className="chat-header"><h3>💬 Mensajes privados</h3><button className="detalle-cerrar" onClick={onCerrar}>✕</button></div>
+        {misPersonajes.length === 0 ? <p style={{ color: 'var(--text3)', fontStyle: 'italic', padding: '1rem' }}>Necesitas un personaje en este universo.</p> : (
           <div className="chat-layout">
             <div className="chat-sidebar">
               <div className="form-group" style={{ padding: '0.8rem', borderBottom: '1px solid var(--border)' }}>
@@ -116,61 +78,48 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
                   {misPersonajes.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                 </select>
               </div>
-              {miPersonaje && (
-                <div className="chat-lista">
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text3)', padding: '0.6rem 0.8rem', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Personajes</p>
-                  {personajesOtros.length === 0 && <p style={{ color: 'var(--text3)', fontSize: '0.9rem', padding: '0 0.8rem', fontStyle: 'italic' }}>No hay otros personajes todavía.</p>}
-                  {personajesOtros.map(p => (
-                    <div key={p.id} className={`chat-contacto ${destinatario?.id === p.id ? 'activo' : ''}`} onClick={() => setDestinatario(p)}>
-                      {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
-                      <div><span>{p.nombre}</span><small>{p.rol}</small></div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {miPersonaje && <div className="chat-lista">
+                <p style={{ fontSize: '0.75rem', color: 'var(--text3)', padding: '0.6rem 0.8rem', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Personajes</p>
+                {personajesOtros.length === 0 && <p style={{ color: 'var(--text3)', fontSize: '0.9rem', padding: '0 0.8rem', fontStyle: 'italic' }}>No hay otros personajes.</p>}
+                {personajesOtros.map(p => (
+                  <div key={p.id} className={`chat-contacto ${destinatario?.id === p.id ? 'activo' : ''}`} onClick={() => setDestinatario(p)}>
+                    {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
+                    <div><span>{p.nombre}</span><small>{p.rol}</small></div>
+                  </div>
+                ))}
+              </div>}
             </div>
             <div className="chat-main">
-              {!miPersonaje || !destinatario ? (
-                <div className="chat-vacio"><span>🔒</span><p>Selecciona tu personaje y con quién quieres hablar.</p></div>
-              ) : (
-                <>
-                  <div className="chat-conv-header">
-                    {destinatario.avatar_url ? <img src={destinatario.avatar_url} alt={destinatario.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: destinatario.color }}>{destinatario.iniciales}</div>}
-                    <div><span style={{ fontFamily: 'Cinzel, serif', color: destinatario.color }}>{destinatario.nombre}</span><small style={{ color: 'var(--text3)', display: 'block' }}>{destinatario.rol}</small></div>
-                  </div>
-                  <div className="chat-historial" ref={historialRef}>
-                    {mensajesActuales.length === 0 && <div className="chat-vacio"><span>🔐</span><p>Inicio de la conversación privada.</p></div>}
-                    {mensajesActuales.map(m => {
-                      const esMio = m.remitente_id === miPersonaje.id
-                      const autor = esMio ? miPersonaje : destinatario
-                      return (
-                        <div key={m.id} className={`chat-mensaje ${esMio ? 'propio' : 'ajeno'}`}>
-                          {!esMio && (autor.avatar_url ? <img src={autor.avatar_url} alt={autor.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: autor.color }}>{autor.iniciales}</div>)}
-                          <div className="chat-burbuja" style={{ borderColor: autor.color }}>
-                            {m.contenido && <p>{m.contenido}</p>}
-                            {m.imagen_url && <img src={m.imagen_url} alt="imagen" className="entrada-imagen" style={{ maxWidth: '180px', borderRadius: '8px', cursor: 'pointer' }} onClick={() => window.open(m.imagen_url, '_blank')} />}
-                            <span className="entrada-hora">{formatHora(m.created_at)}</span>
-                          </div>
-                          {esMio && (autor.avatar_url ? <img src={autor.avatar_url} alt={autor.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: autor.color }}>{autor.iniciales}</div>)}
+              {!miPersonaje || !destinatario ? <div className="chat-vacio"><span>🔒</span><p>Selecciona tu personaje y con quién quieres hablar.</p></div> : <>
+                <div className="chat-conv-header">
+                  {destinatario.avatar_url ? <img src={destinatario.avatar_url} alt={destinatario.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: destinatario.color }}>{destinatario.iniciales}</div>}
+                  <div><span style={{ fontFamily: 'Cinzel, serif', color: destinatario.color }}>{destinatario.nombre}</span><small style={{ color: 'var(--text3)', display: 'block' }}>{destinatario.rol}</small></div>
+                </div>
+                <div className="chat-historial" ref={historialRef}>
+                  {mensajesActuales.length === 0 && <div className="chat-vacio"><span>🔐</span><p>Inicio de la conversación privada.</p></div>}
+                  {mensajesActuales.map(m => {
+                    const esMio = m.remitente_id === miPersonaje.id
+                    const autor = esMio ? miPersonaje : destinatario
+                    return (
+                      <div key={m.id} className={`chat-mensaje ${esMio ? 'propio' : 'ajeno'}`}>
+                        {!esMio && (autor.avatar_url ? <img src={autor.avatar_url} alt={autor.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: autor.color }}>{autor.iniciales}</div>)}
+                        <div className="chat-burbuja" style={{ borderColor: autor.color }}>
+                          {m.contenido && <p>{m.contenido}</p>}
+                          {m.imagen_url && <img src={m.imagen_url} alt="imagen" style={{ maxWidth: '180px', borderRadius: '8px', cursor: 'pointer' }} onClick={() => window.open(m.imagen_url, '_blank')} />}
+                          <span className="entrada-hora">{formatHora(m.created_at)}</span>
                         </div>
-                      )
-                    })}
-                  </div>
-                  <div className="chat-input" style={{ position: 'relative' }}>
-                    {showSelector && (
-                      <SelectorImagenSticker
-                        userId={userId}
-                        onEnviarImagen={enviarImagenPrivado}
-                        onEnviarSticker={enviarImagenPrivado}
-                        onCerrar={() => setShowSelector(false)}
-                      />
-                    )}
-                    <button className="btn-adjunto" onClick={() => setShowSelector(!showSelector)}>📎</button>
-                    <textarea placeholder={`Escribe como ${miPersonaje.nombre}...`} value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={handleKey} rows={2} className="mesa-textarea" />
-                    <button className="btn-enviar" onClick={enviar} disabled={enviando}>↵</button>
-                  </div>
-                </>
-              )}
+                        {esMio && (autor.avatar_url ? <img src={autor.avatar_url} alt={autor.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: autor.color }}>{autor.iniciales}</div>)}
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className="chat-input" style={{ position: 'relative' }}>
+                  {showSelector && <SelectorImagenSticker userId={userId} onEnviarImagen={enviarImagenPrivado} onEnviarSticker={enviarImagenPrivado} onCerrar={() => setShowSelector(false)} />}
+                  <button className="btn-adjunto" onClick={() => setShowSelector(!showSelector)}>📎</button>
+                  <textarea placeholder={`Escribe como ${miPersonaje.nombre}...`} value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={handleKey} rows={2} className="mesa-textarea" />
+                  <button className="btn-enviar" onClick={enviar} disabled={enviando}>↵</button>
+                </div>
+              </>}
             </div>
           </div>
         )}
@@ -180,7 +129,7 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
 }
 
 export default function Mesa({ navigate, selectedUniverso }) {
-  const { getPersonajesDeUniverso, addEntrada, getSesion, cargarSesion, suscribirMesa, invitarUsuario, getInvitaciones, esPropietario, userId } = useApp()
+  const { getPersonajesDeUniverso, addEntrada, getSesion, cargarSesion, suscribirMesa, invitarUsuario, getInvitaciones, esPropietario, userId, cargarListaSesiones, crearSesion, eliminarSesion, listaSesiones } = useApp()
 
   const [personajeActivo, setPersonajeActivo] = useState(null)
   const [texto, setTexto] = useState('')
@@ -197,28 +146,35 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [notificaciones, setNotificaciones] = useState([])
   const [tieneNoLeidos, setTieneNoLeidos] = useState(false)
   const [sidebarAbierto, setSidebarAbierto] = useState(false)
+  const [sesionActiva, setSesionActiva] = useState(null)
+  const [showNuevaSesion, setShowNuevaSesion] = useState(false)
+  const [nombreNuevaSesion, setNombreNuevaSesion] = useState('')
+  const [confirmDeleteSesion, setConfirmDeleteSesion] = useState(null)
   const historialRef = useRef(null)
   const inputRef = useRef(null)
 
   const personajes = selectedUniverso ? getPersonajesDeUniverso(selectedUniverso.id) : []
-  const sesion = selectedUniverso ? getSesion(selectedUniverso.id) : []
+  const sesion = sesionActiva ? getSesion(sesionActiva.id) : []
   const esDueno = selectedUniverso ? esPropietario(selectedUniverso.id) : false
+  const sesiones = selectedUniverso ? (listaSesiones[selectedUniverso.id] || []) : []
 
   useEffect(() => {
     if (!selectedUniverso) return
-    cargarSesion(selectedUniverso.id)
-    const unsub = suscribirMesa(selectedUniverso.id, () => {})
-    return unsub
+    cargarListaSesiones(selectedUniverso.id)
   }, [selectedUniverso?.id])
+
+  useEffect(() => {
+    if (!sesionActiva) return
+    cargarSesion(sesionActiva.id)
+    const unsub = suscribirMesa(selectedUniverso.id, sesionActiva.id, () => {})
+    return unsub
+  }, [sesionActiva?.id])
 
   useEffect(() => {
     if (!selectedUniverso || !userId) return
     const channel = supabase
       .channel(`notif-${selectedUniverso.id}-${userId}`)
-      .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'mensajes_privados',
-        filter: `universo_id=eq.${selectedUniverso.id}`
-      }, (payload) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensajes_privados', filter: `universo_id=eq.${selectedUniverso.id}` }, (payload) => {
         const m = payload.new
         if (m.destinatario_user_id === userId) {
           const remitente = personajes.find(p => p.id === m.remitente_id)
@@ -227,8 +183,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
           setTieneNoLeidos(true)
           setTimeout(() => setNotificaciones(prev => prev.filter(n => n.id !== notif.id)), 5000)
         }
-      })
-      .subscribe()
+      }).subscribe()
     return () => supabase.removeChannel(channel)
   }, [selectedUniverso?.id, userId])
 
@@ -240,8 +195,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
     return (
       <div className="page">
         <div className="empty-state">
-          <span>🌍</span>
-          <p>Selecciona un universo primero.</p>
+          <span>🌍</span><p>Selecciona un universo primero.</p>
           <button className="btn-primary" onClick={() => navigate('universos')}>Ir a Universos</button>
         </div>
       </div>
@@ -267,6 +221,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   }
 
   const enviar = async () => {
+    if (!sesionActiva) return
     const t = texto.trim()
     if (!t) return
     let entrada = null
@@ -274,21 +229,22 @@ export default function Mesa({ navigate, selectedUniverso }) {
     else if (modoEntrada === 'narrador') entrada = { tipo: 'narrador', contenido: t, personaje: null }
     else if (!personajeActivo) return
     else entrada = { tipo: modoEntrada, contenido: t, personaje: personajeActivo }
-    await addEntrada(selectedUniverso.id, entrada)
-    setTexto('')
-    setComandoSugerido(null)
+    await addEntrada(selectedUniverso.id, entrada, sesionActiva.id)
+    setTexto(''); setComandoSugerido(null)
     inputRef.current?.focus()
   }
 
   const enviarImagen = async (url) => {
+    if (!sesionActiva) return
     const tipo = modoEntrada === 'narrador' || !personajeActivo ? 'narrador' : modoEntrada
-    await addEntrada(selectedUniverso.id, { tipo, contenido: '', imagen_url: url, personaje: personajeActivo })
+    await addEntrada(selectedUniverso.id, { tipo, contenido: '', imagen_url: url, personaje: personajeActivo }, sesionActiva.id)
   }
 
   const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }
   const formatHora = (ts) => { const d = new Date(ts); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` }
 
   const exportarSesion = () => {
+    if (!sesionActiva) return
     const lineas = sesion.map(e => {
       if (e.tipo === 'narrador') return `[NARRADOR] ${e.contenido}`
       if (e.tipo === 'dialogo') return `${e.personaje?.nombre}: "${e.contenido}"`
@@ -298,7 +254,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
     const blob = new Blob([lineas.join('\n\n')], { type: 'text/plain' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = `${selectedUniverso.nombre}-sesion.txt`
+    a.download = `${selectedUniverso.nombre}-${sesionActiva.nombre}.txt`
     a.click()
   }
 
@@ -311,12 +267,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
   }
 
   const handleInvitar = async () => {
-    setEnviando(true)
-    setMsgInvitar(null)
+    setEnviando(true); setMsgInvitar(null)
     const { data, error } = await invitarUsuario(selectedUniverso.id, emailInvitar.trim())
-    if (error) {
-      setMsgInvitar({ tipo: 'error', texto: 'Error al crear la invitación.' })
-    } else {
+    if (error) { setMsgInvitar({ tipo: 'error', texto: 'Error al crear la invitación.' }) }
+    else {
       const link = `${window.location.origin}?invitacion=${data.token}`
       setMsgInvitar({ tipo: 'ok', texto: 'Invitación creada. Comparte este enlace:', link })
       setEmailInvitar('')
@@ -326,19 +280,42 @@ export default function Mesa({ navigate, selectedUniverso }) {
     setEnviando(false)
   }
 
+  const handleCrearSesion = async () => {
+    if (!nombreNuevaSesion.trim()) return
+    const { data } = await crearSesion(selectedUniverso.id, nombreNuevaSesion.trim())
+    if (data) setSesionActiva(data)
+    setNombreNuevaSesion('')
+    setShowNuevaSesion(false)
+  }
+
+  const handleEliminarSesion = async () => {
+    if (!confirmDeleteSesion) return
+    await eliminarSesion(confirmDeleteSesion.id, selectedUniverso.id)
+    if (sesionActiva?.id === confirmDeleteSesion.id) setSesionActiva(null)
+    setConfirmDeleteSesion(null)
+  }
+
   return (
     <div className="mesa">
       <div className={`sidebar-overlay ${sidebarAbierto ? 'visible' : ''}`} onClick={() => setSidebarAbierto(false)} />
 
       <aside className={`mesa-sidebar ${sidebarAbierto ? 'abierto' : ''}`}>
+        {/* SESIONES */}
         <div className="sidebar-section">
-          <h4>Universo</h4>
-          <div className="universo-tag" style={{ borderColor: selectedUniverso.color }}>
-            <span style={{ background: selectedUniverso.color }} className="universo-dot" />
-            {selectedUniverso.nombre}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+            <h4>Sesiones</h4>
+            <button className="btn-adjunto" style={{ fontSize: '1rem' }} onClick={() => setShowNuevaSesion(true)}>＋</button>
           </div>
+          {sesiones.length === 0 && <p className="sidebar-empty">Sin sesiones. Crea la primera.</p>}
+          {sesiones.map(s => (
+            <div key={s.id} className={`sesion-item ${sesionActiva?.id === s.id ? 'activa' : ''}`} onClick={() => { setSesionActiva(s); setSidebarAbierto(false) }}>
+              <span># {s.nombre}</span>
+              <button className="sesion-delete" onClick={e => { e.stopPropagation(); setConfirmDeleteSesion(s) }}>✕</button>
+            </div>
+          ))}
         </div>
 
+        {/* PERSONAJES */}
         <div className="sidebar-section">
           <h4>Personajes</h4>
           <div className={`personaje-btn narrador-btn ${modoEntrada === 'narrador' && !personajeActivo ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(null); setModoEntrada('narrador'); setSidebarAbierto(false) }}>
@@ -387,8 +364,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
         </div>
 
         <div className="sidebar-section">
-          <h4>Sesión</h4>
-          <button className="modo-btn" onClick={exportarSesion}>📄 Exportar TXT</button>
+          <h4>Opciones</h4>
+          <button className="modo-btn" onClick={exportarSesion} disabled={!sesionActiva}>📄 Exportar TXT</button>
           <button className="modo-btn notif-btn" style={{ marginTop: '0.4rem' }} onClick={() => { setShowChat(true); setTieneNoLeidos(false); setSidebarAbierto(false) }}>
             🔒 Mensajes privados
             {tieneNoLeidos && <span className="notif-dot" />}
@@ -399,15 +376,22 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
       <main className="mesa-main">
         <div className="mesa-header">
-<button className="btn-menu-sidebar" onClick={() => setSidebarAbierto(prev => !prev)}>
-  {sidebarAbierto ? '✕' : '☰'}
-</button>
-          <h3>Sesión — {selectedUniverso.nombre}</h3>
+          <button className="btn-menu-sidebar" onClick={() => setSidebarAbierto(prev => !prev)}>{sidebarAbierto ? '✕' : '☰'}</button>
+          <div style={{ flex: 1 }}>
+            <h3>{selectedUniverso.nombre}</h3>
+            {sesionActiva && <small style={{ color: 'var(--text3)', fontSize: '0.75rem' }}># {sesionActiva.nombre}</small>}
+          </div>
           <span className="sesion-count">{sesion.length} entradas</span>
         </div>
 
         <div className="historial" ref={historialRef}>
-          {sesion.length === 0 && <div className="historial-empty"><p>La sesión está en blanco.</p><p>Selecciona un personaje o usa el modo Narrador para comenzar.</p></div>}
+          {!sesionActiva && (
+            <div className="historial-empty">
+              <p>Selecciona o crea una sesión en el panel lateral para empezar.</p>
+              <button className="btn-primary" style={{ marginTop: '1rem' }} onClick={() => setShowNuevaSesion(true)}>+ Nueva sesión</button>
+            </div>
+          )}
+          {sesionActiva && sesion.length === 0 && <div className="historial-empty"><p>Sesión vacía. ¡Empieza a escribir!</p></div>}
           {sesion.map(e => (
             <div key={e.id} className={`entrada entrada-${e.tipo}`}>
               {e.tipo === 'narrador' && (
@@ -424,7 +408,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   <div className="entrada-burbuja">
                     <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
                     {e.contenido && <p>"{e.contenido}"</p>}
-                    {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '220px', borderRadius: '8px', marginTop: '0.4rem', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
+                    {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => window.open(e.imagen_url, '_blank')} />}
                     <span className="entrada-hora">{formatHora(e.timestamp)}</span>
                   </div>
                 </div>
@@ -461,27 +445,16 @@ export default function Mesa({ navigate, selectedUniverso }) {
                 : <div className="personaje-avatar-sm" style={{ background: personajeActivo.color }}>{personajeActivo.iniciales}</div>
             }
             <span className="input-modo">{!personajeActivo ? 'Narrador' : `${personajeActivo.nombre} · ${modoEntrada === 'dialogo' ? 'Diálogo' : 'Acción'}`}</span>
+            {!sesionActiva && <span style={{ color: 'var(--danger)', fontSize: '0.8rem', marginLeft: 'auto' }}>⚠ Selecciona una sesión</span>}
           </div>
           <div className="input-row" style={{ position: 'relative' }}>
-            {showSelector && (
-              <SelectorImagenSticker
-                userId={userId}
-                onEnviarImagen={enviarImagen}
-                onEnviarSticker={enviarImagen}
-                onCerrar={() => setShowSelector(false)}
-              />
-            )}
-            <button className="btn-adjunto" onClick={() => setShowSelector(!showSelector)}>📎</button>
-            <textarea
-              ref={inputRef}
-              className="mesa-textarea"
-              placeholder={!personajeActivo && modoEntrada !== 'narrador' ? 'Selecciona un personaje o escribe /narrador...' : modoEntrada === 'narrador' ? 'Narra lo que ocurre en la escena...' : modoEntrada === 'dialogo' ? `¿Qué dice ${personajeActivo?.nombre}?` : `¿Qué hace ${personajeActivo?.nombre}?`}
-              value={texto}
-              onChange={handleTextoChange}
-              onKeyDown={handleKeyDown}
-              rows={2}
+            {showSelector && <SelectorImagenSticker userId={userId} onEnviarImagen={enviarImagen} onEnviarSticker={enviarImagen} onCerrar={() => setShowSelector(false)} />}
+            <button className="btn-adjunto" onClick={() => setShowSelector(!showSelector)} disabled={!sesionActiva}>📎</button>
+            <textarea ref={inputRef} className="mesa-textarea"
+              placeholder={!sesionActiva ? 'Selecciona una sesión primero...' : !personajeActivo && modoEntrada !== 'narrador' ? 'Selecciona un personaje o escribe /narrador...' : modoEntrada === 'narrador' ? 'Narra lo que ocurre...' : modoEntrada === 'dialogo' ? `¿Qué dice ${personajeActivo?.nombre}?` : `¿Qué hace ${personajeActivo?.nombre}?`}
+              value={texto} onChange={handleTextoChange} onKeyDown={handleKeyDown} rows={2} disabled={!sesionActiva}
             />
-            <button className="btn-enviar" onClick={enviar}>↵</button>
+            <button className="btn-enviar" onClick={enviar} disabled={!sesionActiva}>↵</button>
           </div>
           <span className="input-hint">Enter para enviar · Shift+Enter para nueva línea</span>
         </div>
@@ -496,11 +469,43 @@ export default function Mesa({ navigate, selectedUniverso }) {
         ))}
       </div>
 
+      {/* Modal nueva sesión */}
+      {showNuevaSesion && (
+        <div className="modal-overlay" onClick={() => setShowNuevaSesion(false)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <h3>Nueva sesión</h3>
+            <div className="form-group" style={{ marginTop: '1rem' }}>
+              <label>Nombre de la sesión</label>
+              <input placeholder="Día 1, Capítulo 1, La taberna..." value={nombreNuevaSesion} onChange={e => setNombreNuevaSesion(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCrearSesion()} autoFocus />
+            </div>
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setShowNuevaSesion(false)}>Cancelar</button>
+              <button className="btn-primary" onClick={handleCrearSesion}>Crear</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal confirmar borrar sesión */}
+      {confirmDeleteSesion && (
+        <div className="modal-overlay" onClick={() => setConfirmDeleteSesion(null)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <h3>¿Eliminar sesión?</h3>
+            <p style={{ color: 'var(--text2)', margin: '0.8rem 0 1.5rem' }}>Se eliminará "<strong>{confirmDeleteSesion.nombre}</strong>" y todas sus entradas permanentemente.</p>
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setConfirmDeleteSesion(null)}>Cancelar</button>
+              <button className="btn-danger" onClick={handleEliminarSesion}>Sí, eliminar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal invitar */}
       {showInvitar && (
         <div className="modal-overlay" onClick={() => setShowInvitar(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h3>Invitar jugador</h3>
-            <p style={{ color: 'var(--text2)', fontSize: '0.95rem', marginBottom: '1.2rem' }}>Genera un enlace para que otra persona se una a <strong>{selectedUniverso.nombre}</strong>.</p>
+            <p style={{ color: 'var(--text2)', fontSize: '0.95rem', marginBottom: '1.2rem' }}>Genera un enlace para unirse a <strong>{selectedUniverso.nombre}</strong>.</p>
             <div className="form-group">
               <label>Email del jugador (opcional)</label>
               <input placeholder="jugador@email.com" value={emailInvitar} onChange={e => setEmailInvitar(e.target.value)} />

@@ -1437,3 +1437,34 @@ input, textarea, select {
 }
 
 .admin-tabla tr:hover td { background: var(--bg3); }
+
+/* ===== SESIONES (HILOS) ===== */
+.sesion-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 0.2rem;
+  font-size: 0.9rem;
+  color: var(--text2);
+}
+
+.sesion-item:hover { background: var(--bg3); color: var(--text); }
+.sesion-item.activa { background: var(--accent-glow); color: var(--accent); border-left: 3px solid var(--accent); }
+
+.sesion-delete {
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.3rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.sesion-item:hover .sesion-delete { opacity: 1; }
+.sesion-delete:hover { color: var(--danger); }
