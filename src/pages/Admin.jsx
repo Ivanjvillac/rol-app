@@ -56,7 +56,28 @@ const eliminar = async () => {
     const d = new Date(ts)
     return `${d.toLocaleDateString('es-ES')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`
   }
+const exportarBackup = async () => {
+  const [{ data: univs }, { data: pers }, { data: entr }, { data: mens }] = await Promise.all([
+    supabase.rpc('get_all_universos'),
+    supabase.rpc('get_all_personajes'),
+    supabase.rpc('get_all_entradas'),
+    supabase.rpc('get_all_mensajes'),
+  ])
 
+  const backup = {
+    fecha: new Date().toISOString(),
+    universos: univs || [],
+    personajes: pers || [],
+    entradas: entr || [],
+    mensajes_privados: mens || [],
+  }
+
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `rolapp-backup-${new Date().toISOString().slice(0,10)}.json`
+  a.click()
+}
   return (
     <div className="page">
       <div className="page-header">
@@ -66,7 +87,9 @@ const eliminar = async () => {
         </div>
         <span className="card-badge" style={{ fontSize: '0.8rem', padding: '0.3rem 0.8rem' }}>⚡ Superadmin</span>
       </div>
-
+<div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
+  <button className="btn-ghost" onClick={exportarBackup}>💾 Exportar backup</button>
+</div>
       {/* Tabs */}
       <div className="admin-tabs">
         {['stats', 'universos', 'usuarios', 'sesiones'].map(t => (
