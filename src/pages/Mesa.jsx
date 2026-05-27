@@ -150,6 +150,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [showNuevaSesion, setShowNuevaSesion] = useState(false)
   const [nombreNuevaSesion, setNombreNuevaSesion] = useState('')
   const [confirmDeleteSesion, setConfirmDeleteSesion] = useState(null)
+  const [mostrarIrAbajo, setMostrarIrAbajo] = useState(false)
   const historialRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -189,7 +190,17 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
   useEffect(() => {
     if (historialRef.current) historialRef.current.scrollTop = historialRef.current.scrollHeight
-  }, [sesion])
+  }, [sesionActiva])
+
+  const handleScroll = () => {
+    if (!historialRef.current) return
+    const { scrollTop, scrollHeight, clientHeight } = historialRef.current
+    setMostrarIrAbajo(scrollHeight - scrollTop - clientHeight > 200)
+  }
+
+  const irAbajo = () => {
+    if (historialRef.current) historialRef.current.scrollTop = historialRef.current.scrollHeight
+  }
 
   if (!selectedUniverso) {
     return (
@@ -400,7 +411,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
           <span className="sesion-count">{sesion.length} entradas</span>
         </div>
 
-        <div className="historial" ref={historialRef}>
+        <div className="historial" ref={historialRef} onScroll={handleScroll}>
           {!sesionActiva && (
             <div className="historial-empty">
               <p>Selecciona o crea una sesión en el panel lateral para empezar.</p>
@@ -450,6 +461,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
             {comandoSugerido.tipo === 'dialogo' && <span style={{ color: comandoSugerido.personaje?.color }}>💬 {comandoSugerido.personaje?.nombre}: "{comandoSugerido.contenido}"</span>}
             {comandoSugerido.tipo === 'accion' && <span style={{ color: comandoSugerido.personaje?.color }}>⚡ {comandoSugerido.personaje?.nombre} {comandoSugerido.contenido}</span>}
           </div>
+        )}
+
+        {mostrarIrAbajo && (
+          <button className="btn-ir-abajo" onClick={irAbajo}>↓</button>
         )}
 
         <div className="mesa-input-bar">
