@@ -1491,3 +1491,28 @@ input, textarea, select {
 
 .tipo-btn:hover { background: var(--bg3); }
 .tipo-btn.activo { background: var(--accent-glow); color: var(--accent); }
+
+.entrada-burbuja p {
+  font-size: 0.95rem !important;
+  line-height: 1.5;
+}
+
+.entrada-burbuja {
+  max-width: 65%;
+}
+
+.entrada-nombre {
+  font-size: 0.75rem !important;
+}
+
+.entrada-hora {
+  font-size: 0.68rem !important;
+}
+
+.entrada-accion-texto {
+  font-size: 0.9rem !important;
+}
+
+.entrada-narrador p {
+  font-size: 0.95rem !important;
+}

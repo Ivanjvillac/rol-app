@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import ImportadorDiscord from '../components/ImportadorDiscord'
 
 export default function Admin() {
   const [tab, setTab] = useState('stats')
@@ -9,75 +10,77 @@ export default function Admin() {
   const [entradas, setEntradas] = useState([])
   const [cargando, setCargando] = useState(true)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [showImportador, setShowImportador] = useState(false)
 
   useEffect(() => { cargarTodo() }, [])
 
-const cargarTodo = async () => {
-  setCargando(true)
-  const [{ data: univs }, { data: pers }, { data: entr }, { data: mens }, { data: users }] = await Promise.all([
-    supabase.rpc('get_all_universos'),
-    supabase.rpc('get_all_personajes'),
-    supabase.rpc('get_all_entradas'),
-    supabase.rpc('get_all_mensajes'),
-    supabase.rpc('get_all_users'),
-  ])
-  setUniversos(univs || [])
-  setEntradas(entr || [])
-  setStats({
-    universos: univs?.length || 0,
-    personajes: pers?.length || 0,
-    entradas: entr?.length || 0,
-    mensajes: mens?.length || 0,
-  })
-  setUsuarios((users || []).map(user => ({
-    id: user.id,
-    email: user.email,
-    creado: user.created_at,
-    universos: (univs || []).filter(x => x.user_id === user.id).length,
-    personajes: (pers || []).filter(x => x.user_id === user.id).length,
-    entradas: (entr || []).filter(x => x.user_id === user.id).length,
-  })))
-  setCargando(false)
-}
-const eliminar = async () => {
-  if (!confirmDelete) return
-  const { tabla, id } = confirmDelete
-  if (tabla === 'usuarios') {
-    await supabase.rpc('delete_user', { user_id: id })
-  } else {
-    await supabase.from(tabla).delete().eq('id', id)
+  const cargarTodo = async () => {
+    setCargando(true)
+    const [{ data: univs }, { data: pers }, { data: entr }, { data: mens }, { data: users }] = await Promise.all([
+      supabase.rpc('get_all_universos'),
+      supabase.rpc('get_all_personajes'),
+      supabase.rpc('get_all_entradas'),
+      supabase.rpc('get_all_mensajes'),
+      supabase.rpc('get_all_users'),
+    ])
+    setUniversos(univs || [])
+    setEntradas(entr || [])
+    setStats({
+      universos: univs?.length || 0,
+      personajes: pers?.length || 0,
+      entradas: entr?.length || 0,
+      mensajes: mens?.length || 0,
+    })
+    setUsuarios((users || []).map(user => ({
+      id: user.id,
+      email: user.email,
+      creado: user.created_at,
+      universos: (univs || []).filter(x => x.user_id === user.id).length,
+      personajes: (pers || []).filter(x => x.user_id === user.id).length,
+      entradas: (entr || []).filter(x => x.user_id === user.id).length,
+    })))
+    setCargando(false)
   }
-  setConfirmDelete(null)
-  await cargarTodo()
-}
+
+  const eliminar = async () => {
+    if (!confirmDelete) return
+    const { tabla, id } = confirmDelete
+    if (tabla === 'usuarios') {
+      await supabase.rpc('delete_user', { user_id: id })
+    } else {
+      await supabase.from(tabla).delete().eq('id', id)
+    }
+    setConfirmDelete(null)
+    await cargarTodo()
+  }
 
   const formatFecha = (ts) => {
     if (!ts) return '-'
     const d = new Date(ts)
     return `${d.toLocaleDateString('es-ES')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`
   }
-const exportarBackup = async () => {
-  const [{ data: univs }, { data: pers }, { data: entr }, { data: mens }] = await Promise.all([
-    supabase.rpc('get_all_universos'),
-    supabase.rpc('get_all_personajes'),
-    supabase.rpc('get_all_entradas'),
-    supabase.rpc('get_all_mensajes'),
-  ])
 
-  const backup = {
-    fecha: new Date().toISOString(),
-    universos: univs || [],
-    personajes: pers || [],
-    entradas: entr || [],
-    mensajes_privados: mens || [],
+  const exportarBackup = async () => {
+    const [{ data: univs }, { data: pers }, { data: entr }, { data: mens }] = await Promise.all([
+      supabase.rpc('get_all_universos'),
+      supabase.rpc('get_all_personajes'),
+      supabase.rpc('get_all_entradas'),
+      supabase.rpc('get_all_mensajes'),
+    ])
+    const backup = {
+      fecha: new Date().toISOString(),
+      universos: univs || [],
+      personajes: pers || [],
+      entradas: entr || [],
+      mensajes_privados: mens || [],
+    }
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `rolapp-backup-${new Date().toISOString().slice(0,10)}.json`
+    a.click()
   }
 
-  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `rolapp-backup-${new Date().toISOString().slice(0,10)}.json`
-  a.click()
-}
   return (
     <div className="page">
       <div className="page-header">
@@ -85,12 +88,13 @@ const exportarBackup = async () => {
           <h2>Panel de Administración</h2>
           <p className="page-subtitle">Vista completa del sistema</p>
         </div>
-        <span className="card-badge" style={{ fontSize: '0.8rem', padding: '0.3rem 0.8rem' }}>⚡ Superadmin</span>
+        <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
+          <button className="btn-ghost" onClick={() => setShowImportador(true)}>📥 Importar Discord</button>
+          <button className="btn-ghost" onClick={exportarBackup}>💾 Exportar backup</button>
+          <span className="card-badge" style={{ fontSize: '0.8rem', padding: '0.3rem 0.8rem' }}>⚡ Superadmin</span>
+        </div>
       </div>
-<div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
-  <button className="btn-ghost" onClick={exportarBackup}>💾 Exportar backup</button>
-</div>
-      {/* Tabs */}
+
       <div className="admin-tabs">
         {['stats', 'universos', 'usuarios', 'sesiones'].map(t => (
           <button key={t} className={tab === t ? 'admin-tab active' : 'admin-tab'} onClick={() => setTab(t)}>
@@ -106,7 +110,6 @@ const exportarBackup = async () => {
         <div className="empty-state"><p>Cargando datos...</p></div>
       ) : (
         <>
-          {/* ESTADÍSTICAS */}
           {tab === 'stats' && (
             <div className="admin-stats-grid">
               {[
@@ -125,7 +128,6 @@ const exportarBackup = async () => {
             </div>
           )}
 
-          {/* UNIVERSOS */}
           {tab === 'universos' && (
             <div className="admin-tabla">
               <table>
@@ -149,9 +151,7 @@ const exportarBackup = async () => {
                       <td><code style={{ fontSize: '0.75rem' }}>{u.user_id?.slice(0, 8)}...</code></td>
                       <td>{formatFecha(u.created_at)}</td>
                       <td>
-                        <button className="btn-danger btn-sm" onClick={() => setConfirmDelete({ tabla: 'universos', id: u.id, nombre: u.nombre })}>
-                          Eliminar
-                        </button>
+                        <button className="btn-danger btn-sm" onClick={() => setConfirmDelete({ tabla: 'universos', id: u.id, nombre: u.nombre })}>Eliminar</button>
                       </td>
                     </tr>
                   ))}
@@ -160,41 +160,37 @@ const exportarBackup = async () => {
             </div>
           )}
 
-          {/* USUARIOS */}
           {tab === 'usuarios' && (
             <div className="admin-tabla">
               <table>
                 <thead>
-                                  <tr>
-  <th>Email</th>
-  <th>ID</th>
-  <th>Universos</th>
-  <th>Personajes</th>
-  <th>Entradas</th>
-  <th>Acciones</th>
-</tr>
+                  <tr>
+                    <th>Email</th>
+                    <th>ID</th>
+                    <th>Universos</th>
+                    <th>Personajes</th>
+                    <th>Entradas</th>
+                    <th>Acciones</th>
+                  </tr>
                 </thead>
                 <tbody>
-                {usuarios.map(u => (
-  <tr key={u.id}>
-    <td>{u.email}</td>
-    <td><code style={{ fontSize: '0.7rem' }}>{u.id?.slice(0,8)}...</code></td>
-    <td>{u.universos}</td>
-    <td>{u.personajes}</td>
-    <td>{u.entradas}</td>
-    <td>
-      <button className="btn-danger btn-sm" onClick={() => setConfirmDelete({ tabla: 'usuarios', id: u.id, nombre: u.email })}>
-        Eliminar
-      </button>
-    </td>
-  </tr>
-))}
+                  {usuarios.map(u => (
+                    <tr key={u.id}>
+                      <td>{u.email}</td>
+                      <td><code style={{ fontSize: '0.7rem' }}>{u.id?.slice(0,8)}...</code></td>
+                      <td>{u.universos}</td>
+                      <td>{u.personajes}</td>
+                      <td>{u.entradas}</td>
+                      <td>
+                        <button className="btn-danger btn-sm" onClick={() => setConfirmDelete({ tabla: 'usuarios', id: u.id, nombre: u.email })}>Eliminar</button>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
           )}
 
-          {/* SESIONES */}
           {tab === 'sesiones' && (
             <div className="admin-tabla">
               <table>
@@ -217,9 +213,7 @@ const exportarBackup = async () => {
                       <td>{e.personaje_nombre || '—'}</td>
                       <td>{formatFecha(e.created_at)}</td>
                       <td>
-                        <button className="btn-danger btn-sm" onClick={() => setConfirmDelete({ tabla: 'entradas', id: e.id, nombre: 'esta entrada' })}>
-                          Eliminar
-                        </button>
+                        <button className="btn-danger btn-sm" onClick={() => setConfirmDelete({ tabla: 'entradas', id: e.id, nombre: 'esta entrada' })}>Eliminar</button>
                       </td>
                     </tr>
                   ))}
@@ -231,14 +225,11 @@ const exportarBackup = async () => {
         </>
       )}
 
-      {/* Modal confirmar borrado */}
       {confirmDelete && (
         <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
             <h3>¿Eliminar?</h3>
-            <p style={{ color: 'var(--text2)', margin: '0.8rem 0 1.5rem' }}>
-              Se eliminará <strong>{confirmDelete.nombre}</strong> permanentemente.
-            </p>
+            <p style={{ color: 'var(--text2)', margin: '0.8rem 0 1.5rem' }}>Se eliminará <strong>{confirmDelete.nombre}</strong> permanentemente.</p>
             <div className="modal-actions">
               <button className="btn-ghost" onClick={() => setConfirmDelete(null)}>Cancelar</button>
               <button className="btn-danger" onClick={eliminar}>Sí, eliminar</button>
@@ -246,6 +237,8 @@ const exportarBackup = async () => {
           </div>
         </div>
       )}
+
+      {showImportador && <ImportadorDiscord onCerrar={() => setShowImportador(false)} />}
     </div>
   )
 }
