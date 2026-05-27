@@ -35,9 +35,7 @@ function AppInner({ page, navigate, selectedUniverso, setSelectedUniverso, cerra
           <button onClick={() => navigate('home')} className={page === 'home' ? 'active' : ''}>Inicio</button>
           <button onClick={() => navigate('universos')} className={page === 'universos' ? 'active' : ''}>Universos</button>
           <button onClick={() => navigate('personajes')} className={page === 'personajes' ? 'active' : ''}>Personajes</button>
-          {selectedUniverso && (
-            <button onClick={() => navigate('mesa')} className={page === 'mesa' ? 'active' : ''}>Mesa de Rol</button>
-          )}
+          <button onClick={() => navigate('mesa')} className={page === 'mesa' ? 'active' : ''}>Mesa de Rol</button>
           <button onClick={cerrarSesion} className="btn-cerrar">Salir</button>
         </div>
       </nav>

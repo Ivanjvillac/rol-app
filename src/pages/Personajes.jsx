@@ -1,28 +1,113 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useApp } from '../context/AppContext'
+import { supabase } from '../lib/supabase'
 
 const COLORES = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#1abc9c', '#3498db', '#9b59b6', '#e91e63']
 const ROLES = ['Guerrero', 'Mago', 'Pícaro', 'Clérigo', 'Explorador', 'Bardo', 'Narrador', 'Otro']
 
 export default function Personajes({ navigate, selectedUniverso }) {
-  const { universos, personajes, addPersonaje, deletePersonaje, getPersonajesDeUniverso } = useApp()
+  const { universos, personajes, addPersonaje, deletePersonaje, updatePersonaje } = useApp()
   const [showForm, setShowForm] = useState(false)
+  const [editando, setEditando] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
   const [filtroUniverso, setFiltroUniverso] = useState(selectedUniverso?.id || 'todos')
+  const [guardando, setGuardando] = useState(false)
+  const [avatarPreview, setAvatarPreview] = useState(null)
+  const [avatarFile, setAvatarFile] = useState(null)
+  const fileInputRef = useRef(null)
   const [form, setForm] = useState({
     nombre: '', rol: 'Guerrero', descripcion: '',
-    color: COLORES[0], universoId: selectedUniverso?.id || ''
+    color: COLORES[0], universoId: selectedUniverso?.id || '',
+    avatar_url: ''
   })
 
   const personajesFiltrados = filtroUniverso === 'todos'
     ? personajes
-    : personajes.filter(p => p.universoId === Number(filtroUniverso))
+    : personajes.filter(p => p.universo_id === filtroUniverso || p.universoId === filtroUniverso)
 
-  const handleSubmit = () => {
-    if (!form.nombre.trim() || !form.universoId) return
-    const iniciales = form.nombre.slice(0, 2).toUpperCase()
-    addPersonaje({ ...form, iniciales, universoId: Number(form.universoId) })
-    setForm({ nombre: '', rol: 'Guerrero', descripcion: '', color: COLORES[0], universoId: form.universoId })
+  const abrirNuevo = () => {
+    setEditando(null)
+    setAvatarPreview(null)
+    setAvatarFile(null)
+    setForm({ nombre: '', rol: 'Guerrero', descripcion: '', color: COLORES[0], universoId: selectedUniverso?.id || '', avatar_url: '' })
+    setShowForm(true)
+  }
+
+  const abrirEditar = (p) => {
+    setEditando(p)
+    setAvatarPreview(p.avatar_url || null)
+    setAvatarFile(null)
+    setForm({
+      nombre: p.nombre,
+      rol: p.rol || 'Guerrero',
+      descripcion: p.descripcion || '',
+      color: p.color || COLORES[0],
+      universoId: p.universo_id || p.universoId || '',
+      avatar_url: p.avatar_url || ''
+    })
+    setShowForm(true)
+  }
+
+  const cerrarForm = () => {
     setShowForm(false)
+    setEditando(null)
+    setAvatarPreview(null)
+    setAvatarFile(null)
+  }
+
+  const handleAvatarChange = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setAvatarFile(file)
+    setAvatarPreview(URL.createObjectURL(file))
+  }
+
+  const subirAvatar = async (personajeId) => {
+    if (!avatarFile) return form.avatar_url || null
+    const ext = avatarFile.name.split('.').pop()
+    const path = `${personajeId}.${ext}`
+    const { error } = await supabase.storage
+      .from('avatares')
+      .upload(path, avatarFile, { upsert: true })
+    if (error) return form.avatar_url || null
+    const { data } = supabase.storage.from('avatares').getPublicUrl(path)
+    return data.publicUrl
+  }
+
+  const handleSubmit = async () => {
+    if (!form.nombre.trim()) return
+    setGuardando(true)
+    const iniciales = form.nombre.slice(0, 2).toUpperCase()
+
+    if (editando) {
+      const avatar_url = await subirAvatar(editando.id)
+      await updatePersonaje(editando.id, {
+        nombre: form.nombre,
+        rol: form.rol,
+        descripcion: form.descripcion,
+        color: form.color,
+        iniciales,
+        universo_id: form.universoId,
+        avatar_url,
+      })
+    } else {
+      if (!form.universoId) { setGuardando(false); return }
+      const tempId = crypto.randomUUID()
+      const avatar_url = await subirAvatar(tempId)
+      await addPersonaje({ ...form, iniciales, universoId: form.universoId, avatar_url })
+    }
+
+    setGuardando(false)
+    cerrarForm()
+  }
+
+  const handleDelete = async (p) => {
+    if (p.avatar_url) {
+      const path = p.avatar_url.split('/avatares/')[1]
+      if (path) await supabase.storage.from('avatares').remove([path])
+    }
+    await deletePersonaje(p.id)
+    setConfirmDelete(null)
   }
 
   const universoDePersonaje = (universoId) => universos.find(u => u.id === universoId)
@@ -34,7 +119,7 @@ export default function Personajes({ navigate, selectedUniverso }) {
           <h2>Personajes</h2>
           <p className="page-subtitle">Crea y gestiona los personajes de tus universos</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowForm(true)}>+ Nuevo personaje</button>
+        <button className="btn-primary" onClick={abrirNuevo}>+ Nuevo personaje</button>
       </div>
 
       <div className="filtro-bar">
@@ -46,9 +131,34 @@ export default function Personajes({ navigate, selectedUniverso }) {
       </div>
 
       {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+        <div className="modal-overlay" onClick={cerrarForm}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <h3>Crear personaje</h3>
+            <h3>{editando ? 'Editar personaje' : 'Crear personaje'}</h3>
+
+            {/* Avatar upload */}
+            <div className="form-group">
+              <label>Avatar</label>
+              <div className="avatar-upload" onClick={() => fileInputRef.current?.click()}>
+                {avatarPreview
+                  ? <img src={avatarPreview} alt="avatar" className="avatar-preview" />
+                  : <div className="avatar-placeholder" style={{ background: form.color }}>
+                      {form.nombre ? form.nombre.slice(0, 2).toUpperCase() : '?'}
+                    </div>
+                }
+                <div className="avatar-upload-label">
+                  <span>📷</span>
+                  <small>{avatarPreview ? 'Cambiar imagen' : 'Subir imagen'}</small>
+                </div>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handleAvatarChange}
+              />
+            </div>
+
             <div className="form-group">
               <label>Universo</label>
               <select value={form.universoId} onChange={e => setForm({ ...form, universoId: e.target.value })}>
@@ -93,8 +203,25 @@ export default function Personajes({ navigate, selectedUniverso }) {
               </div>
             </div>
             <div className="modal-actions">
-              <button className="btn-ghost" onClick={() => setShowForm(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleSubmit}>Crear personaje</button>
+              <button className="btn-ghost" onClick={cerrarForm}>Cancelar</button>
+              <button className="btn-primary" onClick={handleSubmit} disabled={guardando}>
+                {guardando ? 'Guardando...' : editando ? 'Guardar cambios' : 'Crear personaje'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <h3>¿Eliminar personaje?</h3>
+            <p style={{ color: 'var(--text2)', margin: '0.8rem 0 1.5rem' }}>
+              Esta acción no se puede deshacer. El personaje "<strong>{confirmDelete.nombre}</strong>" se eliminará permanentemente.
+            </p>
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setConfirmDelete(null)}>Cancelar</button>
+              <button className="btn-danger" onClick={() => handleDelete(confirmDelete)}>Sí, eliminar</button>
             </div>
           </div>
         </div>
@@ -102,12 +229,13 @@ export default function Personajes({ navigate, selectedUniverso }) {
 
       <div className="grid">
         {personajesFiltrados.map(p => {
-          const universo = universoDePersonaje(p.universoId)
+          const universo = universoDePersonaje(p.universo_id || p.universoId)
           return (
             <div key={p.id} className="card personaje-card">
-              <div className="personaje-avatar" style={{ background: p.color }}>
-                {p.iniciales}
-              </div>
+              {p.avatar_url
+                ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-img" />
+                : <div className="personaje-avatar" style={{ background: p.color }}>{p.iniciales}</div>
+              }
               <div className="card-body">
                 <div className="card-badge">{p.rol}</div>
                 <h3>{p.nombre}</h3>
@@ -119,7 +247,8 @@ export default function Personajes({ navigate, selectedUniverso }) {
                   </div>
                 )}
                 <div className="card-actions">
-                  <button className="btn-danger btn-sm" onClick={() => deletePersonaje(p.id)}>Eliminar</button>
+                  <button className="btn-ghost btn-sm" onClick={() => abrirEditar(p)}>Editar</button>
+                  <button className="btn-danger btn-sm" onClick={() => setConfirmDelete(p)}>Eliminar</button>
                 </div>
               </div>
             </div>

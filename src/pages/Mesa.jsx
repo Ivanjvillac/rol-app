@@ -112,7 +112,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const tirarDado = (caras) => {
     const resultado = Math.floor(Math.random() * caras) + 1
     setResultadoDado({ caras, resultado })
-    setTimeout(() => setResultadoDado(null), 3000)
   }
 
   const abrirInvitar = async () => {
@@ -189,11 +188,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
               <button key={c} className="dado-btn" onClick={() => tirarDado(c)}>d{c}</button>
             ))}
           </div>
-          {resultadoDado && (
-            <div className="dado-resultado">
-              🎲 d{resultadoDado.caras}: <strong>{resultadoDado.resultado}</strong>
-            </div>
-          )}
+        {resultadoDado && (
+  <div className="dado-resultado">
+    <span>🎲 d{resultadoDado.caras}: <strong>{resultadoDado.resultado}</strong></span>
+    <button onClick={() => setResultadoDado(null)}>✕</button>
+  </div>
+)}
         </div>
 
         <div className="sidebar-section">
