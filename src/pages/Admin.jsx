@@ -1,0 +1,228 @@
+import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
+
+export default function Admin() {
+  const [tab, setTab] = useState('stats')
+  const [stats, setStats] = useState({})
+  const [universos, setUniversos] = useState([])
+  const [usuarios, setUsuarios] = useState([])
+  const [entradas, setEntradas] = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [confirmDelete, setConfirmDelete] = useState(null)
+
+  useEffect(() => { cargarTodo() }, [])
+
+const cargarTodo = async () => {
+  setCargando(true)
+  const [{ data: univs }, { data: pers }, { data: entr }, { data: mens }, { data: users }] = await Promise.all([
+    supabase.rpc('get_all_universos'),
+    supabase.rpc('get_all_personajes'),
+    supabase.rpc('get_all_entradas'),
+    supabase.rpc('get_all_mensajes'),
+    supabase.rpc('get_all_users'),
+  ])
+  setUniversos(univs || [])
+  setEntradas(entr || [])
+  setStats({
+    universos: univs?.length || 0,
+    personajes: pers?.length || 0,
+    entradas: entr?.length || 0,
+    mensajes: mens?.length || 0,
+  })
+  setUsuarios((users || []).map(user => ({
+    id: user.id,
+    email: user.email,
+    creado: user.created_at,
+    universos: (univs || []).filter(x => x.user_id === user.id).length,
+    personajes: (pers || []).filter(x => x.user_id === user.id).length,
+    entradas: (entr || []).filter(x => x.user_id === user.id).length,
+  })))
+  setCargando(false)
+}
+const eliminar = async () => {
+  if (!confirmDelete) return
+  const { tabla, id } = confirmDelete
+  if (tabla === 'usuarios') {
+    await supabase.rpc('delete_user', { user_id: id })
+  } else {
+    await supabase.from(tabla).delete().eq('id', id)
+  }
+  setConfirmDelete(null)
+  await cargarTodo()
+}
+
+  const formatFecha = (ts) => {
+    if (!ts) return '-'
+    const d = new Date(ts)
+    return `${d.toLocaleDateString('es-ES')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`
+  }
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <h2>Panel de Administración</h2>
+          <p className="page-subtitle">Vista completa del sistema</p>
+        </div>
+        <span className="card-badge" style={{ fontSize: '0.8rem', padding: '0.3rem 0.8rem' }}>⚡ Superadmin</span>
+      </div>
+
+      {/* Tabs */}
+      <div className="admin-tabs">
+        {['stats', 'universos', 'usuarios', 'sesiones'].map(t => (
+          <button key={t} className={tab === t ? 'admin-tab active' : 'admin-tab'} onClick={() => setTab(t)}>
+            {t === 'stats' && '📊 Estadísticas'}
+            {t === 'universos' && '🌍 Universos'}
+            {t === 'usuarios' && '👥 Usuarios'}
+            {t === 'sesiones' && '📜 Sesiones'}
+          </button>
+        ))}
+      </div>
+
+      {cargando ? (
+        <div className="empty-state"><p>Cargando datos...</p></div>
+      ) : (
+        <>
+          {/* ESTADÍSTICAS */}
+          {tab === 'stats' && (
+            <div className="admin-stats-grid">
+              {[
+                { label: 'Universos', value: stats.universos, icon: '🌍' },
+                { label: 'Personajes', value: stats.personajes, icon: '👤' },
+                { label: 'Entradas de sesión', value: stats.entradas, icon: '✍️' },
+                { label: 'Mensajes privados', value: stats.mensajes, icon: '🔒' },
+                { label: 'Usuarios activos', value: usuarios.length, icon: '👥' },
+              ].map(s => (
+                <div key={s.label} className="admin-stat-card">
+                  <span className="admin-stat-icon">{s.icon}</span>
+                  <span className="admin-stat-value">{s.value}</span>
+                  <span className="admin-stat-label">{s.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* UNIVERSOS */}
+          {tab === 'universos' && (
+            <div className="admin-tabla">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Ambientación</th>
+                    <th>Propietario</th>
+                    <th>Creado</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {universos.map(u => (
+                    <tr key={u.id}>
+                      <td>
+                        <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: u.color, marginRight: '0.5rem' }} />
+                        {u.nombre}
+                      </td>
+                      <td>{u.ambientacion}</td>
+                      <td><code style={{ fontSize: '0.75rem' }}>{u.user_id?.slice(0, 8)}...</code></td>
+                      <td>{formatFecha(u.created_at)}</td>
+                      <td>
+                        <button className="btn-danger btn-sm" onClick={() => setConfirmDelete({ tabla: 'universos', id: u.id, nombre: u.nombre })}>
+                          Eliminar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* USUARIOS */}
+          {tab === 'usuarios' && (
+            <div className="admin-tabla">
+              <table>
+                <thead>
+                                  <tr>
+  <th>Email</th>
+  <th>ID</th>
+  <th>Universos</th>
+  <th>Personajes</th>
+  <th>Entradas</th>
+  <th>Acciones</th>
+</tr>
+                </thead>
+                <tbody>
+                {usuarios.map(u => (
+  <tr key={u.id}>
+    <td>{u.email}</td>
+    <td><code style={{ fontSize: '0.7rem' }}>{u.id?.slice(0,8)}...</code></td>
+    <td>{u.universos}</td>
+    <td>{u.personajes}</td>
+    <td>{u.entradas}</td>
+    <td>
+      <button className="btn-danger btn-sm" onClick={() => setConfirmDelete({ tabla: 'usuarios', id: u.id, nombre: u.email })}>
+        Eliminar
+      </button>
+    </td>
+  </tr>
+))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* SESIONES */}
+          {tab === 'sesiones' && (
+            <div className="admin-tabla">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tipo</th>
+                    <th>Contenido</th>
+                    <th>Personaje</th>
+                    <th>Fecha</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entradas.slice(0, 100).map(e => (
+                    <tr key={e.id}>
+                      <td><span className="card-badge" style={{ fontSize: '0.7rem' }}>{e.tipo}</span></td>
+                      <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {e.imagen_url ? '📷 Imagen' : e.contenido}
+                      </td>
+                      <td>{e.personaje_nombre || '—'}</td>
+                      <td>{formatFecha(e.created_at)}</td>
+                      <td>
+                        <button className="btn-danger btn-sm" onClick={() => setConfirmDelete({ tabla: 'entradas', id: e.id, nombre: 'esta entrada' })}>
+                          Eliminar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {entradas.length > 100 && <p style={{ color: 'var(--text3)', fontSize: '0.85rem', marginTop: '1rem' }}>Mostrando las últimas 100 entradas.</p>}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Modal confirmar borrado */}
+      {confirmDelete && (
+        <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <h3>¿Eliminar?</h3>
+            <p style={{ color: 'var(--text2)', margin: '0.8rem 0 1.5rem' }}>
+              Se eliminará <strong>{confirmDelete.nombre}</strong> permanentemente.
+            </p>
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setConfirmDelete(null)}>Cancelar</button>
+              <button className="btn-danger" onClick={eliminar}>Sí, eliminar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

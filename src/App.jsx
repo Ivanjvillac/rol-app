@@ -7,9 +7,9 @@ import Universos from './pages/Universos'
 import Personajes from './pages/Personajes'
 import Mesa from './pages/Mesa'
 import './App.css'
+import Admin from './pages/Admin'
 
-function AppInner({ page, navigate, selectedUniverso, setSelectedUniverso, cerrarSesion, invitacionToken, setInvitacionToken }) {
-  const { aceptarInvitacion } = useApp()
+function AppInner({ page, navigate, selectedUniverso, setSelectedUniverso, cerrarSesion, invitacionToken, setInvitacionToken, userEmail }) {  const { aceptarInvitacion } = useApp()
   const [msgInvitacion, setMsgInvitacion] = useState(null)
 
   useEffect(() => {
@@ -31,12 +31,15 @@ function AppInner({ page, navigate, selectedUniverso, setSelectedUniverso, cerra
   return (
     <div className="app">
       <nav className="navbar">
-        <span className="nav-brand" onClick={() => navigate('home')}>⚔ RolApp</span>
+        <span className="nav-brand" onClick={() => navigate('home')}>⚔ Rol App</span>
         <div className="nav-links">
           <button onClick={() => navigate('home')} className={page === 'home' ? 'active' : ''}>Inicio</button>
           <button onClick={() => navigate('universos')} className={page === 'universos' ? 'active' : ''}>Universos</button>
           <button onClick={() => navigate('personajes')} className={page === 'personajes' ? 'active' : ''}>Personajes</button>
           <button onClick={() => navigate('mesa')} className={page === 'mesa' ? 'active' : ''}>Mesa de Rol</button>
+         {userEmail === import.meta.env.VITE_SUPERADMIN_EMAIL && (
+  <button onClick={() => navigate('admin')} className={page === 'admin' ? 'active' : ''}>⚡ Admin</button>
+)}
           <button onClick={cerrarSesion} className="btn-cerrar">Salir</button>
         </div>
       </nav>
@@ -48,6 +51,7 @@ function AppInner({ page, navigate, selectedUniverso, setSelectedUniverso, cerra
         </div>
       )}
 
+{page === 'admin' && <Admin />}
       {page === 'home' && <Home navigate={navigate} />}
       {page === 'universos' && <Universos navigate={navigate} setSelectedUniverso={setSelectedUniverso} selectedUniverso={selectedUniverso} />}
       {page === 'personajes' && <Personajes navigate={navigate} selectedUniverso={selectedUniverso} />}
@@ -125,6 +129,7 @@ const navigate = (p, universo = null) => {
         cerrarSesion={cerrarSesion}
         invitacionToken={invitacionToken}
         setInvitacionToken={setInvitacionToken}
+          userEmail={session.user.email}
       />
     </AppProvider>
   )
