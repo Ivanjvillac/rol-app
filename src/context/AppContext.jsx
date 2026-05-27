@@ -104,6 +104,7 @@ export function AppProvider({ userId, children }) {
       nombre: e.personaje_nombre,
       color: e.personaje_color,
       iniciales: e.personaje_iniciales,
+      avatar_url: e.personaje_avatar_url,
     } : null,
     timestamp: e.created_at,
   })
@@ -119,6 +120,7 @@ export function AppProvider({ userId, children }) {
         personaje_nombre: entrada.personaje?.nombre || null,
         personaje_color: entrada.personaje?.color || null,
         personaje_iniciales: entrada.personaje?.iniciales || null,
+        personaje_avatar_url: entrada.personaje?.avatar_url || null,
       })
       .select()
       .single()

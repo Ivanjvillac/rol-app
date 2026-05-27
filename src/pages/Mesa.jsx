@@ -164,7 +164,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
               className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`}
               onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo') }}
             >
-              <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>
+             {p.avatar_url
+  ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" />
+  : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>
+}
               <div><span>{p.nombre}</span><small>{p.rol}</small></div>
             </div>
           ))}
@@ -237,8 +240,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
               )}
               {e.tipo === 'dialogo' && (
                 <div className="entrada-dialogo">
-                  <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>
-                  <div className="entrada-burbuja">
+{e.personaje?.avatar_url
+  ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" />
+  : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>
+}                  <div className="entrada-burbuja">
                     <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
                     <p>"{e.contenido}"</p>
                     <span className="entrada-hora">{formatHora(e.timestamp)}</span>
@@ -247,8 +252,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
               )}
               {e.tipo === 'accion' && (
                 <div className="entrada-accion">
-                  <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>
-                  <div className="entrada-accion-texto">
+{e.personaje?.avatar_url
+  ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" />
+  : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>
+}                  <div className="entrada-accion-texto">
                     <span style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
                     <em> {e.contenido}</em>
                     <span className="entrada-hora">{formatHora(e.timestamp)}</span>
@@ -269,10 +276,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
         <div className="mesa-input-bar">
           <div className="input-contexto">
-            {modoEntrada === 'narrador' || !personajeActivo
-              ? <div className="personaje-avatar-sm narrador-avatar">📖</div>
-              : <div className="personaje-avatar-sm" style={{ background: personajeActivo.color }}>{personajeActivo.iniciales}</div>
-            }
+          {modoEntrada === 'narrador' || !personajeActivo
+  ? <div className="personaje-avatar-sm narrador-avatar">📖</div>
+  : personajeActivo.avatar_url
+    ? <img src={personajeActivo.avatar_url} alt={personajeActivo.nombre} className="personaje-avatar-sm avatar-img" />
+    : <div className="personaje-avatar-sm" style={{ background: personajeActivo.color }}>{personajeActivo.iniciales}</div>
+}
             <span className="input-modo">
               {!personajeActivo ? 'Narrador' : `${personajeActivo.nombre} · ${modoEntrada === 'dialogo' ? 'Diálogo' : 'Acción'}`}
             </span>

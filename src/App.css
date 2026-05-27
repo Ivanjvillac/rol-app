@@ -911,3 +911,8 @@ input, textarea, select {
   margin: 1.2rem 0 1.2rem 1.2rem;
   border: 2px solid var(--border2);
 }
+
+.avatar-img {
+  object-fit: cover;
+  border: 2px solid var(--border2);
+}
