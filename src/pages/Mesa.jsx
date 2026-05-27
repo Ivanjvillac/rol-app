@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 
 export default function Mesa({ navigate, selectedUniverso }) {
-  const { getPersonajesDeUniverso, addEntrada, getSesion } = useApp()
+  const { getPersonajesDeUniverso, addEntrada, getSesion, cargarSesion} = useApp()
   const [personajeActivo, setPersonajeActivo] = useState(null)
   const [texto, setTexto] = useState('')
   const [modoEntrada, setModoEntrada] = useState('dialogo') // dialogo | accion | narrador
@@ -24,7 +24,9 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
   const personajes = getPersonajesDeUniverso(selectedUniverso.id)
   const sesion = getSesion(selectedUniverso.id)
-
+useEffect(() => {
+  cargarSesion(selectedUniverso.id)
+}, [selectedUniverso.id])
   useEffect(() => {
     if (historialRef.current) {
       historialRef.current.scrollTop = historialRef.current.scrollHeight
