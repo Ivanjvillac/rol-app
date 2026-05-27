@@ -2032,3 +2032,51 @@ input, textarea, select {
     flex-wrap: wrap;
   }
 }
+
+@media (max-width: 768px) {
+  .auth-screen {
+    align-items: flex-start;
+    padding-top: 3rem;
+  }
+
+  .auth-box {
+    padding: 2rem 1.5rem;
+  }
+
+  .auth-title {
+    font-size: 2.5rem;
+    color: var(--accent) !important;
+  }
+
+  .auth-tabs {
+    margin-bottom: 1.5rem;
+  }
+
+  .auth-tab {
+    padding: 0.7rem;
+    font-size: 0.95rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .auth-tabs {
+    background: none;
+    border: none;
+    gap: 0.5rem;
+    justify-content: center;
+  }
+
+  .auth-tab {
+    color: var(--text2) !important;
+    background: var(--bg3) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    flex: 1;
+  }
+
+  .auth-tab.active {
+    background: var(--accent-glow) !important;
+    color: var(--accent) !important;
+    border-color: var(--accent2) !important;
+  }
+}

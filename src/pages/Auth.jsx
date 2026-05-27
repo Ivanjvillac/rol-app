@@ -50,7 +50,10 @@ export default function Auth() {
     <div className="auth-screen">
       <div className="auth-glow" />
       <div className="auth-box">
-        <h1 className="auth-title">🎲 Tinta y Dados</h1>
+       <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
+  <span style={{ fontSize: '3rem' }}>🎲</span>
+</div>
+<h1 className="auth-title">Tinta y Dados</h1>
 <p className="auth-subtitle">Tu mesa de rol escrita</p>
 
         {tokenPendiente && (
@@ -100,8 +103,8 @@ export default function Auth() {
         {mensaje && <div className="auth-mensaje">{mensaje}</div>}
 
         <button className="btn-primary" style={{ width: '100%' }} onClick={handleSubmit} disabled={cargando}>
-          {cargando ? 'Cargando...' : modo === 'login' ? 'Entrar' : 'Crear cuenta'}
-        </button>
+  {cargando ? 'Cargando...' : modo === 'login' ? '→ Entrar' : '→ Crear cuenta'}
+</button>
       </div>
     </div>
   )
