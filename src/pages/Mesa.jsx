@@ -322,12 +322,28 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <div className="personaje-avatar-sm narrador-avatar">📖</div>
             <span>Narrador</span>
           </div>
-          {personajes.map(p => (
-            <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) }}>
-              {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
-              <div><span>{p.nombre}</span><small>{p.rol}</small></div>
-            </div>
-          ))}
+
+{/* Personajes jugadores */}
+{personajes.filter(p => !p.es_npc).map(p => (
+  <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) }}>
+    {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
+    <div><span>{p.nombre}</span><small>{p.rol}</small></div>
+  </div>
+))}
+
+{/* NPCs */}
+{personajes.filter(p => p.es_npc).length > 0 && (
+  <>
+    <p style={{ fontSize: '0.7rem', color: 'var(--text3)', padding: '0.4rem 0.2rem 0.2rem', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em' }}>NPCs</p>
+    {personajes.filter(p => p.es_npc).map(p => (
+      <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) }}>
+        {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
+        <div><span>{p.nombre}</span><small>🤖 {p.rol}</small></div>
+      </div>
+    ))}
+  </>
+)}
+
           {personajes.length === 0 && <p className="sidebar-empty">Sin personajes en este universo.</p>}
         </div>
 

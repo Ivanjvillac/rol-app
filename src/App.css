@@ -1468,3 +1468,26 @@ input, textarea, select {
 
 .sesion-item:hover .sesion-delete { opacity: 1; }
 .sesion-delete:hover { color: var(--danger); }
+
+/* ===== TIPO PERSONAJE TOGGLE ===== */
+.tipo-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.tipo-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text2);
+  padding: 0.5rem;
+  font-family: 'Crimson Pro', serif;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tipo-btn:hover { background: var(--bg3); }
+.tipo-btn.activo { background: var(--accent-glow); color: var(--accent); }

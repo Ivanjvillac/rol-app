@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect  } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 
@@ -12,12 +12,7 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
 
   useEffect(() => {
     const cargar = async () => {
-      const { data } = await supabase
-        .from('notas_privadas')
-        .select('contenido')
-        .eq('personaje_id', personaje.id)
-        .eq('user_id', userId)
-        .single()
+      const { data } = await supabase.from('notas_privadas').select('contenido').eq('personaje_id', personaje.id).eq('user_id', userId).single()
       if (data) setNotas(data.contenido || '')
     }
     cargar()
@@ -30,6 +25,7 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
     setGuardado(true)
     setTimeout(() => setGuardado(false), 2000)
   }
+
   return (
     <div className="modal-overlay" onClick={onCerrar}>
       <div className="modal modal-detalle" onClick={e => e.stopPropagation()}>
@@ -40,6 +36,7 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
           }
           <div>
             <div className="card-badge">{personaje.rol}</div>
+            {personaje.es_npc && <div className="card-badge" style={{ marginLeft: '0.3rem', background: 'rgba(52,152,219,0.15)', borderColor: '#3498db', color: '#3498db' }}>NPC</div>}
             <h2 style={{ fontFamily: 'Cinzel, serif', color: 'var(--accent)', marginTop: '0.3rem' }}>{personaje.nombre}</h2>
             {universo && (
               <div className="personaje-universo" style={{ marginTop: '0.3rem' }}>
@@ -50,28 +47,17 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
           </div>
           <button className="detalle-cerrar" onClick={onCerrar}>✕</button>
         </div>
-
         {personaje.descripcion && (
           <div className="detalle-seccion">
             <h4>Descripción</h4>
             <p style={{ color: 'var(--text2)', fontStyle: 'italic', lineHeight: '1.6' }}>{personaje.descripcion}</p>
           </div>
         )}
-
         <div className="detalle-seccion">
           <h4>Notas privadas</h4>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text3)', marginBottom: '0.6rem' }}>
-            Solo tú puedes ver estas notas. Úsalas para historia, motivaciones, secretos...
-          </p>
-          <textarea
-            className="notas-textarea"
-            placeholder="Escribe aquí los secretos, motivaciones, historia personal, objetivos... Solo tú los verás."
-            value={notas}
-            onChange={e => setNotas(e.target.value)}
-            rows={10}
-          />
+          <p style={{ fontSize: '0.85rem', color: 'var(--text3)', marginBottom: '0.6rem' }}>Solo tú puedes ver estas notas.</p>
+          <textarea className="notas-textarea" placeholder="Escribe aquí los secretos, motivaciones, historia personal..." value={notas} onChange={e => setNotas(e.target.value)} rows={10} />
         </div>
-
         <div className="modal-actions">
           <button className="btn-ghost" onClick={onCerrar}>Cerrar</button>
           <button className="btn-primary" onClick={handleGuardar} disabled={guardando}>
@@ -97,18 +83,21 @@ export default function Personajes({ navigate, selectedUniverso }) {
   const [form, setForm] = useState({
     nombre: '', rol: 'Guerrero', descripcion: '',
     color: COLORES[0], universoId: selectedUniverso?.id || '',
-    avatar_url: ''
+    avatar_url: '', es_npc: false
   })
 
   const personajesFiltrados = filtroUniverso === 'todos'
     ? personajes
     : personajes.filter(p => p.universo_id === filtroUniverso || p.universoId === filtroUniverso)
 
+  const jugadores = personajesFiltrados.filter(p => !p.es_npc)
+  const npcs = personajesFiltrados.filter(p => p.es_npc)
+
   const abrirNuevo = () => {
     setEditando(null)
     setAvatarPreview(null)
     setAvatarFile(null)
-    setForm({ nombre: '', rol: 'Guerrero', descripcion: '', color: COLORES[0], universoId: selectedUniverso?.id || '', avatar_url: '' })
+    setForm({ nombre: '', rol: 'Guerrero', descripcion: '', color: COLORES[0], universoId: selectedUniverso?.id || '', avatar_url: '', es_npc: false })
     setShowForm(true)
   }
 
@@ -117,22 +106,14 @@ export default function Personajes({ navigate, selectedUniverso }) {
     setAvatarPreview(p.avatar_url || null)
     setAvatarFile(null)
     setForm({
-      nombre: p.nombre,
-      rol: p.rol || 'Guerrero',
-      descripcion: p.descripcion || '',
-      color: p.color || COLORES[0],
-      universoId: p.universo_id || p.universoId || '',
-      avatar_url: p.avatar_url || ''
+      nombre: p.nombre, rol: p.rol || 'Guerrero', descripcion: p.descripcion || '',
+      color: p.color || COLORES[0], universoId: p.universo_id || p.universoId || '',
+      avatar_url: p.avatar_url || '', es_npc: p.es_npc || false
     })
     setShowForm(true)
   }
 
-  const cerrarForm = () => {
-    setShowForm(false)
-    setEditando(null)
-    setAvatarPreview(null)
-    setAvatarFile(null)
-  }
+  const cerrarForm = () => { setShowForm(false); setEditando(null); setAvatarPreview(null); setAvatarFile(null) }
 
   const handleAvatarChange = (e) => {
     const file = e.target.files[0]
@@ -145,9 +126,7 @@ export default function Personajes({ navigate, selectedUniverso }) {
     if (!avatarFile) return form.avatar_url || null
     const ext = avatarFile.name.split('.').pop()
     const path = `${personajeId}.${ext}`
-    const { error } = await supabase.storage
-      .from('avatares')
-      .upload(path, avatarFile, { upsert: true })
+    const { error } = await supabase.storage.from('avatares').upload(path, avatarFile, { upsert: true })
     if (error) return form.avatar_url || null
     const { data } = supabase.storage.from('avatares').getPublicUrl(path)
     return data.publicUrl
@@ -157,25 +136,15 @@ export default function Personajes({ navigate, selectedUniverso }) {
     if (!form.nombre.trim()) return
     setGuardando(true)
     const iniciales = form.nombre.slice(0, 2).toUpperCase()
-
     if (editando) {
       const avatar_url = await subirAvatar(editando.id)
-      await updatePersonaje(editando.id, {
-        nombre: form.nombre,
-        rol: form.rol,
-        descripcion: form.descripcion,
-        color: form.color,
-        iniciales,
-        universo_id: form.universoId,
-        avatar_url,
-      })
+      await updatePersonaje(editando.id, { nombre: form.nombre, rol: form.rol, descripcion: form.descripcion, color: form.color, iniciales, universo_id: form.universoId, avatar_url, es_npc: form.es_npc })
     } else {
       if (!form.universoId) { setGuardando(false); return }
       const tempId = crypto.randomUUID()
       const avatar_url = await subirAvatar(tempId)
-      await addPersonaje({ ...form, iniciales, universoId: form.universoId, avatar_url })
+      await addPersonaje({ ...form, iniciales, universoId: form.universoId, avatar_url, es_npc: form.es_npc })
     }
-
     setGuardando(false)
     cerrarForm()
   }
@@ -190,13 +159,43 @@ export default function Personajes({ navigate, selectedUniverso }) {
   }
 
   const handleGuardarNotas = async (personajeId, contenido) => {
-  await supabase
-    .from('notas_privadas')
-    .upsert({ personaje_id: personajeId, user_id: userId, contenido }, { onConflict: 'personaje_id,user_id' })
-  if (verDetalle?.id === personajeId) setVerDetalle(prev => ({ ...prev, notas: contenido }))
-}
+    await supabase.from('notas_privadas').upsert({ personaje_id: personajeId, user_id: userId, contenido }, { onConflict: 'personaje_id,user_id' })
+    if (verDetalle?.id === personajeId) setVerDetalle(prev => ({ ...prev, notas: contenido }))
+  }
 
   const universoDePersonaje = (universoId) => universos.find(u => u.id === universoId)
+
+  const renderTarjeta = (p) => {
+    const universo = universoDePersonaje(p.universo_id || p.universoId)
+    const esMio = p.user_id === userId
+    return (
+      <div key={p.id} className="card personaje-card">
+        {p.avatar_url
+          ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-img" />
+          : <div className="personaje-avatar" style={{ background: p.color }}>{p.iniciales}</div>
+        }
+        <div className="card-body">
+          <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginBottom: '0.6rem' }}>
+            <div className="card-badge">{p.rol}</div>
+            {p.es_npc && <div className="card-badge" style={{ background: 'rgba(52,152,219,0.15)', borderColor: '#3498db', color: '#3498db' }}>NPC</div>}
+          </div>
+          <h3>{p.nombre}</h3>
+          <p>{p.descripcion || 'Sin descripción'}</p>
+          {universo && (
+            <div className="personaje-universo">
+              <span style={{ background: universo.color }} className="universo-dot" />
+              {universo.nombre}
+            </div>
+          )}
+          <div className="card-actions">
+            <button className="btn-ghost btn-sm" onClick={() => setVerDetalle(p)}>📋 Notas</button>
+            {(esMio || p.es_npc) && <button className="btn-ghost btn-sm" onClick={() => abrirEditar(p)}>Editar</button>}
+            {(esMio || p.es_npc) && <button className="btn-danger btn-sm" onClick={() => setConfirmDelete(p)}>Eliminar</button>}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="page">
@@ -216,24 +215,25 @@ export default function Personajes({ navigate, selectedUniverso }) {
         </select>
       </div>
 
-      {/* Modal crear/editar */}
       {showForm && (
         <div className="modal-overlay" onClick={cerrarForm}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h3>{editando ? 'Editar personaje' : 'Crear personaje'}</h3>
             <div className="form-group">
+              <label>Tipo de personaje</label>
+              <div className="tipo-toggle">
+                <button type="button" className={!form.es_npc ? 'tipo-btn activo' : 'tipo-btn'} onClick={() => setForm({ ...form, es_npc: false })}>👤 Jugador</button>
+                <button type="button" className={form.es_npc ? 'tipo-btn activo' : 'tipo-btn'} onClick={() => setForm({ ...form, es_npc: true })}>🤖 NPC</button>
+              </div>
+            </div>
+            <div className="form-group">
               <label>Avatar</label>
               <div className="avatar-upload" onClick={() => fileInputRef.current?.click()}>
                 {avatarPreview
                   ? <img src={avatarPreview} alt="avatar" className="avatar-preview" />
-                  : <div className="avatar-placeholder" style={{ background: form.color }}>
-                      {form.nombre ? form.nombre.slice(0, 2).toUpperCase() : '?'}
-                    </div>
+                  : <div className="avatar-placeholder" style={{ background: form.color }}>{form.nombre ? form.nombre.slice(0,2).toUpperCase() : '?'}</div>
                 }
-                <div className="avatar-upload-label">
-                  <span>📷</span>
-                  <small>{avatarPreview ? 'Cambiar imagen' : 'Subir imagen'}</small>
-                </div>
+                <div className="avatar-upload-label"><span>📷</span><small>{avatarPreview ? 'Cambiar imagen' : 'Subir imagen'}</small></div>
               </div>
               <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarChange} />
             </div>
@@ -248,23 +248,15 @@ export default function Personajes({ navigate, selectedUniverso }) {
               <label>Nombre</label>
               <input placeholder="Nombre del personaje..." value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} />
             </div>
-         <div className="form-group">
-  <label>Rol</label>
-  <select value={ROLES.includes(form.rol) ? form.rol : 'Otro'} onChange={e => {
-    if (e.target.value === 'Otro') setForm({ ...form, rol: '' })
-    else setForm({ ...form, rol: e.target.value })
-  }}>
-    {ROLES.map(r => <option key={r}>{r}</option>)}
-  </select>
-  {(!ROLES.includes(form.rol) || form.rol === '') && (
-    <input
-      style={{ marginTop: '0.5rem' }}
-      placeholder="Escribe el rol personalizado..."
-      value={form.rol === '' || !ROLES.includes(form.rol) ? form.rol : ''}
-      onChange={e => setForm({ ...form, rol: e.target.value })}
-    />
-  )}
-</div>
+            <div className="form-group">
+              <label>Rol</label>
+              <select value={ROLES.includes(form.rol) ? form.rol : 'Otro'} onChange={e => { if (e.target.value === 'Otro') setForm({ ...form, rol: '' }); else setForm({ ...form, rol: e.target.value }) }}>
+                {ROLES.map(r => <option key={r}>{r}</option>)}
+              </select>
+              {(!ROLES.includes(form.rol) || form.rol === '') && (
+                <input style={{ marginTop: '0.5rem' }} placeholder="Escribe el rol personalizado..." value={!ROLES.includes(form.rol) ? form.rol : ''} onChange={e => setForm({ ...form, rol: e.target.value })} />
+              )}
+            </div>
             <div className="form-group">
               <label>Descripción</label>
               <textarea placeholder="¿Quién es este personaje? ¿Cuál es su historia?" value={form.descripcion} onChange={e => setForm({ ...form, descripcion: e.target.value })} rows={3} />
@@ -272,9 +264,7 @@ export default function Personajes({ navigate, selectedUniverso }) {
             <div className="form-group">
               <label>Color del personaje</label>
               <div className="color-picker">
-                {COLORES.map(c => (
-                  <div key={c} className={`color-dot ${form.color === c ? 'selected' : ''}`} style={{ background: c }} onClick={() => setForm({ ...form, color: c })} />
-                ))}
+                {COLORES.map(c => <div key={c} className={`color-dot ${form.color === c ? 'selected' : ''}`} style={{ background: c }} onClick={() => setForm({ ...form, color: c })} />)}
               </div>
             </div>
             <div className="modal-actions">
@@ -287,14 +277,11 @@ export default function Personajes({ navigate, selectedUniverso }) {
         </div>
       )}
 
-      {/* Modal confirmar borrado */}
       {confirmDelete && (
         <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
             <h3>¿Eliminar personaje?</h3>
-            <p style={{ color: 'var(--text2)', margin: '0.8rem 0 1.5rem' }}>
-              Esta acción no se puede deshacer. El personaje "<strong>{confirmDelete.nombre}</strong>" se eliminará permanentemente.
-            </p>
+            <p style={{ color: 'var(--text2)', margin: '0.8rem 0 1.5rem' }}>Esta acción no se puede deshacer. El personaje "<strong>{confirmDelete.nombre}</strong>" se eliminará permanentemente.</p>
             <div className="modal-actions">
               <button className="btn-ghost" onClick={() => setConfirmDelete(null)}>Cancelar</button>
               <button className="btn-danger" onClick={() => handleDelete(confirmDelete)}>Sí, eliminar</button>
@@ -303,55 +290,20 @@ export default function Personajes({ navigate, selectedUniverso }) {
         </div>
       )}
 
-      {/* Detalle personaje */}
       {verDetalle && (
-     <DetallePersonaje
-  personaje={verDetalle}
-  universo={universoDePersonaje(verDetalle.universo_id || verDetalle.universoId)}
-  onCerrar={() => setVerDetalle(null)}
-  onGuardarNotas={handleGuardarNotas}
-  userId={userId}
-/>
+        <DetallePersonaje personaje={verDetalle} universo={universoDePersonaje(verDetalle.universo_id || verDetalle.universoId)} onCerrar={() => setVerDetalle(null)} onGuardarNotas={handleGuardarNotas} userId={userId} />
       )}
 
+      <h3 style={{ fontFamily: 'Cinzel, serif', color: 'var(--text2)', fontSize: '0.9rem', margin: '0.5rem 0', letterSpacing: '0.05em' }}>👤 Personajes jugadores</h3>
       <div className="grid">
-        {personajesFiltrados.map(p => {
-          const universo = universoDePersonaje(p.universo_id || p.universoId)
-          return (
-            <div key={p.id} className="card personaje-card">
-              {p.avatar_url
-                ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-img" />
-                : <div className="personaje-avatar" style={{ background: p.color }}>{p.iniciales}</div>
-              }
-              <div className="card-body">
-                <div className="card-badge">{p.rol}</div>
-                <h3>{p.nombre}</h3>
-                <p>{p.descripcion || 'Sin descripción'}</p>
-                {universo && (
-                  <div className="personaje-universo">
-                    <span style={{ background: universo.color }} className="universo-dot" />
-                    {universo.nombre}
-                  </div>
-                )}
-                <div className="card-actions">
-  <button className="btn-ghost btn-sm" onClick={() => setVerDetalle(p)}>📋 Notas</button>
-  {p.user_id === userId && (
-    <>
-      <button className="btn-ghost btn-sm" onClick={() => abrirEditar(p)}>Editar</button>
-      <button className="btn-danger btn-sm" onClick={() => setConfirmDelete(p)}>Eliminar</button>
-    </>
-  )}
-</div>
-              </div>
-            </div>
-          )
-        })}
-        {personajesFiltrados.length === 0 && (
-          <div className="empty-state">
-            <span>👤</span>
-            <p>No hay personajes. ¡Crea el primero!</p>
-          </div>
-        )}
+        {jugadores.map(p => renderTarjeta(p))}
+        {jugadores.length === 0 && <div className="empty-state"><span>👤</span><p>No hay personajes jugadores.</p></div>}
+      </div>
+
+      <h3 style={{ fontFamily: 'Cinzel, serif', color: 'var(--text2)', fontSize: '0.9rem', margin: '1.5rem 0 0.5rem', letterSpacing: '0.05em' }}>🤖 NPCs</h3>
+      <div className="grid">
+        {npcs.map(p => renderTarjeta(p))}
+        {npcs.length === 0 && <div className="empty-state"><span>🤖</span><p>No hay NPCs creados.</p></div>}
       </div>
     </div>
   )
