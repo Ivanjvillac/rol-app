@@ -167,6 +167,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [resultadoDado, setResultadoDado] = useState(null)
   const [notificaciones, setNotificaciones] = useState([])
   const [tieneNoLeidos, setTieneNoLeidos] = useState(false)
+  const [sidebarAbierto, setSidebarAbierto] = useState(false)
   const historialRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -298,8 +299,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
   return (
     <div className="mesa">
-      <aside className="mesa-sidebar">
-        <div className="sidebar-section">
+<aside className={`mesa-sidebar ${sidebarAbierto ? 'abierto' : ''}`}>
+          <div className="sidebar-section">
           <h4>Universo</h4>
           <div className="universo-tag" style={{ borderColor: selectedUniverso.color }}>
             <span style={{ background: selectedUniverso.color }} className="universo-dot" />
@@ -364,10 +365,11 @@ export default function Mesa({ navigate, selectedUniverso }) {
           {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirInvitar}>✉️ Invitar jugador</button>}
         </div>
       </aside>
-
+<div className={`sidebar-overlay ${sidebarAbierto ? 'visible' : ''}`} onClick={() => setSidebarAbierto(false)} />
       <main className="mesa-main">
-        <div className="mesa-header">
-          <h3>Sesión — {selectedUniverso.nombre}</h3>
+<div className="mesa-header">
+  <button className="btn-menu-sidebar" onClick={() => setSidebarAbierto(!sidebarAbierto)}>☰</button>
+  <h3>Sesión — {selectedUniverso.nombre}</h3>
           <span className="sesion-count">{sesion.length} entradas</span>
         </div>
 
