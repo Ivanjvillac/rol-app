@@ -53,16 +53,23 @@ export function AppProvider({ userId, children }) {
   }
 
   // PERSONAJES
-  const addPersonaje = async (p) => {
-    const { data, error } = await supabase
-      .from('personajes')
-      .insert({ ...p, universo_id: p.universoId, user_id: userId })
-      .select()
-      .single()
-    if (!error) setPersonajes(prev => [...prev, data])
-    return { data, error }
-  }
-
+ const addPersonaje = async (p) => {
+  const { universoId, ...resto } = p
+  const { data, error } = await supabase
+    .from('personajes')
+    .insert({ 
+      nombre: resto.nombre,
+      rol: resto.rol,
+      descripcion: resto.descripcion,
+      color: resto.color,
+      iniciales: resto.iniciales,
+      universo_id: universoId,
+      user_id: userId 
+    })
+    .select()
+  if (!error && data?.length > 0) setPersonajes(prev => [...prev, data[0]])
+  return { data: data?.[0], error }
+}
   const deletePersonaje = async (id) => {
     await supabase.from('personajes').delete().eq('id', id)
     setPersonajes(prev => prev.filter(p => p.id !== id))
