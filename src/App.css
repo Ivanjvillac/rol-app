@@ -1570,3 +1570,11 @@ input, textarea, select {
   flex: 1;
   min-height: 0;
 }
+.page {
+  overflow-y: auto;
+  height: calc(100vh - 56px);
+}
+.home {
+  overflow-y: auto;
+  height: calc(100vh - 56px);
+}
