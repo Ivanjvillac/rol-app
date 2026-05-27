@@ -2004,3 +2004,34 @@ input, textarea, select {
 }
 
 .spotify-cerrar:hover { color: var(--text); background: var(--bg4); }
+
+@media (max-width: 768px) {
+  .grid {
+    grid-template-columns: 1fr;
+    gap: 0.8rem;
+  }
+
+  .personaje-card {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .personaje-card .personaje-avatar-img {
+    width: 100% !important;
+    height: 200px !important;
+  }
+
+  .card-body {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .card-body p {
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .card-actions {
+    flex-wrap: wrap;
+  }
+}
