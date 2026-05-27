@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
+import SelectorImagenSticker from '../components/SelectorImagenSticker'
 
 function ChatPrivado({ universo, personajes, userId, onCerrar }) {
   const [conversaciones, setConversaciones] = useState({})
@@ -8,6 +9,7 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
   const [miPersonaje, setMiPersonaje] = useState(null)
   const [texto, setTexto] = useState('')
   const [enviando, setEnviando] = useState(false)
+  const [showSelector, setShowSelector] = useState(false)
   const historialRef = useRef(null)
 
   const misPersonajes = personajes.filter(p => p.user_id === userId)
@@ -78,6 +80,19 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
     setEnviando(false)
   }
 
+  const enviarImagenPrivado = async (url) => {
+    if (!miPersonaje || !destinatario) return
+    await supabase.from('mensajes_privados').insert({
+      universo_id: universo.id,
+      remitente_id: miPersonaje.id,
+      destinatario_id: destinatario.id,
+      remitente_user_id: userId,
+      destinatario_user_id: destinatario.user_id,
+      contenido: '',
+      imagen_url: url,
+    })
+  }
+
   const handleKey = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }
   const formatHora = (ts) => { const d = new Date(ts); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` }
   const mensajesActuales = destinatario && miPersonaje ? (conversaciones[claveConv(miPersonaje.id, destinatario.id)] || []) : []
@@ -131,13 +146,26 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
                       return (
                         <div key={m.id} className={`chat-mensaje ${esMio ? 'propio' : 'ajeno'}`}>
                           {!esMio && (autor.avatar_url ? <img src={autor.avatar_url} alt={autor.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: autor.color }}>{autor.iniciales}</div>)}
-                          <div className="chat-burbuja" style={{ borderColor: autor.color }}><p>{m.contenido}</p><span className="entrada-hora">{formatHora(m.created_at)}</span></div>
+                          <div className="chat-burbuja" style={{ borderColor: autor.color }}>
+                            {m.contenido && <p>{m.contenido}</p>}
+                            {m.imagen_url && <img src={m.imagen_url} alt="imagen" className="entrada-imagen" style={{ maxWidth: '180px', borderRadius: '8px', cursor: 'pointer' }} onClick={() => window.open(m.imagen_url, '_blank')} />}
+                            <span className="entrada-hora">{formatHora(m.created_at)}</span>
+                          </div>
                           {esMio && (autor.avatar_url ? <img src={autor.avatar_url} alt={autor.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: autor.color }}>{autor.iniciales}</div>)}
                         </div>
                       )
                     })}
                   </div>
-                  <div className="chat-input">
+                  <div className="chat-input" style={{ position: 'relative' }}>
+                    {showSelector && (
+                      <SelectorImagenSticker
+                        userId={userId}
+                        onEnviarImagen={enviarImagenPrivado}
+                        onEnviarSticker={enviarImagenPrivado}
+                        onCerrar={() => setShowSelector(false)}
+                      />
+                    )}
+                    <button className="btn-adjunto" onClick={() => setShowSelector(!showSelector)}>📎</button>
                     <textarea placeholder={`Escribe como ${miPersonaje.nombre}...`} value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={handleKey} rows={2} className="mesa-textarea" />
                     <button className="btn-enviar" onClick={enviar} disabled={enviando}>↵</button>
                   </div>
@@ -160,6 +188,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [comandoSugerido, setComandoSugerido] = useState(null)
   const [showInvitar, setShowInvitar] = useState(false)
   const [showChat, setShowChat] = useState(false)
+  const [showSelector, setShowSelector] = useState(false)
   const [emailInvitar, setEmailInvitar] = useState('')
   const [invitaciones, setInvitaciones] = useState([])
   const [msgInvitar, setMsgInvitar] = useState(null)
@@ -193,11 +222,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
         const m = payload.new
         if (m.destinatario_user_id === userId) {
           const remitente = personajes.find(p => p.id === m.remitente_id)
-          const notif = {
-            id: m.id,
-            texto: `${remitente?.nombre || 'Alguien'} te ha enviado un mensaje privado`,
-            color: remitente?.color || 'var(--accent)'
-          }
+          const notif = { id: m.id, texto: `${remitente?.nombre || 'Alguien'} te ha enviado un mensaje privado`, color: remitente?.color || 'var(--accent)' }
           setNotificaciones(prev => [...prev, notif])
           setTieneNoLeidos(true)
           setTimeout(() => setNotificaciones(prev => prev.filter(n => n.id !== notif.id)), 5000)
@@ -255,8 +280,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
     inputRef.current?.focus()
   }
 
-  const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }
+  const enviarImagen = async (url) => {
+    const tipo = modoEntrada === 'narrador' || !personajeActivo ? 'narrador' : modoEntrada
+    await addEntrada(selectedUniverso.id, { tipo, contenido: '', imagen_url: url, personaje: personajeActivo })
+  }
 
+  const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }
   const formatHora = (ts) => { const d = new Date(ts); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` }
 
   const exportarSesion = () => {
@@ -299,8 +328,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
   return (
     <div className="mesa">
-<aside className={`mesa-sidebar ${sidebarAbierto ? 'abierto' : ''}`}>
-          <div className="sidebar-section">
+      <div className={`sidebar-overlay ${sidebarAbierto ? 'visible' : ''}`} onClick={() => setSidebarAbierto(false)} />
+
+      <aside className={`mesa-sidebar ${sidebarAbierto ? 'abierto' : ''}`}>
+        <div className="sidebar-section">
           <h4>Universo</h4>
           <div className="universo-tag" style={{ borderColor: selectedUniverso.color }}>
             <span style={{ background: selectedUniverso.color }} className="universo-dot" />
@@ -310,12 +341,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
         <div className="sidebar-section">
           <h4>Personajes</h4>
-          <div className={`personaje-btn narrador-btn ${modoEntrada === 'narrador' && !personajeActivo ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(null); setModoEntrada('narrador') }}>
+          <div className={`personaje-btn narrador-btn ${modoEntrada === 'narrador' && !personajeActivo ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(null); setModoEntrada('narrador'); setSidebarAbierto(false) }}>
             <div className="personaje-avatar-sm narrador-avatar">📖</div>
             <span>Narrador</span>
           </div>
           {personajes.map(p => (
-            <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo') }}>
+            <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) }}>
               {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
               <div><span>{p.nombre}</span><small>{p.rol}</small></div>
             </div>
@@ -358,18 +389,20 @@ export default function Mesa({ navigate, selectedUniverso }) {
         <div className="sidebar-section">
           <h4>Sesión</h4>
           <button className="modo-btn" onClick={exportarSesion}>📄 Exportar TXT</button>
-          <button className="modo-btn notif-btn" style={{ marginTop: '0.4rem' }} onClick={() => { setShowChat(true); setTieneNoLeidos(false) }}>
+          <button className="modo-btn notif-btn" style={{ marginTop: '0.4rem' }} onClick={() => { setShowChat(true); setTieneNoLeidos(false); setSidebarAbierto(false) }}>
             🔒 Mensajes privados
             {tieneNoLeidos && <span className="notif-dot" />}
           </button>
           {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirInvitar}>✉️ Invitar jugador</button>}
         </div>
       </aside>
-<div className={`sidebar-overlay ${sidebarAbierto ? 'visible' : ''}`} onClick={() => setSidebarAbierto(false)} />
+
       <main className="mesa-main">
-<div className="mesa-header">
-  <button className="btn-menu-sidebar" onClick={() => setSidebarAbierto(!sidebarAbierto)}>☰</button>
-  <h3>Sesión — {selectedUniverso.nombre}</h3>
+        <div className="mesa-header">
+<button className="btn-menu-sidebar" onClick={() => setSidebarAbierto(prev => !prev)}>
+  {sidebarAbierto ? '✕' : '☰'}
+</button>
+          <h3>Sesión — {selectedUniverso.nombre}</h3>
           <span className="sesion-count">{sesion.length} entradas</span>
         </div>
 
@@ -380,7 +413,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
               {e.tipo === 'narrador' && (
                 <div className="entrada-narrador">
                   <span className="entrada-label">📖 Narrador</span>
-                  <p>{e.contenido}</p>
+                  {e.contenido && <p>{e.contenido}</p>}
+                  {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '240px', borderRadius: '8px', marginTop: '0.4rem', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
                   <span className="entrada-hora">{formatHora(e.timestamp)}</span>
                 </div>
               )}
@@ -389,7 +423,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   {e.personaje?.avatar_url ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" /> : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>}
                   <div className="entrada-burbuja">
                     <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
-                    <p>"{e.contenido}"</p>
+                    {e.contenido && <p>"{e.contenido}"</p>}
+                    {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '220px', borderRadius: '8px', marginTop: '0.4rem', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
                     <span className="entrada-hora">{formatHora(e.timestamp)}</span>
                   </div>
                 </div>
@@ -399,7 +434,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   {e.personaje?.avatar_url ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" /> : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>}
                   <div className="entrada-accion-texto">
                     <span style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
-                    <em> {e.contenido}</em>
+                    {e.contenido && <em> {e.contenido}</em>}
+                    {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '220px', borderRadius: '8px', marginTop: '0.4rem', display: 'block', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
                     <span className="entrada-hora">{formatHora(e.timestamp)}</span>
                   </div>
                 </div>
@@ -426,10 +462,24 @@ export default function Mesa({ navigate, selectedUniverso }) {
             }
             <span className="input-modo">{!personajeActivo ? 'Narrador' : `${personajeActivo.nombre} · ${modoEntrada === 'dialogo' ? 'Diálogo' : 'Acción'}`}</span>
           </div>
-          <div className="input-row">
-            <textarea ref={inputRef} className="mesa-textarea"
+          <div className="input-row" style={{ position: 'relative' }}>
+            {showSelector && (
+              <SelectorImagenSticker
+                userId={userId}
+                onEnviarImagen={enviarImagen}
+                onEnviarSticker={enviarImagen}
+                onCerrar={() => setShowSelector(false)}
+              />
+            )}
+            <button className="btn-adjunto" onClick={() => setShowSelector(!showSelector)}>📎</button>
+            <textarea
+              ref={inputRef}
+              className="mesa-textarea"
               placeholder={!personajeActivo && modoEntrada !== 'narrador' ? 'Selecciona un personaje o escribe /narrador...' : modoEntrada === 'narrador' ? 'Narra lo que ocurre en la escena...' : modoEntrada === 'dialogo' ? `¿Qué dice ${personajeActivo?.nombre}?` : `¿Qué hace ${personajeActivo?.nombre}?`}
-              value={texto} onChange={handleTextoChange} onKeyDown={handleKeyDown} rows={2}
+              value={texto}
+              onChange={handleTextoChange}
+              onKeyDown={handleKeyDown}
+              rows={2}
             />
             <button className="btn-enviar" onClick={enviar}>↵</button>
           </div>

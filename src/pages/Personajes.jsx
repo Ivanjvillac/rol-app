@@ -248,12 +248,23 @@ export default function Personajes({ navigate, selectedUniverso }) {
               <label>Nombre</label>
               <input placeholder="Nombre del personaje..." value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} />
             </div>
-            <div className="form-group">
-              <label>Rol</label>
-              <select value={form.rol} onChange={e => setForm({ ...form, rol: e.target.value })}>
-                {ROLES.map(r => <option key={r}>{r}</option>)}
-              </select>
-            </div>
+         <div className="form-group">
+  <label>Rol</label>
+  <select value={ROLES.includes(form.rol) ? form.rol : 'Otro'} onChange={e => {
+    if (e.target.value === 'Otro') setForm({ ...form, rol: '' })
+    else setForm({ ...form, rol: e.target.value })
+  }}>
+    {ROLES.map(r => <option key={r}>{r}</option>)}
+  </select>
+  {(!ROLES.includes(form.rol) || form.rol === '') && (
+    <input
+      style={{ marginTop: '0.5rem' }}
+      placeholder="Escribe el rol personalizado..."
+      value={form.rol === '' || !ROLES.includes(form.rol) ? form.rol : ''}
+      onChange={e => setForm({ ...form, rol: e.target.value })}
+    />
+  )}
+</div>
             <div className="form-group">
               <label>Descripción</label>
               <textarea placeholder="¿Quién es este personaje? ¿Cuál es su historia?" value={form.descripcion} onChange={e => setForm({ ...form, descripcion: e.target.value })} rows={3} />

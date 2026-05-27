@@ -343,6 +343,7 @@ input, textarea, select {
   z-index: 200;
   padding: 1rem;
   backdrop-filter: blur(2px);
+    z-index: 590;
 }
 
 .modal {
@@ -901,6 +902,7 @@ input, textarea, select {
   flex-direction: column;
   padding: 0;
   overflow: hidden;
+    z-index: 600;
 }
 
 .chat-header {
@@ -1237,4 +1239,126 @@ input, textarea, select {
   /* Grid personajes */
   .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.7rem; }
   .page { padding: 1rem 0.8rem; }
+}
+
+/* ===== SELECTOR IMAGEN/STICKER ===== */
+.selector-panel {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  width: 300px;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  z-index: 200;
+  box-shadow: var(--shadow);
+  margin-bottom: 0.5rem;
+}
+
+.selector-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.selector-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text2);
+  padding: 0.6rem;
+  font-family: 'Crimson Pro', serif;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.selector-tab:hover { background: var(--bg3); }
+.selector-tab.active { background: var(--accent-glow); color: var(--accent); }
+
+.selector-cerrar {
+  background: none;
+  border: none;
+  color: var(--text3);
+  padding: 0.6rem 0.8rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.selector-cerrar:hover { color: var(--text); }
+
+.selector-contenido { padding: 1rem; }
+
+.stickers-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.4rem;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 0.5rem;
+}
+
+.sticker-item img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.15s;
+}
+
+.sticker-item img:hover {
+  border-color: var(--accent);
+  transform: scale(1.05);
+}
+
+/* Imágenes en el chat */
+.entrada-imagen {
+  max-width: 240px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-top: 0.3rem;
+  cursor: pointer;
+}
+
+.entrada-imagen img {
+  width: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.entrada-sticker {
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.entrada-burbuja img,
+.entrada-narrador img,
+.entrada-accion-texto img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin-top: 0.4rem;
+  display: block;
+}
+
+.entrada-burbuja {
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.entrada-burbuja img {
+  max-width: 100% !important;
+  max-height: 300px !important;
+  width: auto !important;
+  height: auto !important;
+  border-radius: 6px;
+  margin-top: 0.3rem;
+  display: block;
+  object-fit: cover;
+  cursor: pointer;
 }

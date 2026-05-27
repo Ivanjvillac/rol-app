@@ -109,28 +109,28 @@ export function AppProvider({ userId, children }) {
     timestamp: e.created_at,
   })
 
-  const addEntrada = async (universoId, entrada) => {
-    const { data, error } = await supabase
-      .from('entradas')
-      .insert({
-        universo_id: universoId,
-        user_id: userId,
-        tipo: entrada.tipo,
-        contenido: entrada.contenido,
-        personaje_nombre: entrada.personaje?.nombre || null,
-        personaje_color: entrada.personaje?.color || null,
-        personaje_iniciales: entrada.personaje?.iniciales || null,
-        personaje_avatar_url: entrada.personaje?.avatar_url || null,
-      })
-      .select()
-      .single()
-    if (!error) {
-      setSesiones(prev => ({
-        ...prev,
-        [universoId]: [...(prev[universoId] || []), formatearEntrada(data)]
-      }))
-    }
+ const addEntrada = async (universoId, entrada) => {
+  const { data, error } = await supabase
+    .from('entradas')
+    .insert({
+      universo_id: universoId,
+      user_id: userId,
+      tipo: entrada.tipo,
+      contenido: entrada.contenido || '',
+      imagen_url: entrada.imagen_url || null,
+      personaje_nombre: entrada.personaje?.nombre || null,
+      personaje_color: entrada.personaje?.color || null,
+      personaje_iniciales: entrada.personaje?.iniciales || null,
+      personaje_avatar_url: entrada.personaje?.avatar_url || null,
+    })
+    .select()
+  if (!error && data?.length > 0) {
+    setSesiones(prev => ({
+      ...prev,
+      [universoId]: [...(prev[universoId] || []), formatearEntrada(data[0])]
+    }))
   }
+}
 
   // INVITACIONES
   const invitarUsuario = async (universoId, email) => {
