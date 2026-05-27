@@ -147,18 +147,29 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [notificaciones, setNotificaciones] = useState([])
   const [tieneNoLeidos, setTieneNoLeidos] = useState(false)
   const [sidebarAbierto, setSidebarAbierto] = useState(false)
-  const [editandoEntrada, setEditandoEntrada] = useState(null)
-  const [confirmDeleteEntrada, setConfirmDeleteEntrada] = useState(null)
-  const [fichaPersonaje, setFichaPersonaje] = useState(null)
   const [sesionActiva, setSesionActiva] = useState(null)
   const [showNuevaSesion, setShowNuevaSesion] = useState(false)
   const [nombreNuevaSesion, setNombreNuevaSesion] = useState('')
   const [confirmDeleteSesion, setConfirmDeleteSesion] = useState(null)
+  const [busqueda, setBusqueda] = useState('')
+  const [editandoEntrada, setEditandoEntrada] = useState(null)
+  const [confirmDeleteEntrada, setConfirmDeleteEntrada] = useState(null)
+  const [fichaPersonaje, setFichaPersonaje] = useState(null)
+  const [usuariosConectados, setUsuariosConectados] = useState([])
+  const [otrosEscribiendo, setOtrosEscribiendo] = useState([])
+  const [mostrarIrAbajo, setMostrarIrAbajo] = useState(false)
   const historialRef = useRef(null)
   const inputRef = useRef(null)
+  const timeoutEscribiendoRef = useRef(null)
 
   const personajes = selectedUniverso ? getPersonajesDeUniverso(selectedUniverso.id) : []
-  const sesion = sesionActiva ? getSesion(sesionActiva.id) : []
+  const sesionCompleta = sesionActiva ? getSesion(sesionActiva.id) : []
+  const sesion = busqueda.trim()
+    ? sesionCompleta.filter(e =>
+        e.contenido?.toLowerCase().includes(busqueda.toLowerCase()) ||
+        e.personaje_nombre?.toLowerCase().includes(busqueda.toLowerCase())
+      )
+    : sesionCompleta
   const esDueno = selectedUniverso ? esPropietario(selectedUniverso.id) : false
   const sesiones = selectedUniverso ? (listaSesiones[selectedUniverso.id] || []) : []
 
@@ -183,6 +194,9 @@ export default function Mesa({ navigate, selectedUniverso }) {
         if (m.destinatario_user_id === userId) {
           const remitente = personajes.find(p => p.id === m.remitente_id)
           const notif = { id: m.id, texto: `${remitente?.nombre || 'Alguien'} te ha enviado un mensaje privado`, color: remitente?.color || 'var(--accent)' }
+          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3')
+          audio.volume = 0.3
+          audio.play().catch(() => {})
           setNotificaciones(prev => [...prev, notif])
           setTieneNoLeidos(true)
           setTimeout(() => setNotificaciones(prev => prev.filter(n => n.id !== notif.id)), 5000)
@@ -192,8 +206,64 @@ export default function Mesa({ navigate, selectedUniverso }) {
   }, [selectedUniverso?.id, userId])
 
   useEffect(() => {
+    if (!selectedUniverso || !userId) return
+    const canal = supabase.channel(`presencia-${selectedUniverso.id}`, {
+      config: { presence: { key: userId } }
+    })
+    canal
+      .on('presence', { event: 'sync' }, () => {
+        const estado = canal.presenceState()
+        const conectados = Object.values(estado).flat().map(u => u.nombre || u.user_id?.slice(0, 8))
+        setUsuariosConectados(conectados)
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          const perfil = await supabase.from('perfiles').select('nombre').eq('id', userId).single()
+          await canal.track({ user_id: userId, nombre: perfil.data?.nombre || 'Jugador' })
+        }
+      })
+    return () => supabase.removeChannel(canal)
+  }, [selectedUniverso?.id, userId])
+
+  useEffect(() => {
+    if (!selectedUniverso || !userId || !sesionActiva) return
+    const canal = supabase.channel(`escribiendo-${selectedUniverso.id}`)
+      .on('broadcast', { event: 'escribiendo' }, ({ payload }) => {
+        if (payload.userId === userId) return
+        setOtrosEscribiendo(prev => {
+          const sin = prev.filter(x => x.userId !== payload.userId)
+          if (payload.activo) return [...sin, { userId: payload.userId, nombre: payload.nombre }]
+          return sin
+        })
+      })
+      .subscribe()
+    return () => supabase.removeChannel(canal)
+  }, [selectedUniverso?.id, sesionActiva?.id, userId])
+
+  useEffect(() => {
     if (historialRef.current) historialRef.current.scrollTop = historialRef.current.scrollHeight
-  }, [sesion])
+  }, [sesionActiva])
+
+  const handleScroll = () => {
+    if (!historialRef.current) return
+    const { scrollTop, scrollHeight, clientHeight } = historialRef.current
+    setMostrarIrAbajo(scrollHeight - scrollTop - clientHeight > 200)
+  }
+
+  const irAbajo = () => {
+    if (historialRef.current) historialRef.current.scrollTop = historialRef.current.scrollHeight
+  }
+
+  const emitirEscribiendo = async (activo) => {
+    if (!selectedUniverso) return
+    const canal = supabase.channel(`escribiendo-${selectedUniverso.id}`)
+    const perfil = await supabase.from('perfiles').select('nombre').eq('id', userId).single()
+    canal.send({
+      type: 'broadcast',
+      event: 'escribiendo',
+      payload: { userId, nombre: perfil.data?.nombre || 'Alguien', activo }
+    })
+  }
 
   if (!selectedUniverso) {
     return (
@@ -235,6 +305,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
     else entrada = { tipo: modoEntrada, contenido: t, personaje: personajeActivo }
     await addEntrada(selectedUniverso.id, entrada, sesionActiva.id)
     setTexto(''); setComandoSugerido(null)
+    emitirEscribiendo(false)
     inputRef.current?.focus()
   }
 
@@ -251,6 +322,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
     await editarEntrada(editandoEntrada.id, editandoEntrada.contenido)
     setEditandoEntrada(null)
   }
+
   const formatHora = (ts) => { const d = new Date(ts); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` }
 
   const exportarSesion = () => {
@@ -320,7 +392,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
       <div className={`sidebar-overlay ${sidebarAbierto ? 'visible' : ''}`} onClick={() => setSidebarAbierto(false)} />
 
       <aside className={`mesa-sidebar ${sidebarAbierto ? 'abierto' : ''}`}>
-        {/* SESIONES */}
         <div className="sidebar-section">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
             <h4>Sesiones</h4>
@@ -335,37 +406,31 @@ export default function Mesa({ navigate, selectedUniverso }) {
           ))}
         </div>
 
-        {/* PERSONAJES */}
         <div className="sidebar-section">
           <h4>Personajes</h4>
           <div className={`personaje-btn narrador-btn ${modoEntrada === 'narrador' && !personajeActivo ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(null); setModoEntrada('narrador'); setSidebarAbierto(false) }}>
             <div className="personaje-avatar-sm narrador-avatar">📖</div>
             <span>Narrador</span>
           </div>
-
-{/* Personajes jugadores */}
-{personajes.filter(p => !p.es_npc).map(p => (
-  <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) }}>
-    {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
-    <div style={{ flex: 1 }}><span>{p.nombre}</span><small>{p.rol}</small></div>
-    <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
-  </div>
-))}
-
-{/* NPCs */}
-{personajes.filter(p => p.es_npc).length > 0 && (
-  <>
-    <p style={{ fontSize: '0.7rem', color: 'var(--text3)', padding: '0.4rem 0.2rem 0.2rem', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em' }}>NPCs</p>
-    {personajes.filter(p => p.es_npc).map(p => (
-      <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) }}>
-        {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
-        <div style={{ flex: 1 }}><span>{p.nombre}</span><small>🤖 {p.rol}</small></div>
-        <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
-      </div>
-    ))}
-  </>
-)}
-
+          {personajes.filter(p => !p.es_npc).map(p => (
+            <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) }}>
+              {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
+              <div style={{ flex: 1 }}><span>{p.nombre}</span><small>{p.rol}</small></div>
+              <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
+            </div>
+          ))}
+          {personajes.filter(p => p.es_npc).length > 0 && (
+            <>
+              <p style={{ fontSize: '0.7rem', color: 'var(--text3)', padding: '0.4rem 0.2rem 0.2rem', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em' }}>NPCs</p>
+              {personajes.filter(p => p.es_npc).map(p => (
+                <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) }}>
+                  {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
+                  <div style={{ flex: 1 }}><span>{p.nombre}</span><small>🤖 {p.rol}</small></div>
+                  <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
+                </div>
+              ))}
+            </>
+          )}
           {personajes.length === 0 && <p className="sidebar-empty">Sin personajes en este universo.</p>}
         </div>
 
@@ -402,6 +467,17 @@ export default function Mesa({ navigate, selectedUniverso }) {
         </div>
 
         <div className="sidebar-section">
+          <h4>Conectados</h4>
+          {usuariosConectados.map((u, i) => (
+            <div key={i} className="conectado-item">
+              <span className="conectado-dot" />
+              <span>{u}</span>
+            </div>
+          ))}
+          {usuariosConectados.length === 0 && <p className="sidebar-empty">Solo tú</p>}
+        </div>
+
+        <div className="sidebar-section">
           <h4>Opciones</h4>
           <button className="modo-btn" onClick={exportarSesion} disabled={!sesionActiva}>📄 Exportar TXT</button>
           <button className="modo-btn notif-btn" style={{ marginTop: '0.4rem' }} onClick={() => { setShowChat(true); setTieneNoLeidos(false); setSidebarAbierto(false) }}>
@@ -419,17 +495,23 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <h3>{selectedUniverso.nombre}</h3>
             {sesionActiva && <small style={{ color: 'var(--text3)', fontSize: '0.75rem' }}># {sesionActiva.nombre}</small>}
           </div>
+          {sesionActiva && (
+            <div className="buscador-historial">
+              <input placeholder="🔍 Buscar..." value={busqueda} onChange={e => setBusqueda(e.target.value)} />
+              {busqueda && <button onClick={() => setBusqueda('')}>✕</button>}
+            </div>
+          )}
           <span className="sesion-count">{sesion.length} entradas</span>
         </div>
 
-        <div className="historial" ref={historialRef}>
+        <div className="historial" ref={historialRef} onScroll={handleScroll}>
           {!sesionActiva && (
             <div className="historial-empty">
               <p>Selecciona o crea una sesión en el panel lateral para empezar.</p>
               <button className="btn-primary" style={{ marginTop: '1rem' }} onClick={() => setShowNuevaSesion(true)}>+ Nueva sesión</button>
             </div>
           )}
-          {sesionActiva && sesion.length === 0 && <div className="historial-empty"><p>Sesión vacía. ¡Empieza a escribir!</p></div>}
+          {sesionActiva && sesion.length === 0 && <div className="historial-empty"><p>{busqueda ? 'Sin resultados.' : '¡Empieza a escribir!'}</p></div>}
           {sesion.map(e => (
             <div key={e.id} className={`entrada entrada-${e.tipo}`}>
               {e.tipo === 'narrador' && (
@@ -502,6 +584,15 @@ export default function Mesa({ navigate, selectedUniverso }) {
           </div>
         )}
 
+        {otrosEscribiendo.length > 0 && (
+          <div className="escribiendo-indicator">
+            <span className="escribiendo-dots"><span/><span/><span/></span>
+            <span>{otrosEscribiendo.map(u => u.nombre).join(', ')} {otrosEscribiendo.length === 1 ? 'está' : 'están'} escribiendo...</span>
+          </div>
+        )}
+
+        {mostrarIrAbajo && <button className="btn-ir-abajo" onClick={irAbajo}>↓</button>}
+
         <div className="mesa-input-bar">
           <div className="input-contexto">
             {modoEntrada === 'narrador' || !personajeActivo
@@ -516,9 +607,20 @@ export default function Mesa({ navigate, selectedUniverso }) {
           <div className="input-row" style={{ position: 'relative' }}>
             {showSelector && <SelectorImagenSticker userId={userId} onEnviarImagen={enviarImagen} onEnviarSticker={enviarImagen} onCerrar={() => setShowSelector(false)} />}
             <button className="btn-adjunto" onClick={() => setShowSelector(!showSelector)} disabled={!sesionActiva}>📎</button>
-            <textarea ref={inputRef} className="mesa-textarea"
+            <textarea
+              ref={inputRef}
+              className="mesa-textarea"
               placeholder={!sesionActiva ? 'Selecciona una sesión primero...' : !personajeActivo && modoEntrada !== 'narrador' ? 'Selecciona un personaje o escribe /narrador...' : modoEntrada === 'narrador' ? 'Narra lo que ocurre...' : modoEntrada === 'dialogo' ? `¿Qué dice ${personajeActivo?.nombre}?` : `¿Qué hace ${personajeActivo?.nombre}?`}
-              value={texto} onChange={handleTextoChange} onKeyDown={handleKeyDown} rows={2} disabled={!sesionActiva}
+              value={texto}
+              onChange={e => {
+                handleTextoChange(e)
+                emitirEscribiendo(true)
+                clearTimeout(timeoutEscribiendoRef.current)
+                timeoutEscribiendoRef.current = setTimeout(() => emitirEscribiendo(false), 2000)
+              }}
+              onKeyDown={handleKeyDown}
+              rows={2}
+              disabled={!sesionActiva}
             />
             <button className="btn-enviar" onClick={enviar} disabled={!sesionActiva}>↵</button>
           </div>
@@ -535,14 +637,13 @@ export default function Mesa({ navigate, selectedUniverso }) {
         ))}
       </div>
 
-      {/* Modal nueva sesión */}
       {showNuevaSesion && (
         <div className="modal-overlay" onClick={() => setShowNuevaSesion(false)}>
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
             <h3>Nueva sesión</h3>
             <div className="form-group" style={{ marginTop: '1rem' }}>
               <label>Nombre de la sesión</label>
-              <input placeholder="Día 1, Capítulo 1, La taberna..." value={nombreNuevaSesion} onChange={e => setNombreNuevaSesion(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCrearSesion()} autoFocus />
+              <input placeholder="Día 1, Capítulo 1..." value={nombreNuevaSesion} onChange={e => setNombreNuevaSesion(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCrearSesion()} autoFocus />
             </div>
             <div className="modal-actions">
               <button className="btn-ghost" onClick={() => setShowNuevaSesion(false)}>Cancelar</button>
@@ -552,7 +653,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
         </div>
       )}
 
-      {/* Modal confirmar borrar sesión */}
       {confirmDeleteSesion && (
         <div className="modal-overlay" onClick={() => setConfirmDeleteSesion(null)}>
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
@@ -566,7 +666,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
         </div>
       )}
 
-      {/* Modal invitar */}
       {showInvitar && (
         <div className="modal-overlay" onClick={() => setShowInvitar(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -601,12 +700,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
         </div>
       )}
 
-      {showChat && <ChatPrivado universo={selectedUniverso} personajes={personajes} userId={userId} onCerrar={() => setShowChat(false)} />}
-
-      {fichaPersonaje && (
-        <FichaPersonaje personaje={fichaPersonaje} userId={userId} onCerrar={() => setFichaPersonaje(null)} />
-      )}
-
       {editandoEntrada && (
         <div className="modal-overlay" onClick={() => setEditandoEntrada(null)}>
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
@@ -634,6 +727,9 @@ export default function Mesa({ navigate, selectedUniverso }) {
           </div>
         </div>
       )}
+
+      {fichaPersonaje && <FichaPersonaje personaje={fichaPersonaje} userId={userId} onCerrar={() => setFichaPersonaje(null)} />}
+      {showChat && <ChatPrivado universo={selectedUniverso} personajes={personajes} userId={userId} onCerrar={() => setShowChat(false)} />}
     </div>
   )
 }

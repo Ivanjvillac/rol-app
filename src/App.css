@@ -1888,3 +1888,60 @@ input, textarea, select {
 
 .detalle-tab:hover { color: var(--text); }
 .detalle-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ===== BUSCADOR HISTORIAL ===== */
+.buscador-historial {
+  display: flex;
+  align-items: center;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  max-width: 200px;
+}
+
+.buscador-historial input {
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 0.3rem 0.6rem;
+  font-size: 0.85rem;
+  outline: none;
+  width: 100%;
+}
+
+.buscador-historial input::placeholder { color: var(--text3); }
+
+.buscador-historial button {
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.buscador-historial button:hover { color: var(--text); }
+
+@media (max-width: 768px) {
+  .buscador-historial { max-width: 120px; }
+}
+
+/* ===== USUARIOS CONECTADOS ===== */
+.conectado-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  font-size: 0.9rem;
+  color: var(--text2);
+}
+
+.conectado-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2ecc71;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px #2ecc71;
+}
