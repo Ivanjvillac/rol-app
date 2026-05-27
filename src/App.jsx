@@ -72,7 +72,10 @@ export default function App() {
       setInvitacionToken(token)
       if (tokenUrl) window.history.replaceState({}, '', '/')
     }
-
+const paginaGuardada = sessionStorage.getItem('pagina_activa')
+const universoGuardado = sessionStorage.getItem('universo_activo')
+if (paginaGuardada) setPage(paginaGuardada)
+if (universoGuardado) setSelectedUniverso(JSON.parse(universoGuardado))
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setSession(session)
@@ -85,16 +88,22 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  const navigate = (p, universo = null) => {
-    setPage(p)
-    if (universo) setSelectedUniverso(universo)
+const navigate = (p, universo = null) => {
+  setPage(p)
+  if (universo) {
+    setSelectedUniverso(universo)
+    sessionStorage.setItem('universo_activo', JSON.stringify(universo))
   }
+  sessionStorage.setItem('pagina_activa', p)
+}
 
-  const cerrarSesion = async () => {
-    await supabase.auth.signOut()
-    setPage('home')
-    setSelectedUniverso(null)
-  }
+ const cerrarSesion = async () => {
+  await supabase.auth.signOut()
+  sessionStorage.removeItem('pagina_activa')
+  sessionStorage.removeItem('universo_activo')
+  setPage('home')
+  setSelectedUniverso(null)
+}
 
   if (session === undefined) {
     return (
