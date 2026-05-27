@@ -1694,3 +1694,197 @@ input, textarea, select {
   .perfil-card { flex-direction: column; gap: 1.5rem; padding: 1.5rem; }
   .perfil-avatar-section { align-self: center; }
 }
+
+/* ===== FICHA PERSONAJE ===== */
+.ficha-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  pointer-events: none;
+}
+
+.ficha-panel {
+  position: fixed;
+  top: 56px;
+  left: 240px;
+  width: 260px;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  pointer-events: all;
+  z-index: 400;
+  overflow: hidden;
+}
+
+.ficha-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg3);
+}
+
+.ficha-header-info {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.ficha-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.ficha-avatar-placeholder {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Cinzel', serif;
+  font-weight: 700;
+  color: white;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.ficha-body {
+  padding: 0.8rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.ficha-atributos {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.8rem;
+}
+
+.ficha-atributo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: var(--bg3);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.ficha-atributo-nombre {
+  flex: 1;
+  font-size: 0.82rem;
+  color: var(--text2);
+  font-family: 'Cinzel', serif;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ficha-atributo-valor {
+  font-size: 0.95rem;
+  color: var(--accent);
+  font-family: 'Cinzel', serif;
+  font-weight: 600;
+  min-width: 30px;
+  text-align: right;
+}
+
+.ficha-atributo-input {
+  width: 60px;
+  background: var(--bg4);
+  border: 1px solid var(--accent2);
+  color: var(--accent);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  text-align: right;
+}
+
+.ficha-delete-btn {
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0.1rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.ficha-atributo:hover .ficha-delete-btn { opacity: 1; }
+.ficha-delete-btn:hover { color: var(--danger); }
+
+.ficha-nuevo {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin-top: 0.5rem;
+  flex-wrap: nowrap;
+}
+
+.ficha-nuevo-nombre {
+  flex: 1;
+  min-width: 0;
+}
+
+.ficha-nuevo-valor {
+  flex: 0 0 70px;
+  min-width: 0;
+}
+@media (max-width: 768px) {
+ .ficha-panel {
+  position: fixed;
+  top: 56px;
+  left: 250px;
+  width: 280px;
+  max-width: calc(100vw - 260px);
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  pointer-events: all;
+  z-index: 400;
+  overflow: hidden;
+}
+}
+.ficha-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.2rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+  color: var(--text3);
+}
+
+.personaje-btn:hover .ficha-btn { opacity: 1; }
+.ficha-btn:hover { color: var(--accent); }
+
+.detalle-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+
+.detalle-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text2);
+  padding: 0.6rem;
+  font-family: 'Crimson Pro', serif;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  border-bottom: 2px solid transparent;
+}
+
+.detalle-tab:hover { color: var(--text); }
+.detalle-tab.active { color: var(--accent); border-bottom-color: var(--accent); }

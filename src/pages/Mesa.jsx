@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import SelectorImagenSticker from '../components/SelectorImagenSticker'
+import FichaPersonaje from '../components/FichaPersonaje'
 
 function ChatPrivado({ universo, personajes, userId, onCerrar }) {
   const [conversaciones, setConversaciones] = useState({})
@@ -148,6 +149,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [sidebarAbierto, setSidebarAbierto] = useState(false)
   const [editandoEntrada, setEditandoEntrada] = useState(null)
   const [confirmDeleteEntrada, setConfirmDeleteEntrada] = useState(null)
+  const [fichaPersonaje, setFichaPersonaje] = useState(null)
   const [sesionActiva, setSesionActiva] = useState(null)
   const [showNuevaSesion, setShowNuevaSesion] = useState(false)
   const [nombreNuevaSesion, setNombreNuevaSesion] = useState('')
@@ -242,13 +244,13 @@ export default function Mesa({ navigate, selectedUniverso }) {
     await addEntrada(selectedUniverso.id, { tipo, contenido: '', imagen_url: url, personaje: personajeActivo }, sesionActiva.id)
   }
 
+  const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }
+
   const handleEditarEntrada = async () => {
     if (!editandoEntrada) return
     await editarEntrada(editandoEntrada.id, editandoEntrada.contenido)
     setEditandoEntrada(null)
   }
-
-  const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }
   const formatHora = (ts) => { const d = new Date(ts); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` }
 
   const exportarSesion = () => {
@@ -266,17 +268,18 @@ export default function Mesa({ navigate, selectedUniverso }) {
     a.click()
   }
 
-const tirarDado = async (caras) => {
-  const resultado = Math.floor(Math.random() * caras) + 1
-  setResultadoDado({ caras, resultado })
-  if (sesionActiva) {
-    await addEntrada(selectedUniverso.id, {
-      tipo: 'dado',
-      contenido: `🎲 ${personajeActivo?.nombre || 'Narrador'} tiró d${caras} → **${resultado}**`,
-      personaje: personajeActivo
-    }, sesionActiva.id)
+  const tirarDado = async (caras) => {
+    const resultado = Math.floor(Math.random() * caras) + 1
+    setResultadoDado({ caras, resultado })
+    if (sesionActiva) {
+      await addEntrada(selectedUniverso.id, {
+        tipo: 'dado',
+        contenido: `🎲 ${personajeActivo?.nombre || 'Narrador'} tiró d${caras} → ${resultado}`,
+        personaje: personajeActivo
+      }, sesionActiva.id)
+    }
   }
-}
+
   const abrirInvitar = async () => {
     setShowInvitar(true)
     const invs = await getInvitaciones(selectedUniverso.id)
@@ -344,7 +347,8 @@ const tirarDado = async (caras) => {
 {personajes.filter(p => !p.es_npc).map(p => (
   <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) }}>
     {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
-    <div><span>{p.nombre}</span><small>{p.rol}</small></div>
+    <div style={{ flex: 1 }}><span>{p.nombre}</span><small>{p.rol}</small></div>
+    <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
   </div>
 ))}
 
@@ -355,7 +359,8 @@ const tirarDado = async (caras) => {
     {personajes.filter(p => p.es_npc).map(p => (
       <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) }}>
         {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
-        <div><span>{p.nombre}</span><small>🤖 {p.rol}</small></div>
+        <div style={{ flex: 1 }}><span>{p.nombre}</span><small>🤖 {p.rol}</small></div>
+        <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
       </div>
     ))}
   </>
@@ -475,17 +480,16 @@ const tirarDado = async (caras) => {
                   </div>
                 </div>
               )}
-               {e.tipo === 'dado' && (
+              {e.tipo === 'dado' && (
                 <div className="entrada-dado">
                   <span className="entrada-dado-icono">🎲</span>
                   <div className="entrada-dado-contenido">
                     {e.personaje_nombre && <span style={{ color: e.personaje_color, fontFamily: 'Cinzel, serif', fontSize: '0.8rem' }}>{e.personaje_nombre}</span>}
-                    <span>{e.contenido.replace(/\*\*/g, '')}</span>
+                    <span>{e.contenido}</span>
                   </div>
                   <span className="entrada-hora">{formatHora(e.timestamp)}</span>
                 </div>
               )}
-            
             </div>
           ))}
         </div>
@@ -599,17 +603,16 @@ const tirarDado = async (caras) => {
 
       {showChat && <ChatPrivado universo={selectedUniverso} personajes={personajes} userId={userId} onCerrar={() => setShowChat(false)} />}
 
+      {fichaPersonaje && (
+        <FichaPersonaje personaje={fichaPersonaje} userId={userId} onCerrar={() => setFichaPersonaje(null)} />
+      )}
+
       {editandoEntrada && (
         <div className="modal-overlay" onClick={() => setEditandoEntrada(null)}>
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
             <h3>Editar mensaje</h3>
             <div className="form-group" style={{ marginTop: '1rem' }}>
-              <textarea
-                className="notas-textarea"
-                rows={4}
-                value={editandoEntrada.contenido}
-                onChange={e => setEditandoEntrada(prev => ({ ...prev, contenido: e.target.value }))}
-              />
+              <textarea className="notas-textarea" rows={4} value={editandoEntrada.contenido} onChange={e => setEditandoEntrada(prev => ({ ...prev, contenido: e.target.value }))} />
             </div>
             <div className="modal-actions">
               <button className="btn-ghost" onClick={() => setEditandoEntrada(null)}>Cancelar</button>

@@ -5,14 +5,84 @@ import { supabase } from '../lib/supabase'
 const COLORES = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#1abc9c', '#3498db', '#9b59b6', '#e91e63']
 const ROLES = ['Guerrero', 'Mago', 'Pícaro', 'Clérigo', 'Explorador', 'Bardo', 'Narrador', 'Otro']
 
+function FichaInline({ personajeId, userId, esMio }) {
+  const [atributos, setAtributos] = useState([])
+  const [nuevoNombre, setNuevoNombre] = useState('')
+  const [nuevoValor, setNuevoValor] = useState('')
+  const [editando, setEditando] = useState(null)
+
+  useEffect(() => {
+    supabase.from('atributos').select('*').eq('personaje_id', personajeId).order('orden')
+      .then(({ data }) => setAtributos(data || []))
+  }, [personajeId])
+
+  const agregar = async () => {
+    if (!nuevoNombre.trim() || !nuevoValor.trim()) return
+    const { data } = await supabase.from('atributos')
+      .insert({ personaje_id: personajeId, nombre: nuevoNombre.trim(), valor: nuevoValor.trim(), orden: atributos.length })
+      .select().single()
+    if (data) { setAtributos(prev => [...prev, data]); setNuevoNombre(''); setNuevoValor('') }
+  }
+
+  const actualizar = async (id, valor) => {
+    await supabase.from('atributos').update({ valor }).eq('id', id)
+    setAtributos(prev => prev.map(a => a.id === id ? { ...a, valor } : a))
+    setEditando(null)
+  }
+
+  const eliminar = async (id) => {
+    await supabase.from('atributos').delete().eq('id', id)
+    setAtributos(prev => prev.filter(a => a.id !== id))
+  }
+
+  return (
+    <div>
+      <div className="ficha-atributos">
+        {atributos.map(a => (
+          <div key={a.id} className="ficha-atributo">
+            <span className="ficha-atributo-nombre">{a.nombre}</span>
+            {editando === a.id
+              ? <input className="ficha-atributo-input" defaultValue={a.valor} autoFocus
+                  onBlur={e => actualizar(a.id, e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && actualizar(a.id, e.target.value)} />
+              : <span className="ficha-atributo-valor" onClick={() => esMio && setEditando(a.id)}
+                  style={{ cursor: esMio ? 'pointer' : 'default' }}>{a.valor}</span>
+            }
+            {esMio && <button className="ficha-delete-btn" onClick={() => eliminar(a.id)}>✕</button>}
+          </div>
+        ))}
+        {atributos.length === 0 && (
+          <p style={{ color: 'var(--text3)', fontStyle: 'italic', fontSize: '0.9rem' }}>Sin atributos todavía.</p>
+        )}
+      </div>
+      {esMio && (
+        <div className="ficha-nuevo" style={{ marginTop: '1rem' }}>
+          <input placeholder="Atributo" value={nuevoNombre} onChange={e => setNuevoNombre(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && agregar()} className="ficha-nuevo-nombre" />
+          <input placeholder="Valor" value={nuevoValor} onChange={e => setNuevoValor(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && agregar()} className="ficha-nuevo-valor" />
+          <button className="btn-primary btn-sm" onClick={agregar}>+</button>
+        </div>
+      )}
+      {esMio && atributos.length > 0 && (
+        <p style={{ fontSize: '0.75rem', color: 'var(--text3)', marginTop: '0.5rem', fontStyle: 'italic' }}>
+          Haz clic en un valor para editarlo
+        </p>
+      )}
+    </div>
+  )
+}
+
 function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userId }) {
   const [notas, setNotas] = useState('')
   const [guardando, setGuardando] = useState(false)
   const [guardado, setGuardado] = useState(false)
+  const [pestana, setPestana] = useState('notas')
 
   useEffect(() => {
     const cargar = async () => {
-      const { data } = await supabase.from('notas_privadas').select('contenido').eq('personaje_id', personaje.id).eq('user_id', userId).single()
+      const { data } = await supabase.from('notas_privadas').select('contenido')
+        .eq('personaje_id', personaje.id).eq('user_id', userId).single()
       if (data) setNotas(data.contenido || '')
     }
     cargar()
@@ -35,8 +105,10 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
             : <div className="detalle-avatar-placeholder" style={{ background: personaje.color }}>{personaje.iniciales}</div>
           }
           <div>
-            <div className="card-badge">{personaje.rol}</div>
-            {personaje.es_npc && <div className="card-badge" style={{ marginLeft: '0.3rem', background: 'rgba(52,152,219,0.15)', borderColor: '#3498db', color: '#3498db' }}>NPC</div>}
+            <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+              <div className="card-badge">{personaje.rol}</div>
+              {personaje.es_npc && <div className="card-badge" style={{ background: 'rgba(52,152,219,0.15)', borderColor: '#3498db', color: '#3498db' }}>NPC</div>}
+            </div>
             <h2 style={{ fontFamily: 'Cinzel, serif', color: 'var(--accent)', marginTop: '0.3rem' }}>{personaje.nombre}</h2>
             {universo && (
               <div className="personaje-universo" style={{ marginTop: '0.3rem' }}>
@@ -47,23 +119,40 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
           </div>
           <button className="detalle-cerrar" onClick={onCerrar}>✕</button>
         </div>
-        {personaje.descripcion && (
+
+        <div className="detalle-tabs">
+          <button className={pestana === 'notas' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('notas')}>📋 Notas</button>
+          <button className={pestana === 'ficha' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('ficha')}>⚔️ Ficha</button>
+        </div>
+
+        {pestana === 'notas' && (
+          <>
+            {personaje.descripcion && (
+              <div className="detalle-seccion">
+                <h4>Descripción</h4>
+                <p style={{ color: 'var(--text2)', fontStyle: 'italic', lineHeight: '1.6' }}>{personaje.descripcion}</p>
+              </div>
+            )}
+            <div className="detalle-seccion">
+              <h4>Notas privadas</h4>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text3)', marginBottom: '0.6rem' }}>Solo tú puedes ver estas notas.</p>
+              <textarea className="notas-textarea" placeholder="Escribe aquí los secretos, motivaciones, historia personal..." value={notas} onChange={e => setNotas(e.target.value)} rows={10} />
+            </div>
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={onCerrar}>Cerrar</button>
+              <button className="btn-primary" onClick={handleGuardar} disabled={guardando}>
+                {guardado ? '✓ Guardado' : guardando ? 'Guardando...' : 'Guardar notas'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {pestana === 'ficha' && (
           <div className="detalle-seccion">
-            <h4>Descripción</h4>
-            <p style={{ color: 'var(--text2)', fontStyle: 'italic', lineHeight: '1.6' }}>{personaje.descripcion}</p>
+            <h4>Atributos</h4>
+            <FichaInline personajeId={personaje.id} userId={userId} esMio={personaje.user_id === userId} />
           </div>
         )}
-        <div className="detalle-seccion">
-          <h4>Notas privadas</h4>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text3)', marginBottom: '0.6rem' }}>Solo tú puedes ver estas notas.</p>
-          <textarea className="notas-textarea" placeholder="Escribe aquí los secretos, motivaciones, historia personal..." value={notas} onChange={e => setNotas(e.target.value)} rows={10} />
-        </div>
-        <div className="modal-actions">
-          <button className="btn-ghost" onClick={onCerrar}>Cerrar</button>
-          <button className="btn-primary" onClick={handleGuardar} disabled={guardando}>
-            {guardado ? '✓ Guardado' : guardando ? 'Guardando...' : 'Guardar notas'}
-          </button>
-        </div>
       </div>
     </div>
   )
@@ -94,22 +183,14 @@ export default function Personajes({ navigate, selectedUniverso }) {
   const npcs = personajesFiltrados.filter(p => p.es_npc)
 
   const abrirNuevo = () => {
-    setEditando(null)
-    setAvatarPreview(null)
-    setAvatarFile(null)
+    setEditando(null); setAvatarPreview(null); setAvatarFile(null)
     setForm({ nombre: '', rol: 'Guerrero', descripcion: '', color: COLORES[0], universoId: selectedUniverso?.id || '', avatar_url: '', es_npc: false })
     setShowForm(true)
   }
 
   const abrirEditar = (p) => {
-    setEditando(p)
-    setAvatarPreview(p.avatar_url || null)
-    setAvatarFile(null)
-    setForm({
-      nombre: p.nombre, rol: p.rol || 'Guerrero', descripcion: p.descripcion || '',
-      color: p.color || COLORES[0], universoId: p.universo_id || p.universoId || '',
-      avatar_url: p.avatar_url || '', es_npc: p.es_npc || false
-    })
+    setEditando(p); setAvatarPreview(p.avatar_url || null); setAvatarFile(null)
+    setForm({ nombre: p.nombre, rol: p.rol || 'Guerrero', descripcion: p.descripcion || '', color: p.color || COLORES[0], universoId: p.universo_id || p.universoId || '', avatar_url: p.avatar_url || '', es_npc: p.es_npc || false })
     setShowForm(true)
   }
 
@@ -291,7 +372,13 @@ export default function Personajes({ navigate, selectedUniverso }) {
       )}
 
       {verDetalle && (
-        <DetallePersonaje personaje={verDetalle} universo={universoDePersonaje(verDetalle.universo_id || verDetalle.universoId)} onCerrar={() => setVerDetalle(null)} onGuardarNotas={handleGuardarNotas} userId={userId} />
+        <DetallePersonaje
+          personaje={verDetalle}
+          universo={universoDePersonaje(verDetalle.universo_id || verDetalle.universoId)}
+          onCerrar={() => setVerDetalle(null)}
+          onGuardarNotas={handleGuardarNotas}
+          userId={userId}
+        />
       )}
 
       <h3 style={{ fontFamily: 'Cinzel, serif', color: 'var(--text2)', fontSize: '0.9rem', margin: '0.5rem 0', letterSpacing: '0.05em' }}>👤 Personajes jugadores</h3>
