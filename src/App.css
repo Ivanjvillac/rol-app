@@ -1945,3 +1945,62 @@ input, textarea, select {
   flex-shrink: 0;
   box-shadow: 0 0 6px #2ecc71;
 }
+/* ===== ESCRIBIENDO ===== */
+.escribiendo-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 1.2rem;
+  font-size: 0.82rem;
+  color: var(--text3);
+  font-style: italic;
+}
+
+.escribiendo-dots {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.escribiendo-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text3);
+  animation: bounce 1.2s infinite;
+}
+
+.escribiendo-dots span:nth-child(2) { animation-delay: 0.2s; }
+.escribiendo-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes bounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-4px); }
+}
+/* ===== SPOTIFY ===== */
+.spotify-bar {
+  position: relative;
+  border-top: 1px solid var(--border);
+  background: var(--bg2);
+  flex-shrink: 0;
+}
+
+.spotify-cerrar {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: var(--bg3);
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  font-size: 0.8rem;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.spotify-cerrar:hover { color: var(--text); background: var(--bg4); }
