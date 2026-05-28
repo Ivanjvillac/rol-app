@@ -3,6 +3,19 @@ import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import SelectorImagenSticker from '../components/SelectorImagenSticker'
 import FichaPersonaje from '../components/FichaPersonaje'
+const renderTexto = (texto) => {
+  if (!texto) return null
+  const partes = texto.split(/(\*\*[^*]+\*\*|__[^_]+__|_[^_]+_|\*[^*]+\*)/g)
+  return partes.map((parte, i) => {
+    if (parte.startsWith('**') && parte.endsWith('**'))
+      return <strong key={i}>{parte.slice(2, -2)}</strong>
+    if (parte.startsWith('__') && parte.endsWith('__'))
+      return <u key={i}>{parte.slice(2, -2)}</u>
+    if ((parte.startsWith('_') && parte.endsWith('_')) || (parte.startsWith('*') && parte.endsWith('*')))
+      return <em key={i}>{parte.slice(1, -1)}</em>
+    return parte
+  })
+}
 
 function ChatPrivado({ universo, personajes, userId, onCerrar }) {
   const [conversaciones, setConversaciones] = useState({})
@@ -141,6 +154,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [showSelector, setShowSelector] = useState(false)
   const [emailInvitar, setEmailInvitar] = useState('')
   const [invitaciones, setInvitaciones] = useState([])
+  const [miembrosUniverso, setMiembrosUniverso] = useState([])
   const [msgInvitar, setMsgInvitar] = useState(null)
   const [enviando, setEnviando] = useState(false)
   const [resultadoDado, setResultadoDado] = useState(null)
@@ -163,14 +177,17 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [otrosEscribiendo, setOtrosEscribiendo] = useState([])
   const [mostrarIrAbajo, setMostrarIrAbajo] = useState(false)
   const [showMusica, setShowMusica] = useState(false)
-  const [spotifyUrl, setSpotifyUrl] = useState('')
-  const [spotifyEmbed, setSpotifyEmbed] = useState(null)
+  const [youtubeUrl, setYoutubeUrl] = useState('')
+  const [youtubeEmbed, setYoutubeEmbed] = useState(null)
   const historialRef = useRef(null)
   const inputRef = useRef(null)
   const timeoutEscribiendoRef = useRef(null)
   const canalEscribiendoRef = useRef(null)
 
-  const personajes = selectedUniverso ? getPersonajesDeUniverso(selectedUniverso.id) : []
+  const [sesionesConMiembros, setSesionesConMiembros] = useState([])
+
+  const personajesTodos = selectedUniverso ? getPersonajesDeUniverso(selectedUniverso.id) : []
+  const personajes = personajesTodos.filter(p => !p.oculto || p.user_id === userId)
   const sesionCompleta = sesionActiva ? getSesion(sesionActiva.id) : []
   const sesion = busqueda.trim()
     ? sesionCompleta.filter(e =>
@@ -179,11 +196,25 @@ export default function Mesa({ navigate, selectedUniverso }) {
       )
     : sesionCompleta
   const esDueno = selectedUniverso ? esPropietario(selectedUniverso.id) : false
-  const sesiones = selectedUniverso ? (listaSesiones[selectedUniverso.id] || []) : []
+  const sesiones = sesionesConMiembros.filter(s =>
+    !s.es_privada || s.user_id === userId || (s.miembros || []).includes(userId)
+  )
 
   useEffect(() => {
     if (!selectedUniverso) return
-    cargarListaSesiones(selectedUniverso.id)
+    const cargarSesionesConMiembros = async () => {
+      const { data: sesData } = await supabase
+        .from('sesiones')
+        .select('*, sesion_miembros(user_id)')
+        .eq('universo_id', selectedUniverso.id)
+        .order('created_at')
+      const sesFormateadas = (sesData || []).map(s => ({
+        ...s,
+        miembros: (s.sesion_miembros || []).map(m => m.user_id)
+      }))
+      setSesionesConMiembros(sesFormateadas)
+    }
+    cargarSesionesConMiembros()
   }, [selectedUniverso?.id])
 
   useEffect(() => {
@@ -323,8 +354,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
     if (!t) return
     let entrada = null
     if (t.startsWith('/')) { entrada = procesarComando(t); if (!entrada) return }
-    else if (modoEntrada === 'narrador') entrada = { tipo: 'narrador', contenido: t, personaje: null }
-    else if (!personajeActivo) return
+    else if (modoEntrada === 'narrador' || !personajeActivo) entrada = { tipo: 'narrador', contenido: t, personaje: null }
     else entrada = { tipo: modoEntrada, contenido: t, personaje: personajeActivo }
     await addEntrada(selectedUniverso.id, entrada, sesionActiva.id)
     setTexto(''); setComandoSugerido(null)
@@ -339,6 +369,25 @@ export default function Mesa({ navigate, selectedUniverso }) {
   }
 
   const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }
+
+  const insertarFormato = (tipo) => {
+    const ta = inputRef.current
+    if (!ta) return
+    const start = ta.selectionStart
+    const end = ta.selectionEnd
+    const seleccion = texto.slice(start, end)
+    let antes, despues
+    if (tipo === 'negrita') { antes = '**'; despues = '**' }
+    else if (tipo === 'cursiva') { antes = '*'; despues = '*' }
+    else if (tipo === 'subrayado') { antes = '__'; despues = '__' }
+    const nuevoTexto = texto.slice(0, start) + antes + seleccion + despues + texto.slice(end)
+    setTexto(nuevoTexto)
+    setTimeout(() => {
+      ta.focus()
+      const pos = seleccion ? start + antes.length + seleccion.length + despues.length : start + antes.length
+      ta.setSelectionRange(pos, pos)
+    }, 0)
+  }
 
   const handleEditarEntrada = async () => {
     if (!editandoEntrada) return
@@ -377,8 +426,63 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
   const abrirInvitar = async () => {
     setShowInvitar(true)
+    setMsgInvitar(null)
+    setEmailInvitar('')
     const invs = await getInvitaciones(selectedUniverso.id)
     setInvitaciones(invs)
+    // Cargar miembros actuales del universo
+    const { data: mbs } = await supabase.from('miembros').select('user_id').eq('universo_id', selectedUniverso.id)
+    const ids = (mbs || []).map(m => m.user_id)
+    if (ids.length > 0) {
+      const { data: perfs } = await supabase.from('perfiles').select('id, nombre').in('id', ids)
+      setMiembrosUniverso(perfs || [])
+    } else {
+      setMiembrosUniverso([])
+    }
+  }
+
+  const handleAñadirDirecto = async () => {
+    const email = emailInvitar.trim()
+    if (!email) return
+    setEnviando(true); setMsgInvitar(null)
+
+    // Buscar usuario por email via RPC (accede a auth.users)
+    const { data: usuarioData, error } = await supabase
+      .rpc('buscar_usuario_por_email', { email_input: email })
+
+    const perfil = usuarioData?.[0] || null
+
+    if (error || !perfil) {
+      // No existe en la app — generar enlace de invitación normal
+      const { data, error: errInv } = await invitarUsuario(selectedUniverso.id, email)
+      if (errInv) {
+        setMsgInvitar({ tipo: 'error', texto: 'Error al crear la invitación.' })
+      } else {
+        const link = `${window.location.origin}?invitacion=${data.token}`
+        setMsgInvitar({ tipo: 'ok', texto: 'Este email no está registrado todavía. Enlace generado para que se una:', link })
+        setEmailInvitar('')
+        const invs = await getInvitaciones(selectedUniverso.id)
+        setInvitaciones(invs)
+      }
+    } else {
+      // Usuario existe — añadir directamente como miembro
+      const yaMiembro = miembrosUniverso.some(m => m.id === perfil.id) || perfil.id === userId
+      if (yaMiembro) {
+        setMsgInvitar({ tipo: 'error', texto: `${perfil.nombre || email} ya es miembro de este universo.` })
+      } else {
+        const { error: errMb } = await supabase
+          .from('miembros')
+          .insert({ universo_id: selectedUniverso.id, user_id: perfil.id })
+        if (errMb) {
+          setMsgInvitar({ tipo: 'error', texto: 'Error al añadir el jugador.' })
+        } else {
+          setMiembrosUniverso(prev => [...prev, { id: perfil.id, nombre: perfil.nombre || email }])
+          setMsgInvitar({ tipo: 'ok', texto: `✓ ${perfil.nombre || email} añadido al universo correctamente.` })
+          setEmailInvitar('')
+        }
+      }
+    }
+    setEnviando(false)
   }
 
   const handleInvitar = async () => {
@@ -395,17 +499,31 @@ export default function Mesa({ navigate, selectedUniverso }) {
     setEnviando(false)
   }
 
-  const cargarSpotify = () => {
-    if (!spotifyUrl.trim()) return
-    const url = spotifyUrl.replace('open.spotify.com/', 'open.spotify.com/embed/')
-    setSpotifyEmbed(url)
-    setShowMusica(false)
+  const cargarYoutube = () => {
+    const url = youtubeUrl.trim()
+    if (!url) return
+    let videoId = null
+    let listId = null
+    try {
+      const u = new URL(url)
+      if (u.hostname.includes('youtube.com')) { videoId = u.searchParams.get('v'); listId = u.searchParams.get('list') }
+      if (u.hostname === 'youtu.be') { videoId = u.pathname.slice(1); listId = u.searchParams.get('list') }
+      if (!videoId && u.searchParams.get('list')) listId = u.searchParams.get('list')
+    } catch {}
+    let embedUrl = null
+    if (listId && videoId) embedUrl = `https://www.youtube.com/embed/${videoId}?list=${listId}&autoplay=1&loop=1`
+    else if (listId) embedUrl = `https://www.youtube.com/embed/videoseries?list=${listId}&autoplay=1&loop=1`
+    else if (videoId) embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&loop=1&playlist=${videoId}`
+    if (embedUrl) { setYoutubeEmbed(embedUrl); setShowMusica(false) }
   }
 
   const handleCrearSesion = async () => {
     if (!nombreNuevaSesion.trim()) return
     const { data } = await crearSesion(selectedUniverso.id, nombreNuevaSesion.trim(), sesionPrivada, miembrosPrivados, padreSesion?.id || null)
-    if (data) setSesionActiva(data)
+    if (data) {
+      setSesionActiva(data)
+      setSesionesConMiembros(prev => [...prev, { ...data, miembros: sesionPrivada ? [userId, ...miembrosPrivados] : [] }])
+    }
     setNombreNuevaSesion('')
     setSesionPrivada(false)
     setMiembrosPrivados([])
@@ -417,6 +535,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
     if (!confirmDeleteSesion) return
     await eliminarSesion(confirmDeleteSesion.id, selectedUniverso.id)
     if (sesionActiva?.id === confirmDeleteSesion.id) setSesionActiva(null)
+    setSesionesConMiembros(prev => prev.filter(s => s.id !== confirmDeleteSesion.id))
     setConfirmDeleteSesion(null)
   }
 
@@ -527,6 +646,22 @@ export default function Mesa({ navigate, selectedUniverso }) {
           </button>
           {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirInvitar}>✉️ Invitar jugador</button>}
           <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMusica(true)}>🎵 Música</button>
+          {youtubeEmbed && (
+            <div style={{ marginTop: '0.6rem', borderRadius: 'var(--radius)', overflow: 'hidden', position: 'relative' }}>
+              <iframe
+                src={youtubeEmbed}
+                width="100%"
+                height="52"
+                frameBorder="0"
+                allow="autoplay; encrypted-media"
+                style={{ display: 'block' }}
+              />
+              <button
+                onClick={() => { setYoutubeEmbed(null); setYoutubeUrl('') }}
+                style={{ position: 'absolute', top: '2px', right: '2px', background: 'rgba(0,0,0,0.6)', border: 'none', color: 'white', borderRadius: '3px', padding: '1px 5px', fontSize: '0.7rem', cursor: 'pointer', lineHeight: 1.4 }}
+              >✕</button>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -559,7 +694,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
               {e.tipo === 'narrador' && (
                 <div className="entrada-narrador">
                   <span className="entrada-label">📖 Narrador</span>
-                  {e.contenido && <p>{e.contenido}</p>}
+                  {e.contenido && <p>{renderTexto(e.contenido)}</p>}
                   {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '240px', borderRadius: '8px', marginTop: '0.4rem', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
                   <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
                   {e.user_id === userId && (
@@ -575,7 +710,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   {e.personaje?.avatar_url ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" /> : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>}
                   <div className="entrada-burbuja">
                     <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
-                    {e.contenido && <p>"{e.contenido}"</p>}
+                    {e.contenido && <p>"{renderTexto(e.contenido)}"</p>}
                     {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => window.open(e.imagen_url, '_blank')} />}
                     <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
                     {e.user_id === userId && (
@@ -592,7 +727,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   {e.personaje?.avatar_url ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" /> : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>}
                   <div className="entrada-accion-texto">
                     <span style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
-                    {e.contenido && <em> {e.contenido}</em>}
+                    {e.contenido && <em> {renderTexto(e.contenido)}</em>}
                     {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '220px', borderRadius: '8px', marginTop: '0.4rem', display: 'block', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
                     <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
                     {e.user_id === userId && (
@@ -635,12 +770,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
         {mostrarIrAbajo && <button className="btn-ir-abajo" onClick={irAbajo}>↓</button>}
 
-        {spotifyEmbed && (
-          <div className="spotify-bar">
-            <iframe src={spotifyEmbed} width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" />
-            <button className="spotify-cerrar" onClick={() => setSpotifyEmbed(null)}>✕</button>
-          </div>
-        )}
 
         <div className="mesa-input-bar">
           <div className="input-contexto">
@@ -652,6 +781,11 @@ export default function Mesa({ navigate, selectedUniverso }) {
             }
             <span className="input-modo">{!personajeActivo ? 'Narrador' : `${personajeActivo.nombre} · ${modoEntrada === 'dialogo' ? 'Diálogo' : 'Acción'}`}</span>
             {!sesionActiva && <span style={{ color: 'var(--danger)', fontSize: '0.8rem', marginLeft: 'auto' }}>⚠ Selecciona una sesión</span>}
+          </div>
+          <div className="formato-bar">
+            <button type="button" className="formato-btn" onClick={() => insertarFormato('negrita')} title="Negrita"><strong>B</strong></button>
+            <button type="button" className="formato-btn" onClick={() => insertarFormato('cursiva')} title="Cursiva"><em>I</em></button>
+            <button type="button" className="formato-btn" onClick={() => insertarFormato('subrayado')} title="Subrayado"><u>S</u></button>
           </div>
           <div className="input-row" style={{ position: 'relative' }}>
             {showSelector && <SelectorImagenSticker userId={userId} onEnviarImagen={enviarImagen} onEnviarSticker={enviarImagen} onCerrar={() => setShowSelector(false)} />}
@@ -753,34 +887,70 @@ export default function Mesa({ navigate, selectedUniverso }) {
       )}
 
       {showInvitar && (
-        <div className="modal-overlay" onClick={() => setShowInvitar(false)}>
+        <div className="modal-overlay" onClick={() => { setShowInvitar(false); setMsgInvitar(null) }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <h3>Invitar jugador</h3>
-            <p style={{ color: 'var(--text2)', fontSize: '0.95rem', marginBottom: '1.2rem' }}>Genera un enlace para unirse a <strong>{selectedUniverso.nombre}</strong>.</p>
-            <div className="form-group">
-              <label>Email del jugador (opcional)</label>
-              <input placeholder="jugador@email.com" value={emailInvitar} onChange={e => setEmailInvitar(e.target.value)} />
-            </div>
-            {msgInvitar && (
-              <div className={msgInvitar.tipo === 'ok' ? 'auth-mensaje' : 'auth-error'} style={{ marginBottom: '1rem' }}>
-                {msgInvitar.texto}
-                {msgInvitar.link && <input readOnly value={msgInvitar.link} style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text)', padding: '0.4rem 0.7rem', borderRadius: '6px', fontSize: '0.8rem', marginTop: '0.5rem' }} onClick={e => e.target.select()} />}
-              </div>
-            )}
-            {invitaciones.length > 0 && (
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Invitaciones anteriores</label>
-                {invitaciones.map(inv => (
-                  <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text2)', padding: '0.3rem 0', borderBottom: '1px solid var(--border)' }}>
-                    <span>{inv.email || 'Sin email'}</span>
-                    <span style={{ color: inv.estado === 'aceptada' ? '#2ecc71' : 'var(--text3)' }}>{inv.estado}</span>
+            <h3>👥 Gestionar jugadores</h3>
+
+            {/* Miembros actuales */}
+            {miembrosUniverso.length > 0 && (
+              <div style={{ marginBottom: '1.2rem' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '0.5rem' }}>Miembros actuales</label>
+                {miembrosUniverso.map(m => (
+                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 0', borderBottom: '1px solid var(--border)' }}>
+                    <span className="conectado-dot" />
+                    <span style={{ fontSize: '0.9rem', color: 'var(--text2)' }}>{m.nombre || m.id.slice(0, 8)}</span>
                   </div>
                 ))}
               </div>
             )}
+
+            {/* Añadir jugador */}
+            <div className="form-group" style={{ marginBottom: '0.6rem' }}>
+              <label>Añadir jugador por email</label>
+              <input
+                placeholder="jugador@email.com"
+                value={emailInvitar}
+                onChange={e => { setEmailInvitar(e.target.value); setMsgInvitar(null) }}
+                onKeyDown={e => e.key === 'Enter' && !enviando && handleAñadirDirecto()}
+                autoFocus
+              />
+            </div>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text3)', marginBottom: '1rem', fontStyle: 'italic' }}>
+              Si el jugador ya tiene cuenta se añade directamente. Si no, se genera un enlace de invitación.
+            </p>
+
+            {msgInvitar && (
+              <div className={msgInvitar.tipo === 'ok' ? 'auth-mensaje' : 'auth-error'} style={{ marginBottom: '1rem' }}>
+                {msgInvitar.texto}
+                {msgInvitar.link && (
+                  <input
+                    readOnly
+                    value={msgInvitar.link}
+                    style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text)', padding: '0.4rem 0.7rem', borderRadius: '6px', fontSize: '0.8rem', marginTop: '0.5rem', cursor: 'text' }}
+                    onClick={e => { e.target.select(); navigator.clipboard?.writeText(e.target.value) }}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Invitaciones pendientes */}
+            {invitaciones.filter(i => i.estado === 'pendiente').length > 0 && (
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '0.4rem' }}>Invitaciones pendientes</label>
+                {invitaciones.filter(i => i.estado === 'pendiente').map(inv => (
+                  <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text2)', padding: '0.3rem 0', borderBottom: '1px solid var(--border)' }}>
+                    <span>{inv.email || 'Sin email'}</span>
+                    <span style={{ color: 'var(--accent)', fontSize: '0.8rem' }}>pendiente</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="modal-actions">
-              <button className="btn-ghost" onClick={() => setShowInvitar(false)}>Cerrar</button>
-              <button className="btn-primary" onClick={handleInvitar} disabled={enviando}>{enviando ? 'Generando...' : 'Generar enlace'}</button>
+              <button className="btn-ghost" onClick={() => { setShowInvitar(false); setMsgInvitar(null) }}>Cerrar</button>
+              <button className="btn-primary" onClick={handleAñadirDirecto} disabled={enviando || !emailInvitar.trim()}>
+                {enviando ? 'Añadiendo...' : '＋ Añadir jugador'}
+              </button>
             </div>
           </div>
         </div>
@@ -822,26 +992,29 @@ export default function Mesa({ navigate, selectedUniverso }) {
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
             <h3>🎵 Música de fondo</h3>
             <p style={{ color: 'var(--text2)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-              Pega una URL de Spotify (canción, álbum o playlist).
+              Pega una URL de YouTube (vídeo, playlist o mix).
             </p>
             <div className="form-group">
-              <label>URL de Spotify</label>
+              <label>URL de YouTube</label>
               <input
-                placeholder="https://open.spotify.com/playlist/..."
-                value={spotifyUrl}
-                onChange={e => setSpotifyUrl(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && cargarSpotify()}
+                placeholder="https://www.youtube.com/watch?v=... o youtu.be/..."
+                value={youtubeUrl}
+                onChange={e => setYoutubeUrl(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && cargarYoutube()}
                 autoFocus
               />
             </div>
-            {spotifyEmbed && (
-              <button className="btn-danger btn-sm" style={{ marginBottom: '0.5rem' }} onClick={() => { setSpotifyEmbed(null); setSpotifyUrl(''); setShowMusica(false) }}>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text3)', marginBottom: '1rem', fontStyle: 'italic' }}>
+              Busca "fantasy ambient music", "RPG battle music" o "D&D tavern music" en YouTube.
+            </p>
+            {youtubeEmbed && (
+              <button className="btn-danger btn-sm" style={{ marginBottom: '0.5rem' }} onClick={() => { setYoutubeEmbed(null); setYoutubeUrl(''); setShowMusica(false) }}>
                 Quitar música
               </button>
             )}
             <div className="modal-actions">
               <button className="btn-ghost" onClick={() => setShowMusica(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={cargarSpotify}>Cargar</button>
+              <button className="btn-primary" onClick={cargarYoutube} disabled={!youtubeUrl.trim()}>Cargar</button>
             </div>
           </div>
         </div>

@@ -13,12 +13,51 @@ export function AppProvider({ userId, children }) {
     if (!userId) return
     const cargar = async () => {
       setCargando(true)
-      const [{ data: u }, { data: p }] = await Promise.all([
-        supabase.from('universos').select('*').order('created_at'),
-        supabase.from('personajes').select('*').order('created_at'),
-      ])
-      setUniversos(u || [])
-      setPersonajes(p || [])
+
+      // 1. Universos propios (creados por el usuario)
+      const { data: uPropios } = await supabase
+        .from('universos')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at')
+
+      // 2. Universos donde el usuario es miembro (invitado)
+      const { data: membresias } = await supabase
+        .from('miembros')
+        .select('universo_id')
+        .eq('user_id', userId)
+
+      const idsPropios = (uPropios || []).map(u => u.id)
+      const idsAjenos = (membresias || [])
+        .map(m => m.universo_id)
+        .filter(id => !idsPropios.includes(id))
+
+      let uAjenos = []
+      if (idsAjenos.length > 0) {
+        const { data } = await supabase
+          .from('universos')
+          .select('*')
+          .in('id', idsAjenos)
+          .order('created_at')
+        uAjenos = data || []
+      }
+
+      const todosUniversos = [...(uPropios || []), ...uAjenos]
+      setUniversos(todosUniversos)
+
+      // 3. Personajes de todos los universos accesibles
+      const todosIds = todosUniversos.map(u => u.id)
+      let todosPersonajes = []
+      if (todosIds.length > 0) {
+        const { data: p } = await supabase
+          .from('personajes')
+          .select('*')
+          .in('universo_id', todosIds)
+          .order('created_at')
+        todosPersonajes = p || []
+      }
+      setPersonajes(todosPersonajes)
+
       setCargando(false)
     }
     cargar()
@@ -134,7 +173,6 @@ const eliminarSesion = async (sesionId, universoId) => {
 }
 
 const cargarSesion = async (sesionId) => {
-  if (sesiones[sesionId]) return
   const { data } = await supabase
     .from('entradas')
     .select('*')
@@ -174,9 +212,10 @@ const getSesion = (sesionId) => sesiones[sesionId] || []
     })
     .select()
   if (!error && data?.length > 0) {
+    const key = sesionId || universoId
     setSesiones(prev => ({
       ...prev,
-      [universoId]: [...(prev[universoId] || []), formatearEntrada(data[0])]
+      [key]: [...(prev[key] || []), formatearEntrada(data[0])]
     }))
   }
 }

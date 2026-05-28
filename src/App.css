@@ -2113,3 +2113,40 @@ input, textarea, select {
   border-left: 2px solid var(--border2);
   margin-left: 0.5rem;
 }
+/* ===== FORMATO BAR ===== */
+.formato-bar {
+  display: flex;
+  gap: 0.3rem;
+  margin-bottom: 0.3rem;
+}
+
+.formato-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.formato-btn:hover {
+  background: var(--accent-glow);
+  border-color: var(--accent2);
+  color: var(--accent);
+}
+
+.entrada-markdown p {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.entrada-markdown strong { color: var(--text); }
+.entrada-markdown em { color: var(--text); }

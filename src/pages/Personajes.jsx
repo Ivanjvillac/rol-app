@@ -74,12 +74,20 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
   const [guardando, setGuardando] = useState(false)
   const [guardado, setGuardado] = useState(false)
   const [pestana, setPestana] = useState('notas')
+  const [nombrePropietario, setNombrePropietario] = useState(null)
+  const esMio = personaje.user_id === userId
 
   useEffect(() => {
     const cargar = async () => {
       const { data } = await supabase.from('notas_privadas').select('contenido')
         .eq('personaje_id', personaje.id).eq('user_id', userId).single()
       if (data) setNotas(data.contenido || '')
+
+      if (personaje.user_id) {
+        const { data: perfil } = await supabase.from('perfiles')
+          .select('nombre').eq('id', personaje.user_id).single()
+        setNombrePropietario(perfil?.nombre || null)
+      }
     }
     cargar()
   }, [personaje.id])
@@ -124,6 +132,17 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
 
         {pestana === 'notas' && (
           <>
+            {/* Propietario */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1rem', background: 'var(--bg3)', borderBottom: '1px solid var(--border)', fontSize: '0.82rem' }}>
+              <span style={{ color: 'var(--text3)' }}>✍️ Creado por</span>
+              <span style={{ color: esMio ? 'var(--accent)' : 'var(--text2)', fontFamily: 'Cinzel, serif', fontWeight: 600 }}>
+                {esMio ? 'ti' : (nombrePropietario || '…')}
+              </span>
+              {esMio
+                ? <span style={{ marginLeft: 'auto', color: 'var(--accent)', fontSize: '0.75rem' }}>✓ Puedes editar la ficha</span>
+                : <span style={{ marginLeft: 'auto', color: 'var(--text3)', fontSize: '0.75rem' }}>Solo lectura en ficha</span>
+              }
+            </div>
             {personaje.descripcion && (
               <div className="detalle-seccion">
                 <h4>Descripción</h4>
@@ -172,9 +191,10 @@ export default function Personajes({ navigate, selectedUniverso }) {
     avatar_url: '', es_npc: false, oculto: false
   })
 
-  const personajesFiltrados = filtroUniverso === 'todos'
+  const personajesFiltrados = (filtroUniverso === 'todos'
     ? personajes
     : personajes.filter(p => p.universo_id === filtroUniverso || p.universoId === filtroUniverso)
+  ).filter(p => !p.oculto || p.user_id === userId)
 
   const jugadores = personajesFiltrados.filter(p => !p.es_npc)
   const npcs = personajesFiltrados.filter(p => p.es_npc)
@@ -268,8 +288,8 @@ export default function Personajes({ navigate, selectedUniverso }) {
           )}
           <div className="card-actions">
             <button className="btn-ghost btn-sm" onClick={() => setVerDetalle(p)}>📋 Notas</button>
-            {(esMio || p.es_npc) && <button className="btn-ghost btn-sm" onClick={() => abrirEditar(p)}>Editar</button>}
-            {(esMio || p.es_npc) && <button className="btn-danger btn-sm" onClick={() => setConfirmDelete(p)}>Eliminar</button>}
+            {esMio && <button className="btn-ghost btn-sm" onClick={() => abrirEditar(p)}>Editar</button>}
+            {esMio && <button className="btn-danger btn-sm" onClick={() => setConfirmDelete(p)}>Eliminar</button>}
           </div>
         </div>
       </div>

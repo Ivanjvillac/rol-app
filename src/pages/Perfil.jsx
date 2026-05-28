@@ -92,7 +92,7 @@ const handleCambiarPassword = async () => {
       <div className="page-header">
         <div>
           <h2>Mi Perfil</h2>
-          <p className="page-subtitle">Tu identidad en RolApp</p>
+          <p className="page-subtitle">Tu identidad en Tinta y Dados</p>
         </div>
       </div>
 
