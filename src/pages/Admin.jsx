@@ -151,7 +151,42 @@ export default function Admin() {
     a.click()
   }
 
-  const emailDeUsuario = (userId) => usuarios.find(u => u.id === userId)?.email || userId?.slice(0,8) + '...'
+  const emailDeUsuario = (uid) => usuarios.find(u => u.id === uid)?.email || uid?.slice(0,8) + '...'
+
+  const exportarUniverso = async (universo) => {
+    const { data: pers } = await supabase.from('personajes').select('*').eq('universo_id', universo.id)
+    const { data: sess } = await supabase.from('sesiones').select('*').eq('universo_id', universo.id)
+    const sesionIds = (sess || []).map(s => s.id)
+    let entrs = []
+    if (sesionIds.length > 0) {
+      const { data } = await supabase.from('entradas').select('*').in('sesion_id', sesionIds).order('created_at')
+      entrs = data || []
+    }
+    const backup = { universo, personajes: pers || [], sesiones: sess || [], entradas: entrs, exportado_en: new Date().toISOString() }
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `backup-${universo.nombre}-${new Date().toISOString().slice(0,10)}.json`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
+  const [transfiriendoUniverso, setTransfiriendoUniverso] = useState(null)
+  const [nuevoOwnerEmail, setNuevoOwnerEmail] = useState('')
+  const [msgTransferUniverso, setMsgTransferUniverso] = useState(null)
+
+  const transferirUniverso = async () => {
+    const usuario = usuarios.find(u => u.email === nuevoOwnerEmail.trim())
+    if (!usuario) { setMsgTransferUniverso({ tipo: 'error', texto: 'Usuario no encontrado.' }); return }
+    const { error } = await supabase.from('universos').update({ user_id: usuario.id }).eq('id', transfiriendoUniverso.id)
+    if (error) {
+      setMsgTransferUniverso({ tipo: 'error', texto: 'Error al transferir.' })
+    } else {
+      setMsgTransferUniverso({ tipo: 'ok', texto: `✓ Universo transferido a ${usuario.email}` })
+      await cargarTodo()
+      setTimeout(() => { setTransfiriendoUniverso(null); setNuevoOwnerEmail(''); setMsgTransferUniverso(null) }, 2000)
+    }
+  }
 
   return (
     <div className="page">
@@ -280,11 +315,41 @@ export default function Admin() {
                       <td>{u.ambientacion}</td>
                       <td>{emailDeUsuario(u.user_id)}</td>
                       <td>{formatFecha(u.created_at)}</td>
-                      <td><button className="btn-danger btn-sm" onClick={() => setConfirmDelete({ tabla: 'universos', id: u.id, nombre: u.nombre })}>Eliminar</button></td>
+                      <td style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                        <button className="btn-ghost btn-sm" onClick={() => exportarUniverso(u)}>💾 Backup</button>
+                        <button className="btn-ghost btn-sm" onClick={() => { setTransfiriendoUniverso(u); setNuevoOwnerEmail(''); setMsgTransferUniverso(null) }}>🔄 Transferir</button>
+                        <button className="btn-danger btn-sm" onClick={() => setConfirmDelete({ tabla: 'universos', id: u.id, nombre: u.nombre })}>Eliminar</button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Modal transferir universo */}
+          {transfiriendoUniverso && (
+            <div className="modal-overlay" onClick={() => setTransfiriendoUniverso(null)}>
+              <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+                <h3>🔄 Transferir universo</h3>
+                <p style={{ color: 'var(--text2)', margin: '0.5rem 0 1rem', fontSize: '0.9rem' }}>
+                  Transferir <strong>"{transfiriendoUniverso.nombre}"</strong> a otro usuario. El nuevo propietario tendrá control total.
+                </p>
+                <div className="form-group">
+                  <label>Email del nuevo propietario</label>
+                  <input placeholder="email@ejemplo.com" value={nuevoOwnerEmail} onChange={e => setNuevoOwnerEmail(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && transferirUniverso()} autoFocus />
+                </div>
+                {msgTransferUniverso && (
+                  <div className={msgTransferUniverso.tipo === 'ok' ? 'auth-mensaje' : 'auth-error'} style={{ marginBottom: '0.8rem' }}>
+                    {msgTransferUniverso.texto}
+                  </div>
+                )}
+                <div className="modal-actions">
+                  <button className="btn-ghost" onClick={() => setTransfiriendoUniverso(null)}>Cancelar</button>
+                  <button className="btn-primary" onClick={transferirUniverso} disabled={!nuevoOwnerEmail.trim()}>Transferir</button>
+                </div>
+              </div>
             </div>
           )}
 

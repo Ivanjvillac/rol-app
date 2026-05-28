@@ -25,7 +25,17 @@ function FichaInline({ personajeId, userId, esMio }) {
   }
 
   const actualizar = async (id, valor) => {
+    const anterior = atributos.find(a => a.id === id)
+    if (anterior?.valor === valor) { setEditando(null); return }
     await supabase.from('atributos').update({ valor }).eq('id', id)
+    // Guardar historial
+    await supabase.from('atributos_historial').insert({
+      personaje_id: personajeId,
+      user_id: userId,
+      atributo_nombre: anterior?.nombre || '',
+      valor_anterior: anterior?.valor || '',
+      valor_nuevo: valor,
+    })
     setAtributos(prev => prev.map(a => a.id === id ? { ...a, valor } : a))
     setEditando(null)
   }
@@ -77,20 +87,85 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
   const [nombrePropietario, setNombrePropietario] = useState(null)
   const esMio = personaje.user_id === userId
 
+  const [galeria, setGaleria] = useState([])
+  const [historialAtrib, setHistorialAtrib] = useState([])
+  const [relaciones, setRelaciones] = useState([])
+  const [subiendoImagen, setSubiendoImagen] = useState(false)
+  const [showAddRelacion, setShowAddRelacion] = useState(false)
+  const [relacionTipo, setRelacionTipo] = useState('aliado')
+  const [relacionDesc, setRelacionDesc] = useState('')
+  const [relacionPersonajeId, setRelacionPersonajeId] = useState('')
+  const galeriaInputRef = useRef(null)
+
+  const comprimirImagen = (file, maxWidth = 800, calidad = 0.8) => new Promise((resolve) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      let w = img.width, h = img.height
+      if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth }
+      canvas.width = w; canvas.height = h
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+      canvas.toBlob(blob => resolve(blob), 'image/jpeg', calidad)
+      URL.revokeObjectURL(url)
+    }
+    img.src = url
+  })
+
   useEffect(() => {
     const cargar = async () => {
-      const { data } = await supabase.from('notas_privadas').select('contenido')
-        .eq('personaje_id', personaje.id).eq('user_id', userId).single()
-      if (data) setNotas(data.contenido || '')
-
-      if (personaje.user_id) {
-        const { data: perfil } = await supabase.from('perfiles')
-          .select('nombre').eq('id', personaje.user_id).single()
-        setNombrePropietario(perfil?.nombre || null)
-      }
+      const [notasRes, perfilRes, galeriaRes, historialRes, relacionesRes] = await Promise.all([
+        supabase.from('notas_privadas').select('contenido').eq('personaje_id', personaje.id).eq('user_id', userId).maybeSingle(),
+        personaje.user_id ? supabase.from('perfiles').select('nombre').eq('id', personaje.user_id).maybeSingle() : Promise.resolve({ data: null }),
+        supabase.from('personaje_imagenes').select('*').eq('personaje_id', personaje.id).order('created_at'),
+        supabase.from('atributos_historial').select('*').eq('personaje_id', personaje.id).order('created_at', { ascending: false }).limit(30),
+        supabase.from('personaje_relaciones').select('*, relacionado:relacionado_id(id, nombre, color, iniciales, avatar_url)').eq('personaje_id', personaje.id),
+      ])
+      if (notasRes.data) setNotas(notasRes.data.contenido || '')
+      setNombrePropietario(perfilRes.data?.nombre || null)
+      setGaleria(galeriaRes.data || [])
+      setHistorialAtrib(historialRes.data || [])
+      setRelaciones(relacionesRes.data || [])
     }
     cargar()
   }, [personaje.id])
+
+  const subirImagenGaleria = async (file) => {
+    setSubiendoImagen(true)
+    const blob = await comprimirImagen(file)
+    const path = `${personaje.id}/${Date.now()}.jpg`
+    const { error } = await supabase.storage.from('personaje-imagenes').upload(path, blob, { contentType: 'image/jpeg' })
+    if (!error) {
+      const { data: urlData } = supabase.storage.from('personaje-imagenes').getPublicUrl(path)
+      const { data: img } = await supabase.from('personaje_imagenes').insert({ personaje_id: personaje.id, url: urlData.publicUrl }).select().single()
+      if (img) setGaleria(prev => [...prev, img])
+    }
+    setSubiendoImagen(false)
+  }
+
+  const eliminarImagenGaleria = async (img) => {
+    const path = img.url.split('/personaje-imagenes/')[1]
+    if (path) await supabase.storage.from('personaje-imagenes').remove([path])
+    await supabase.from('personaje_imagenes').delete().eq('id', img.id)
+    setGaleria(prev => prev.filter(x => x.id !== img.id))
+  }
+
+  const añadirRelacion = async (personajesUniverso) => {
+    if (!relacionPersonajeId) return
+    const { data } = await supabase.from('personaje_relaciones').insert({
+      personaje_id: personaje.id,
+      relacionado_id: relacionPersonajeId,
+      tipo: relacionTipo,
+      descripcion: relacionDesc,
+    }).select('*, relacionado:relacionado_id(id, nombre, color, iniciales, avatar_url)').single()
+    if (data) setRelaciones(prev => [...prev, data])
+    setShowAddRelacion(false); setRelacionDesc(''); setRelacionPersonajeId('')
+  }
+
+  const eliminarRelacion = async (id) => {
+    await supabase.from('personaje_relaciones').delete().eq('id', id)
+    setRelaciones(prev => prev.filter(r => r.id !== id))
+  }
 
   const handleGuardar = async () => {
     setGuardando(true)
@@ -128,6 +203,9 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
         <div className="detalle-tabs">
           <button className={pestana === 'notas' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('notas')}>📋 Notas</button>
           <button className={pestana === 'ficha' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('ficha')}>⚔️ Ficha</button>
+          <button className={pestana === 'galeria' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('galeria')}>🖼️ Galería</button>
+          <button className={pestana === 'historial' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('historial')}>📜 Historial</button>
+          <button className={pestana === 'relaciones' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('relaciones')}>🔗 Relaciones</button>
         </div>
 
         {pestana === 'notas' && (
@@ -167,6 +245,98 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
           <div className="detalle-seccion">
             <h4>Atributos</h4>
             <FichaInline personajeId={personaje.id} userId={userId} esMio={personaje.user_id === userId} />
+          </div>
+        )}
+
+        {pestana === 'galeria' && (
+          <div className="detalle-seccion">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
+              <h4 style={{ margin: 0 }}>Imágenes</h4>
+              {esMio && (
+                <>
+                  <input ref={galeriaInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => e.target.files[0] && subirImagenGaleria(e.target.files[0])} />
+                  <button className="btn-ghost btn-sm" onClick={() => galeriaInputRef.current?.click()} disabled={subiendoImagen}>
+                    {subiendoImagen ? 'Subiendo...' : '＋ Añadir'}
+                  </button>
+                </>
+              )}
+            </div>
+            {galeria.length === 0 && <p style={{ color: 'var(--text3)', fontStyle: 'italic', fontSize: '0.85rem' }}>Sin imágenes todavía.</p>}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+              {galeria.map(img => (
+                <div key={img.id} style={{ position: 'relative', aspectRatio: '1', borderRadius: 'var(--radius)', overflow: 'hidden', cursor: 'pointer' }}
+                  onClick={() => window.open(img.url, '_blank')}>
+                  <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  {esMio && (
+                    <button onClick={e => { e.stopPropagation(); eliminarImagenGaleria(img) }}
+                      style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(0,0,0,0.6)', border: 'none', color: 'white', borderRadius: '4px', padding: '2px 6px', cursor: 'pointer', fontSize: '0.75rem' }}>✕</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {pestana === 'historial' && (
+          <div className="detalle-seccion">
+            <h4>Cambios en atributos</h4>
+            {historialAtrib.length === 0 && <p style={{ color: 'var(--text3)', fontStyle: 'italic', fontSize: '0.85rem' }}>Sin cambios registrados.</p>}
+            {historialAtrib.map(h => (
+              <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0', borderBottom: '1px solid var(--border)', fontSize: '0.85rem' }}>
+                <span style={{ color: 'var(--text3)', fontFamily: 'Cinzel, serif', minWidth: '80px', fontSize: '0.78rem' }}>{h.atributo_nombre}</span>
+                <span style={{ color: '#e74c3c', textDecoration: 'line-through' }}>{h.valor_anterior}</span>
+                <span style={{ color: 'var(--text3)' }}>→</span>
+                <span style={{ color: '#2ecc71' }}>{h.valor_nuevo}</span>
+                <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text3)' }}>{new Date(h.created_at).toLocaleDateString('es-ES')}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {pestana === 'relaciones' && (
+          <div className="detalle-seccion">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
+              <h4 style={{ margin: 0 }}>Relaciones</h4>
+              {esMio && <button className="btn-ghost btn-sm" onClick={() => setShowAddRelacion(p => !p)}>＋ Añadir</button>}
+            </div>
+            {showAddRelacion && (
+              <div style={{ background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: '0.8rem', marginBottom: '0.8rem' }}>
+                <select value={relacionPersonajeId} onChange={e => setRelacionPersonajeId(e.target.value)}
+                  style={{ width: '100%', background: 'var(--bg2)', border: '1px solid var(--border)', color: 'var(--text)', padding: '0.4rem', borderRadius: 'var(--radius)', marginBottom: '0.4rem' }}>
+                  <option value="">Seleccionar personaje...</option>
+                  {universo && universo.personajes?.filter(p => p.id !== personaje.id).map(p => (
+                    <option key={p.id} value={p.id}>{p.nombre}</option>
+                  ))}
+                </select>
+                <select value={relacionTipo} onChange={e => setRelacionTipo(e.target.value)}
+                  style={{ width: '100%', background: 'var(--bg2)', border: '1px solid var(--border)', color: 'var(--text)', padding: '0.4rem', borderRadius: 'var(--radius)', marginBottom: '0.4rem' }}>
+                  {['aliado', 'enemigo', 'familiar', 'amigo', 'rival', 'neutral', 'amor', 'mentor'].map(t => (
+                    <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                  ))}
+                </select>
+                <input placeholder="Descripción (opcional)" value={relacionDesc} onChange={e => setRelacionDesc(e.target.value)}
+                  style={{ width: '100%', background: 'var(--bg2)', border: '1px solid var(--border)', color: 'var(--text)', padding: '0.4rem', borderRadius: 'var(--radius)', marginBottom: '0.4rem', boxSizing: 'border-box' }} />
+                <button className="btn-primary btn-sm" onClick={añadirRelacion} disabled={!relacionPersonajeId}>Añadir</button>
+              </div>
+            )}
+            {relaciones.length === 0 && !showAddRelacion && <p style={{ color: 'var(--text3)', fontStyle: 'italic', fontSize: '0.85rem' }}>Sin relaciones definidas.</p>}
+            {relaciones.map(r => {
+              const colores = { aliado: '#2ecc71', enemigo: '#e74c3c', familiar: '#9b59b6', amigo: '#3498db', rival: '#e67e22', neutral: '#95a5a6', amor: '#e91e63', mentor: '#f1c40f' }
+              return (
+                <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
+                  {r.relacionado?.avatar_url
+                    ? <img src={r.relacionado.avatar_url} alt="" style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }} />
+                    : <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: r.relacionado?.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', color: 'white', fontWeight: 700, flexShrink: 0 }}>{r.relacionado?.iniciales}</div>
+                  }
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontFamily: 'Cinzel, serif', fontSize: '0.88rem', color: 'var(--text)' }}>{r.relacionado?.nombre}</span>
+                    <span style={{ margin: '0 0.4rem', fontSize: '0.75rem', color: colores[r.tipo] || 'var(--accent)', background: `${colores[r.tipo]}22`, borderRadius: '999px', padding: '0.1rem 0.5rem' }}>{r.tipo}</span>
+                    {r.descripcion && <span style={{ fontSize: '0.78rem', color: 'var(--text3)', fontStyle: 'italic' }}>{r.descripcion}</span>}
+                  </div>
+                  {esMio && <button onClick={() => eliminarRelacion(r.id)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: '0.8rem' }}>✕</button>}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
@@ -220,11 +390,40 @@ export default function Personajes({ navigate, selectedUniverso }) {
     setAvatarPreview(URL.createObjectURL(file))
   }
 
+  const comprimirImagen = (file, maxWidth = 400, calidad = 0.82) => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let w = img.width, h = img.height
+        if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth }
+        canvas.width = w; canvas.height = h
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+        canvas.toBlob(blob => resolve(blob), 'image/jpeg', calidad)
+        URL.revokeObjectURL(url)
+      }
+      img.src = url
+    })
+  }
+
   const subirAvatar = async (personajeId) => {
     if (!avatarFile) return form.avatar_url || null
-    const ext = avatarFile.name.split('.').pop()
-    const path = `${personajeId}.${ext}`
-    const { error } = await supabase.storage.from('avatares').upload(path, avatarFile, { upsert: true })
+
+    if (form.avatar_url) {
+      const oldPath = form.avatar_url.split('/avatares/')[1]
+      if (oldPath && !oldPath.endsWith('.jpg')) {
+        try {
+          await supabase.storage.from('avatares').remove([oldPath])
+        } catch (e) {
+          console.error("Error eliminando avatar anterior:", e)
+        }
+      }
+    }
+
+    const blob = await comprimirImagen(avatarFile)
+    const path = `${personajeId}.jpg`
+    const { error } = await supabase.storage.from('avatares').upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
     if (error) return form.avatar_url || null
     const { data } = supabase.storage.from('avatares').getPublicUrl(path)
     return data.publicUrl
@@ -409,7 +608,7 @@ export default function Personajes({ navigate, selectedUniverso }) {
       {verDetalle && (
         <DetallePersonaje
           personaje={verDetalle}
-          universo={universoDePersonaje(verDetalle.universo_id || verDetalle.universoId)}
+          universo={{ ...universoDePersonaje(verDetalle.universo_id || verDetalle.universoId), personajes: personajes.filter(p => p.universo_id === (verDetalle.universo_id || verDetalle.universoId)) }}
           onCerrar={() => setVerDetalle(null)}
           onGuardarNotas={handleGuardarNotas}
           userId={userId}

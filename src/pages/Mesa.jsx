@@ -4,9 +4,10 @@ import { supabase } from '../lib/supabase'
 import SelectorImagenSticker from '../components/SelectorImagenSticker'
 import FichaPersonaje from '../components/FichaPersonaje'
 import { jsPDF } from 'jspdf'
-const renderTexto = (texto) => {
+const renderTexto = (texto, miNombre) => {
   if (!texto) return null
-  const partes = texto.split(/(\*\*[^*]+\*\*|__[^_]+__|_[^_]+_|\*[^*]+\*)/g)
+  // Split por formato Y por menciones @Nombre
+  const partes = texto.split(/(\*\*[^*]+\*\*|__[^_]+__|_[^_]+_|\*[^*]+\*|@[\w][\w\s]*)/g)
   return partes.map((parte, i) => {
     if (parte.startsWith('**') && parte.endsWith('**'))
       return <strong key={i}>{parte.slice(2, -2)}</strong>
@@ -14,6 +15,15 @@ const renderTexto = (texto) => {
       return <u key={i}>{parte.slice(2, -2)}</u>
     if ((parte.startsWith('_') && parte.endsWith('_')) || (parte.startsWith('*') && parte.endsWith('*')))
       return <em key={i}>{parte.slice(1, -1)}</em>
+    if (parte.startsWith('@')) {
+      const nombre = parte.slice(1)
+      const esMio = miNombre && nombre.toLowerCase().includes(miNombre.toLowerCase())
+      return (
+        <span key={i} className={`mencion${esMio ? ' mencion-mia' : ''}`}>
+          {parte}
+        </span>
+      )
+    }
     return parte
   })
 }
@@ -165,11 +175,12 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
 }
 
 export default function Mesa({ navigate, selectedUniverso }) {
-  const { getPersonajesDeUniverso, addEntrada, getSesion, cargarSesion, suscribirMesa, invitarUsuario, getInvitaciones, esPropietario, userId, cargarListaSesiones, crearSesion, eliminarSesion, listaSesiones, editarEntrada, borrarEntrada } = useApp()
+  const { getPersonajesDeUniverso, addEntrada, getSesion, cargarSesion, suscribirMesa, invitarUsuario, getInvitaciones, esPropietario, userId, cargarListaSesiones, crearSesion, eliminarSesion, listaSesiones, editarEntrada, borrarEntrada, getPerfil, backupUniverso, transferirPropiedad, updatePersonaje } = useApp()
 
   const [personajeActivo, setPersonajeActivo] = useState(null)
   const [texto, setTexto] = useState('')
   const [modoEntrada, setModoEntrada] = useState('dialogo')
+  const [tono, setTono] = useState('normal')
   const [comandoSugerido, setComandoSugerido] = useState(null)
   const [showInvitar, setShowInvitar] = useState(false)
   const [showChat, setShowChat] = useState(false)
@@ -213,18 +224,31 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [reacciones, setReacciones] = useState({})
   const [showReacciones, setShowReacciones] = useState(null)
   const [notifsSesion, setNotifsSesion] = useState({})
-  const [fijadas, setFijadas] = useState({}) // { entrada_id: true/false } estado local
+  const [notifsMenciones, setNotifsMenciones] = useState(0)
+  const [miNombrePerfil, setMiNombrePerfil] = useState('')
+  const [modoCompleto, setModoCompleto] = useState(false)
+  const [showColorPicker, setShowColorPicker] = useState(null) // personaje a cambiar color
+  const [fijadas, setFijadas] = useState({})
+  const [respondiendo, setRespondiendo] = useState(null) // entrada a la que se responde
+  const [mencionSugerencias, setMencionSugerencias] = useState([])
+  const [pagina, setPagina] = useState(1)
+  const PAGINA_SIZE = 50
+  const [hayMasEntradas, setHayMasEntradas] = useState(false)
+  const [cargandoMas, setCargandoMas] = useState(false) // { entrada_id: true/false } estado local
+  const [nivelTension, setNivelTension] = useState(1)
   const historialRef = useRef(null)
   const inputRef = useRef(null)
   const timeoutEscribiendoRef = useRef(null)
   const canalEscribiendoRef = useRef(null)
   const canalPresenciaRef = useRef(null)
+  const debounceRef = useRef(null)
 
   const [sesionesConMiembros, setSesionesConMiembros] = useState([])
   const [seccionSesiones, setSeccionSesiones] = useState(true)
   const [seccionPersonajes, setSeccionPersonajes] = useState(true)
   const [seccionConectados, setSeccionConectados] = useState(true)
   const [seccionOpciones, setSeccionOpciones] = useState(false)
+  const [seccionAyuda, setSeccionAyuda] = useState(false)
 
   const personajesTodos = selectedUniverso ? getPersonajesDeUniverso(selectedUniverso.id) : []
   const personajes = personajesTodos.filter(p => !p.oculto || p.user_id === userId)
@@ -241,6 +265,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
   )
 
   useEffect(() => {
+    if (!userId) return
+    supabase.from('perfiles').select('nombre').eq('id', userId).maybeSingle()
+      .then(({ data }) => { if (data?.nombre) setMiNombrePerfil(data.nombre) })
+  }, [userId])
+
+  useEffect(() => {
     if (!selectedUniverso) return
     const cargarSesionesConMiembros = async () => {
       const { data: sesData } = await supabase
@@ -254,7 +284,16 @@ export default function Mesa({ navigate, selectedUniverso }) {
       }))
       setSesionesConMiembros(sesFormateadas)
     }
+    const cargarMiembros = async () => {
+      const { data } = await supabase.from('miembros').select('user_id').eq('universo_id', selectedUniverso.id)
+      const ids = (data || []).map(m => m.user_id)
+      if (ids.length === 0) { setMiembrosUniverso([]); setUsuariosUniverso([]); return }
+      const { data: perfs } = await supabase.from('perfiles').select('id, nombre').in('id', ids)
+      setMiembrosUniverso(perfs || [])
+      setUsuariosUniverso(perfs || [])
+    }
     cargarSesionesConMiembros()
+    cargarMiembros()
   }, [selectedUniverso?.id])
 
   useEffect(() => {
@@ -271,9 +310,35 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
   useEffect(() => {
     if (!sesionActiva) return
+    // Cargar nivel_tension inicial de la sesión
+    supabase.from('sesiones').select('nivel_tension').eq('id', sesionActiva.id).single()
+      .then(({ data }) => { if (data?.nivel_tension) setNivelTension(data.nivel_tension) })
     cargarSesion(sesionActiva.id)
     const unsub = suscribirMesa(selectedUniverso.id, sesionActiva.id, () => {})
     return unsub
+  }, [sesionActiva?.id])
+
+  // Sincronizar --nivel-tension como variable CSS global
+  useEffect(() => {
+    document.documentElement.style.setProperty('--nivel-tension', nivelTension)
+  }, [nivelTension])
+
+  // Suscripción Realtime a UPDATE en sesiones para nivel_tension
+  useEffect(() => {
+    if (!sesionActiva?.id) return
+    const canal = supabase
+      .channel(`tension-${sesionActiva.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'sesiones',
+        filter: `id=eq.${sesionActiva.id}`
+      }, (payload) => {
+        const nt = payload.new?.nivel_tension
+        if (nt !== undefined) setNivelTension(nt)
+      })
+      .subscribe()
+    return () => supabase.removeChannel(canal)
   }, [sesionActiva?.id])
 
   // Actualizar presencia cuando cambia el personaje activo
@@ -415,6 +480,22 @@ export default function Mesa({ navigate, selectedUniverso }) {
     const val = e.target.value
     setTexto(val)
     setComandoSugerido(val.startsWith('/') ? procesarComando(val) : null)
+    // Detectar @ para sugerencias de mención
+    const match = val.match(/@([\w\s]*)$/)
+    if (match) {
+      const query = match[1].toLowerCase()
+      const sugs = miembrosUniverso.filter(m => m.nombre?.toLowerCase().includes(query) && m.id !== userId)
+      setMencionSugerencias(sugs.slice(0, 5))
+    } else {
+      setMencionSugerencias([])
+    }
+  }
+
+  const insertarMencion = (nombre) => {
+    const nuevoTexto = texto.replace(/@[\w\s]*$/, `@${nombre} `)
+    setTexto(nuevoTexto)
+    setMencionSugerencias([])
+    inputRef.current?.focus()
   }
 
   const enviar = async () => {
@@ -425,10 +506,38 @@ export default function Mesa({ navigate, selectedUniverso }) {
     if (t.startsWith('/')) { entrada = procesarComando(t); if (!entrada) return }
     else if (modoEntrada === 'narrador' || !personajeActivo) entrada = { tipo: 'narrador', contenido: t, personaje: null }
     else entrada = { tipo: modoEntrada, contenido: t, personaje: personajeActivo }
-    await addEntrada(selectedUniverso.id, entrada, sesionActiva.id)
-    setTexto(''); setComandoSugerido(null)
+    entrada.tono = tono
+    if (respondiendo) { entrada.responder_a_id = respondiendo.id; }
+    // Detectar menciones @Nombre y guardarlas
+    const mencionados = [...t.matchAll(/@(\w[\w\s]*?)(?=\s|$|[.,!?])/g)].map(m => m[1].trim())
+    const { data: nuevaEntrada } = await addEntradaConReturn(selectedUniverso.id, entrada, sesionActiva.id)
+    if (nuevaEntrada && mencionados.length > 0) {
+      for (const nombre of mencionados) {
+        const miembro = miembrosUniverso.find(m => m.nombre?.toLowerCase().includes(nombre.toLowerCase()))
+        if (miembro && miembro.id !== userId) {
+          await supabase.from('menciones').insert({ entrada_id: nuevaEntrada.id, usuario_mencionado_id: miembro.id })
+        }
+      }
+    }
+    setTexto(''); setComandoSugerido(null); setRespondiendo(null); setMencionSugerencias([])
     emitirEscribiendo(false)
     inputRef.current?.focus()
+  }
+
+  const addEntradaConReturn = async (universoId, entrada, sesionId) => {
+    const { data } = await supabase.from('entradas').insert({
+      universo_id: universoId, user_id: userId,
+      tipo: entrada.tipo, contenido: entrada.contenido || '',
+      imagen_url: entrada.imagen_url || null,
+      personaje_nombre: entrada.personaje?.nombre || null,
+      personaje_color: entrada.personaje?.color || null,
+      personaje_iniciales: entrada.personaje?.iniciales || null,
+      personaje_avatar_url: entrada.personaje?.avatar_url || null,
+      sesion_id: sesionId || null,
+      tono: entrada.tono || 'normal',
+      responder_a_id: entrada.responder_a_id || null,
+    }).select().single()
+    return { data }
   }
 
   const enviarImagen = async (url) => {
@@ -437,7 +546,11 @@ export default function Mesa({ navigate, selectedUniverso }) {
     await addEntrada(selectedUniverso.id, { tipo, contenido: '', imagen_url: url, personaje: personajeActivo }, sesionActiva.id)
   }
 
-  const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }
+  const handleKeyDown = (e) => {
+    if (e.key === 'Escape') { setRespondiendo(null); setMencionSugerencias([]) }
+    if (mencionSugerencias.length > 0 && e.key === 'Enter') { e.preventDefault(); insertarMencion(mencionSugerencias[0].nombre); return }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() }
+  }
 
   const insertarFormato = (tipo) => {
     const ta = inputRef.current
@@ -905,6 +1018,66 @@ export default function Mesa({ navigate, selectedUniverso }) {
     return () => supabase.removeChannel(canal)
   }, [selectedUniverso?.id, sesionActiva?.id, userId])
 
+  // Realtime para menciones
+  useEffect(() => {
+    if (!userId) return
+    const canal = supabase
+      .channel(`menciones-${userId}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'menciones',
+        filter: `usuario_mencionado_id=eq.${userId}`
+      }, (payload) => {
+        setNotifsMenciones(prev => prev + 1)
+        // Toast visual
+        const entradaId = payload.new.entrada_id
+        const notif = { id: Date.now(), texto: '📣 Te han mencionado', entradaId }
+        setNotificaciones(prev => [...prev, notif])
+        setTimeout(() => setNotificaciones(prev => prev.filter(n => n.id !== notif.id)), 4000)
+      })
+      .subscribe()
+    return () => supabase.removeChannel(canal)
+  }, [userId])
+  useEffect(() => {
+    if (!sesionActiva?.id) return
+    const canal = supabase
+      .channel(`reacciones-${sesionActiva.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'reacciones' }, (payload) => {
+        const r = payload.new
+        if (r.user_id === userId) return // ya lo tenemos localmente
+        setReacciones(prev => ({
+          ...prev,
+          [r.entrada_id]: [...(prev[r.entrada_id] || []).filter(x => x.id !== r.id), r]
+        }))
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'reacciones' }, (payload) => {
+        const r = payload.old
+        setReacciones(prev => ({
+          ...prev,
+          [r.entrada_id]: (prev[r.entrada_id] || []).filter(x => x.id !== r.id)
+        }))
+      })
+      .subscribe()
+    return () => supabase.removeChannel(canal)
+  }, [sesionActiva?.id])
+
+  // Realtime para fijadas (UPDATE en entradas)
+  useEffect(() => {
+    if (!sesionActiva?.id) return
+    const canal = supabase
+      .channel(`fijadas-${sesionActiva.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'entradas',
+        filter: `sesion_id=eq.${sesionActiva.id}`
+      }, (payload) => {
+        const e = payload.new
+        if (e.fijada !== undefined) {
+          setFijadas(prev => ({ ...prev, [e.id]: !!e.fijada }))
+        }
+      })
+      .subscribe()
+    return () => supabase.removeChannel(canal)
+  }, [sesionActiva?.id])
+
   // Limpiar notifs y cargar reacciones/fijadas al entrar a sesión
   useEffect(() => {
     if (!sesionActiva?.id) return
@@ -977,7 +1150,29 @@ export default function Mesa({ navigate, selectedUniverso }) {
                     style={!esMio ? { opacity: 0.5, cursor: 'default' } : {}}>
                     {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
                     <div style={{ flex: 1 }}><span>{p.nombre}</span><small>{p.rol}</small></div>
-                    <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
+                    {esMio && (
+                      <div style={{ display: 'flex', gap: '0.15rem' }}>
+                        <button className="ficha-btn" title={p.oculto ? 'Mostrar' : 'Ocultar'}
+                          onClick={e => { e.stopPropagation(); updatePersonaje(p.id, { oculto: !p.oculto }) }}>
+                          {p.oculto ? '👁️' : '🙈'}
+                        </button>
+                        <button className="ficha-btn" title="Cambiar color"
+                          onClick={e => { e.stopPropagation(); setShowColorPicker(showColorPicker === p.id ? null : p.id) }}>
+                          🎨
+                        </button>
+                        <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
+                      </div>
+                    )}
+                    {!esMio && <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>}
+                    {showColorPicker === p.id && (
+                      <div style={{ position: 'absolute', right: '2.5rem', background: 'var(--bg2)', border: '1px solid var(--border2)', borderRadius: 'var(--radius)', padding: '0.4rem', display: 'flex', gap: '0.3rem', zIndex: 50, boxShadow: 'var(--shadow)' }}
+                        onClick={e => e.stopPropagation()}>
+                        {['#e74c3c','#e67e22','#f1c40f','#2ecc71','#1abc9c','#3498db','#9b59b6','#e91e63'].map(c => (
+                          <button key={c} onClick={() => { updatePersonaje(p.id, { color: c }); setShowColorPicker(null) }}
+                            style={{ width: '18px', height: '18px', borderRadius: '50%', background: c, border: c === p.color ? '2px solid white' : '2px solid transparent', cursor: 'pointer', padding: 0 }} />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -1004,6 +1199,36 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <div className="modo-btns">
               <button className={modoEntrada === 'dialogo' ? 'modo-btn activo' : 'modo-btn'} onClick={() => setModoEntrada('dialogo')}>💬 Diálogo</button>
               <button className={modoEntrada === 'accion' ? 'modo-btn activo' : 'modo-btn'} onClick={() => setModoEntrada('accion')}>⚡ Acción</button>
+            </div>
+          </div>
+        )}
+
+        {/* Medidor de Tensión — visible cuando el usuario está en modo Narrador */}
+        {sesionActiva && !personajeActivo && modoEntrada === 'narrador' && (
+          <div className="sidebar-section tension-section">
+            <h4 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>⚡ Tensión</span>
+              <span className="tension-valor" data-nivel={nivelTension}>{nivelTension}</span>
+            </h4>
+            <input
+              id="slider-tension"
+              type="range"
+              min="1"
+              max="10"
+              value={nivelTension}
+              className="tension-slider"
+              onChange={e => {
+                const val = Number(e.target.value)
+                setNivelTension(val)
+                clearTimeout(debounceRef.current)
+                debounceRef.current = setTimeout(async () => {
+                  await supabase.from('sesiones').update({ nivel_tension: val }).eq('id', sesionActiva.id)
+                }, 300)
+              }}
+            />
+            <div className="tension-labels">
+              <span>Calma</span>
+              <span>Caos</span>
             </div>
           </div>
         )}
@@ -1072,7 +1297,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowBusquedaGlobal(true)} disabled={!selectedUniverso}>🔍 Buscar en universo</button>
             <button className="modo-btn notif-btn" style={{ marginTop: '0.4rem' }} onClick={() => { setShowChat(true); setTieneNoLeidos(false); setSidebarAbierto(false) }}>
               🔒 Mensajes privados
-              {tieneNoLeidos && <span className="notif-dot" />}
+              {(tieneNoLeidos || notifsMenciones > 0) && <span className="notif-dot" />}
+              {notifsMenciones > 0 && <span style={{ background: '#e74c3c', color: 'white', borderRadius: '999px', fontSize: '0.65rem', padding: '0.1rem 0.4rem', fontWeight: 700, marginLeft: '0.2rem' }}>{notifsMenciones}</span>}
             </button>
             {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirInvitar}>✉️ Invitar jugador</button>}
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMusica(true)}>🎵 Música</button>
@@ -1085,9 +1311,38 @@ export default function Mesa({ navigate, selectedUniverso }) {
             )}
           </>)}
         </div>
+
+        {/* Sección Ayuda */}
+        <div className="sidebar-section">
+          <h4 style={{ cursor: 'pointer', userSelect: 'none', marginBottom: seccionAyuda ? '0.6rem' : 0 }} onClick={() => setSeccionAyuda(p => !p)}>
+            {seccionAyuda ? '▾' : '▸'} Ayuda
+          </h4>
+          {seccionAyuda && (
+            <div style={{ fontSize: '0.8rem' }}>
+              <p style={{ color: 'var(--text3)', fontStyle: 'italic', marginBottom: '0.7rem' }}>Comandos disponibles en el chat:</p>
+              {[
+                { cmd: '/narrador texto', desc: 'Escribe como narrador' },
+                { cmd: '/me acción', desc: 'Acción del personaje activo' },
+                { cmd: '/d4, /d6, /d8', desc: 'Tirar dado de 4, 6 u 8 caras' },
+                { cmd: '/d10, /d12, /d20', desc: 'Tirar dado de 10, 12 o 20 caras' },
+                { cmd: '/d100', desc: 'Tirar dado percentil' },
+                { cmd: '@Nombre', desc: 'Mencionar a un jugador' },
+              ].map(({ cmd, desc }) => (
+                <div key={cmd} style={{ padding: '0.35rem 0', borderBottom: '1px solid var(--border)' }}>
+                  <code style={{ background: 'var(--bg3)', padding: '0.1rem 0.4rem', borderRadius: '4px', color: 'var(--accent)', fontSize: '0.75rem', display: 'block', marginBottom: '0.2rem' }}>{cmd}</code>
+                  <span style={{ color: 'var(--text3)' }}>{desc}</span>
+                </div>
+              ))}
+              <div style={{ marginTop: '0.7rem', padding: '0.5rem', background: 'var(--bg3)', borderRadius: 'var(--radius)', fontSize: '0.75rem', color: 'var(--text3)' }}>
+                <p style={{ marginBottom: '0.3rem' }}>✍️ <strong style={{ color: 'var(--text2)' }}>Formato de texto:</strong></p>
+                <p>**negrita** · *cursiva* · __subrayado__</p>
+              </div>
+            </div>
+          )}
+        </div>
       </aside>
 
-      <main className="mesa-main">
+      <main className={`mesa-main${modoCompleto ? ' mesa-completa' : ''}`}>
         <div className="mesa-header">
           <button className="btn-menu-sidebar" onClick={() => setSidebarAbierto(prev => !prev)}>{sidebarAbierto ? '✕' : '☰'}</button>
           <div style={{ flex: 1 }}>
@@ -1100,6 +1355,11 @@ export default function Mesa({ navigate, selectedUniverso }) {
               {busqueda && <button onClick={() => setBusqueda('')}>✕</button>}
             </div>
           )}
+          <button title={modoCompleto ? 'Salir de pantalla completa' : 'Pantalla completa'}
+            onClick={() => setModoCompleto(p => !p)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: '1rem', padding: '0.2rem 0.4rem' }}>
+            {modoCompleto ? '⊠' : '⛶'}
+          </button>
           <span className="sesion-count">{sesion.length} entradas</span>
         </div>
 
@@ -1128,10 +1388,21 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
           {sesion.map(e => (
             <div key={e.id} id={`entrada-${e.id}`} className={`entrada entrada-${e.tipo}${fijadas[e.id] ? ' entrada-fijada' : ''}`}>
+              {e.responder_a_id && (() => {
+                const ref = sesionCompleta.find(x => x.id === e.responder_a_id)
+                if (!ref) return null
+                return (
+                  <div style={{ margin: '0.3rem 0.8rem 0', padding: '0.3rem 0.6rem', background: 'rgba(180,140,60,0.08)', borderLeft: '3px solid var(--accent)', borderRadius: '0 4px 4px 0', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--text3)' }}
+                    onClick={() => document.getElementById(`entrada-${ref.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+                    {ref.personaje_nombre && <span style={{ color: ref.personaje_color, fontFamily: 'Cinzel, serif', marginRight: '0.3rem' }}>{ref.personaje_nombre}:</span>}
+                    <span style={{ fontStyle: 'italic' }}>{ref.contenido?.slice(0, 60)}{ref.contenido?.length > 60 ? '…' : ''}</span>
+                  </div>
+                )
+              })()}
               {e.tipo === 'narrador' && (
                 <div className="entrada-narrador">
                   <span className="entrada-label">📖 Narrador</span>
-                  {e.contenido && <p>{renderTexto(e.contenido)}</p>}
+                  {e.contenido && <p className={e.tono && e.tono !== 'normal' ? `entrada-tono-${e.tono}` : ''}>{renderTexto(e.contenido, miNombrePerfil)}</p>}
                   {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '240px', borderRadius: '8px', marginTop: '0.4rem', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
                   <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
                   {e.user_id === userId && (
@@ -1143,11 +1414,11 @@ export default function Mesa({ navigate, selectedUniverso }) {
                 </div>
               )}
               {e.tipo === 'dialogo' && (
-                <div className="entrada-dialogo">
+                <div className={`entrada-dialogo${e.tono && e.tono !== 'normal' ? ` entrada-tono-${e.tono}` : ''}`}>
                   {e.personaje?.avatar_url ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" /> : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>}
                   <div className="entrada-burbuja">
                     <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
-                    {e.contenido && <p>"{renderTexto(e.contenido)}"</p>}
+                    {e.contenido && <p className={e.tono && e.tono !== 'normal' ? `entrada-tono-${e.tono}` : ''}>"{renderTexto(e.contenido, miNombrePerfil)}"</p>}
                     {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => window.open(e.imagen_url, '_blank')} />}
                     <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
                     {e.user_id === userId && (
@@ -1160,11 +1431,11 @@ export default function Mesa({ navigate, selectedUniverso }) {
                 </div>
               )}
               {e.tipo === 'accion' && (
-                <div className="entrada-accion">
+                <div className={`entrada-accion${e.tono && e.tono !== 'normal' ? ` entrada-tono-${e.tono}` : ''}`}>
                   {e.personaje?.avatar_url ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" /> : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>}
                   <div className="entrada-accion-texto">
                     <span style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
-                    {e.contenido && <em> {renderTexto(e.contenido)}</em>}
+                    {e.contenido && <em className={e.tono && e.tono !== 'normal' ? `entrada-tono-${e.tono}` : ''}> {renderTexto(e.contenido, miNombrePerfil)}</em>}
                     {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '220px', borderRadius: '8px', marginTop: '0.4rem', display: 'block', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
                     <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
                     {e.user_id === userId && (
@@ -1187,36 +1458,45 @@ export default function Mesa({ navigate, selectedUniverso }) {
                 </div>
               )}
 
-              {/* Reacciones */}
+              {/* Botones hover — fuera de burbujas, posición absoluta respecto a .entrada */}
               {e.tipo !== 'dado' && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', padding: '0.2rem 0.8rem 0.4rem', alignItems: 'center' }}>
-                  {agruparReacciones(e.id).map(({ emoji, count, mia }) => (
-                    <button key={emoji} onClick={() => toggleReaccion(e.id, emoji)}
-                      style={{ background: mia ? 'rgba(180,140,60,0.15)' : 'var(--bg3)', border: `1px solid ${mia ? 'var(--accent)' : 'var(--border)'}`, borderRadius: '999px', padding: '0.1rem 0.5rem', fontSize: '0.82rem', cursor: 'pointer', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                      {emoji} <span style={{ fontSize: '0.75rem', color: mia ? 'var(--accent)' : 'var(--text3)' }}>{count}</span>
-                    </button>
-                  ))}
+                <div className="entrada-acciones-hover">
                   <div style={{ position: 'relative' }}>
-                    <button onClick={() => setShowReacciones(showReacciones === e.id ? null : e.id)}
-                      style={{ background: 'none', border: '1px dashed var(--border)', borderRadius: '999px', padding: '0.1rem 0.4rem', fontSize: '0.75rem', cursor: 'pointer', color: 'var(--text3)' }}>＋😊</button>
+                    <button onClick={() => setShowReacciones(showReacciones === e.id ? null : e.id)} title="Reaccionar">＋😊</button>
                     {showReacciones === e.id && (
-                      <div style={{ position: 'absolute', bottom: '100%', left: 0, background: 'var(--bg2)', border: '1px solid var(--border2)', borderRadius: 'var(--radius)', padding: '0.4rem', display: 'flex', gap: '0.3rem', zIndex: 100, boxShadow: 'var(--shadow)' }}>
+                      <div style={{ position: 'absolute', top: '100%', left: 0, background: 'var(--bg2)', border: '1px solid var(--border2)', borderRadius: 'var(--radius)', padding: '0.4rem', display: 'flex', gap: '0.3rem', zIndex: 200, boxShadow: 'var(--shadow)' }}>
                         {EMOJIS_RAPIDOS.map(em => (
                           <button key={em} onClick={() => toggleReaccion(e.id, em)}
-                            style={{ background: 'none', border: 'none', fontSize: '1.1rem', cursor: 'pointer', padding: '0.1rem', borderRadius: '4px' }}>
-                            {em}
-                          </button>
+                            style={{ background: 'none', border: 'none', fontSize: '1.1rem', cursor: 'pointer', padding: '0.1rem', borderRadius: '4px' }}>{em}</button>
                         ))}
                       </div>
                     )}
                   </div>
+                  <button onClick={() => { setRespondiendo(e); inputRef.current?.focus() }} title="Responder">↩️</button>
                   {(e.user_id === userId || esDueno) && (
                     <button onClick={() => toggleFijar(e)} title={fijadas[e.id] ? 'Desfijar' : 'Fijar'}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', color: fijadas[e.id] ? 'var(--accent)' : 'var(--text3)', marginLeft: 'auto', padding: '0.1rem 0.3rem' }}>
+                      style={{ color: fijadas[e.id] ? 'var(--accent)' : undefined }}>
                       {fijadas[e.id] ? '📌' : '📍'}
                     </button>
                   )}
                 </div>
+              )}
+
+              {/* Reacciones */}
+              {e.tipo !== 'dado' && (
+                <>
+                  {/* Pills de reacciones existentes — siempre visibles */}
+                  {agruparReacciones(e.id).length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', padding: '0.1rem 0.8rem 0.3rem' }}>
+                      {agruparReacciones(e.id).map(({ emoji, count, mia }) => (
+                        <button key={emoji} onClick={() => toggleReaccion(e.id, emoji)}
+                          style={{ background: mia ? 'rgba(180,140,60,0.15)' : 'var(--bg3)', border: `1px solid ${mia ? 'var(--accent)' : 'var(--border)'}`, borderRadius: '999px', padding: '0.1rem 0.5rem', fontSize: '0.82rem', cursor: 'pointer', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                          {emoji} <span style={{ fontSize: '0.75rem', color: mia ? 'var(--accent)' : 'var(--text3)' }}>{count}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ))}
@@ -1240,6 +1520,26 @@ export default function Mesa({ navigate, selectedUniverso }) {
         {mostrarIrAbajo && <button className="btn-ir-abajo" onClick={irAbajo}>↓</button>}
 
 
+        {/* Panel responder */}
+        {respondiendo && (
+          <div style={{ padding: '0.4rem 1rem', background: 'rgba(180,140,60,0.08)', borderTop: '1px solid rgba(180,140,60,0.2)', display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.82rem' }}>
+            <span style={{ color: 'var(--accent)' }}>↩️ Respondiendo a</span>
+            {respondiendo.personaje_nombre && <span style={{ color: respondiendo.personaje_color, fontFamily: 'Cinzel, serif' }}>{respondiendo.personaje_nombre}:</span>}
+            <span style={{ color: 'var(--text3)', fontStyle: 'italic', flex: 1 }}>{respondiendo.contenido?.slice(0, 50)}…</span>
+            <button onClick={() => setRespondiendo(null)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
+          </div>
+        )}
+        {/* Sugerencias de menciones */}
+        {mencionSugerencias.length > 0 && (
+          <div style={{ padding: '0.3rem 1rem', background: 'var(--bg2)', borderTop: '1px solid var(--border)', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+            {mencionSugerencias.map(m => (
+              <button key={m.id} onClick={() => insertarMencion(m.nombre)}
+                style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.2rem 0.6rem', fontSize: '0.82rem', cursor: 'pointer', color: 'var(--text)' }}>
+                @{m.nombre}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="mesa-input-bar">
           <div className="input-contexto">
             {modoEntrada === 'narrador' || !personajeActivo
@@ -1255,6 +1555,14 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <button type="button" className="formato-btn" onClick={() => insertarFormato('negrita')} title="Negrita"><strong>B</strong></button>
             <button type="button" className="formato-btn" onClick={() => insertarFormato('cursiva')} title="Cursiva"><em>I</em></button>
             <button type="button" className="formato-btn" onClick={() => insertarFormato('subrayado')} title="Subrayado"><u>S</u></button>
+            <div className="tono-separador" />
+            {[{id:'normal',icono:'💬',label:'Normal'},{id:'susurro',icono:'🤫',label:'Susurro'},{id:'pensamiento',icono:'💭',label:'Pensamiento'},{id:'grito',icono:'📢',label:'Grito'}].map(t => (
+              <button key={t.id} type="button"
+                className={`tono-btn tono-btn-${t.id}${tono === t.id ? ' activo' : ''}`}
+                onClick={() => setTono(t.id)}
+                title={t.label}
+              >{t.icono}</button>
+            ))}
           </div>
           <div className="input-row" style={{ position: 'relative' }}>
             {showSelector && <SelectorImagenSticker userId={userId} onEnviarImagen={enviarImagen} onEnviarSticker={enviarImagen} onCerrar={() => setShowSelector(false)} />}
@@ -1634,7 +1942,17 @@ export default function Mesa({ navigate, selectedUniverso }) {
                     </div>
                     {r.personaje_nombre && <span style={{ color: r.personaje_color, fontSize: '0.8rem', fontFamily: 'Cinzel, serif' }}>{r.personaje_nombre}: </span>}
                     <span style={{ fontSize: '0.85rem', color: 'var(--text2)', fontStyle: r.tipo === 'narrador' ? 'italic' : 'normal' }}>
-                      {r.contenido?.slice(0, 120)}{r.contenido?.length > 120 ? '…' : ''}
+                      {(() => {
+                        const texto = r.contenido || ''
+                        const idx = texto.toLowerCase().indexOf(busquedaGlobal.toLowerCase())
+                        if (idx === -1) return texto.slice(0, 120)
+                        const inicio = Math.max(0, idx - 30)
+                        const fin = Math.min(texto.length, idx + busquedaGlobal.length + 60)
+                        const antes = texto.slice(inicio, idx)
+                        const coincide = texto.slice(idx, idx + busquedaGlobal.length)
+                        const despues = texto.slice(idx + busquedaGlobal.length, fin)
+                        return <>{inicio > 0 ? '…' : ''}{antes}<mark style={{ background: 'rgba(180,140,60,0.4)', color: 'var(--text)', borderRadius: '2px', padding: '0 2px' }}>{coincide}</mark>{despues}{fin < texto.length ? '…' : ''}</>
+                      })()}
                     </span>
                   </div>
                 ))}

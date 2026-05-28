@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
 const AppContext = createContext()
@@ -8,6 +8,15 @@ export function AppProvider({ userId, children }) {
   const [personajes, setPersonajes] = useState([])
   const [sesiones, setSesiones] = useState({})
   const [cargando, setCargando] = useState(true)
+  const perfilesCache = useRef({})
+
+  // Caché de perfiles para no repetir queries
+  const getPerfil = async (uid) => {
+    if (perfilesCache.current[uid]) return perfilesCache.current[uid]
+    const { data } = await supabase.from('perfiles').select('id, nombre, avatar_url').eq('id', uid).single()
+    if (data) perfilesCache.current[uid] = data
+    return data || null
+  }
 
   useEffect(() => {
     if (!userId) return
@@ -224,7 +233,8 @@ const getSesion = (sesionId) => sesiones[sesionId] || []
       personaje_color: entrada.personaje?.color || null,
       personaje_iniciales: entrada.personaje?.iniciales || null,
       personaje_avatar_url: entrada.personaje?.avatar_url || null,
-      sesion_id: sesionId || null
+      sesion_id: sesionId || null,
+      tono: entrada.tono || 'normal'
     })
     .select()
   if (!error && data?.length > 0) {
@@ -334,6 +344,35 @@ const suscribirMesa = (universoId, sesionId, onNuevaEntrada) => {
     return u?.user_id === userId
   }
 
+  // BACKUP DE UNIVERSO
+  const backupUniverso = async (universoId) => {
+    const universo = universos.find(u => u.id === universoId)
+    const [{ data: pers }, { data: sess }] = await Promise.all([
+      supabase.from('personajes').select('*').eq('universo_id', universoId),
+      supabase.from('sesiones').select('*').eq('universo_id', universoId),
+    ])
+    const sesionIds = (sess || []).map(s => s.id)
+    let entradas = []
+    if (sesionIds.length > 0) {
+      const { data } = await supabase.from('entradas').select('*').in('sesion_id', sesionIds).order('created_at')
+      entradas = data || []
+    }
+    const backup = { universo, personajes: pers || [], sesiones: sess || [], entradas, exportado_en: new Date().toISOString() }
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `backup-${universo?.nombre || universoId}-${new Date().toISOString().slice(0,10)}.json`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
+  // TRANSFERIR PROPIEDAD
+  const transferirPropiedad = async (universoId, nuevoUserId) => {
+    const { error } = await supabase.from('universos').update({ user_id: nuevoUserId }).eq('id', universoId)
+    if (!error) setUniversos(prev => prev.map(u => u.id === universoId ? { ...u, user_id: nuevoUserId } : u))
+    return { error }
+  }
+
   return (
     <AppContext.Provider value={{
       universos, personajes, sesiones, cargando, userId,
@@ -344,7 +383,8 @@ const suscribirMesa = (universoId, sesionId, onNuevaEntrada) => {
       suscribirMesa, esPropietario,
       listaSesiones, sesionActivaId, setSesionActivaId,
 cargarListaSesiones, crearSesion, eliminarSesion,
-editarEntrada, borrarEntrada,
+editarEntrada, borrarEntrada, getPerfil,
+backupUniverso, transferirPropiedad,
     }}>
       {children}
     </AppContext.Provider>
