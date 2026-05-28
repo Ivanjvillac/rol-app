@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
+import PanelJuramentos from '../components/PanelJuramentos'
 
 const COLORES = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#1abc9c', '#3498db', '#9b59b6', '#e91e63']
 const ROLES = ['Guerrero', 'Mago', 'Pícaro', 'Clérigo', 'Explorador', 'Bardo', 'Narrador', 'Otro']
@@ -206,6 +207,7 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
           <button className={pestana === 'galeria' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('galeria')}>🖼️ Galería</button>
           <button className={pestana === 'historial' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('historial')}>📜 Historial</button>
           <button className={pestana === 'relaciones' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('relaciones')}>🔗 Relaciones</button>
+          <button className={pestana === 'juramentos' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('juramentos')}>🕯️ Juramentos</button>
         </div>
 
         {pestana === 'notas' && (
@@ -337,6 +339,18 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {pestana === 'juramentos' && (
+          <div className="detalle-seccion">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
+              <h4 style={{ margin: 0 }}>🕯️ Vínculos y Juramentos</h4>
+            </div>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text3)', fontStyle: 'italic', marginBottom: '1rem' }}>
+              Compromisos, miedos y promesas que definen a este personaje.
+            </p>
+            <PanelJuramentos personajeId={personaje.id} esMio={esMio} />
           </div>
         )}
       </div>

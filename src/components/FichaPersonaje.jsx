@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import PanelJuramentos from './PanelJuramentos'
 
 export default function FichaPersonaje({ personaje, userId, onCerrar }) {
   const [atributos, setAtributos] = useState([])
@@ -7,6 +8,7 @@ export default function FichaPersonaje({ personaje, userId, onCerrar }) {
   const [nuevoValor, setNuevoValor] = useState('')
   const [editando, setEditando] = useState(null)
   const [cargando, setCargando] = useState(true)
+  const [pestana, setPestana] = useState('ficha')
 
   const esMio = personaje.user_id === userId
 
@@ -76,8 +78,16 @@ export default function FichaPersonaje({ personaje, userId, onCerrar }) {
           <button className="detalle-cerrar" onClick={onCerrar}>✕</button>
         </div>
 
+        {/* Tabs */}
+        <div className="ficha-tabs">
+          <button className={pestana === 'ficha' ? 'ficha-tab active' : 'ficha-tab'} onClick={() => setPestana('ficha')}>⚔️ Ficha</button>
+          <button className={pestana === 'juramentos' ? 'ficha-tab active' : 'ficha-tab'} onClick={() => setPestana('juramentos')}>🕯️ Juramentos</button>
+        </div>
         <div className="ficha-body">
-          {cargando ? (
+          {pestana === 'juramentos' && (
+            <PanelJuramentos personajeId={personaje.id} esMio={esMio} />
+          )}
+          {pestana === 'ficha' && (cargando ? (
             <p style={{ color: 'var(--text3)', fontStyle: 'italic', textAlign: 'center', padding: '1rem' }}>Cargando...</p>
           ) : (
             <>
@@ -139,7 +149,7 @@ export default function FichaPersonaje({ personaje, userId, onCerrar }) {
                 </p>
               )}
             </>
-          )}
+          ))}
         </div>
       </div>
     </div>

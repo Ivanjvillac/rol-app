@@ -181,6 +181,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [texto, setTexto] = useState('')
   const [modoEntrada, setModoEntrada] = useState('dialogo')
   const [tono, setTono] = useState('normal')
+  const [emocionInterna, setEmocionInterna] = useState(null)
+  const [showEmocionInput, setShowEmocionInput] = useState(false)
+  const [nuevaEmocion, setNuevaEmocion] = useState('')
+  const [emocionesPersonalizadas, setEmocionesPersonalizadas] = useState([])
   const [comandoSugerido, setComandoSugerido] = useState(null)
   const [showInvitar, setShowInvitar] = useState(false)
   const [showChat, setShowChat] = useState(false)
@@ -341,7 +345,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
     return () => supabase.removeChannel(canal)
   }, [sesionActiva?.id])
 
-  // Actualizar presencia cuando cambia el personaje activo
+  // Cargar emociones personalizadas del usuario
+  useEffect(() => {
+    if (!userId) return
+    supabase.from('emociones_personalizadas').select('nombre').eq('user_id', userId).order('created_at')
+      .then(({ data }) => setEmocionesPersonalizadas((data || []).map(e => e.nombre)))
+  }, [userId])
   useEffect(() => {
     if (!canalPresenciaRef.current || !canalPresenciaRef.current._nombre) return
     canalPresenciaRef.current.track({
@@ -507,6 +516,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
     else if (modoEntrada === 'narrador' || !personajeActivo) entrada = { tipo: 'narrador', contenido: t, personaje: null }
     else entrada = { tipo: modoEntrada, contenido: t, personaje: personajeActivo }
     entrada.tono = tono
+    entrada.emocion_interna = emocionInterna || null
     if (respondiendo) { entrada.responder_a_id = respondiendo.id; }
     // Detectar menciones @Nombre y guardarlas
     const mencionados = [...t.matchAll(/@(\w[\w\s]*?)(?=\s|$|[.,!?])/g)].map(m => m[1].trim())
@@ -536,6 +546,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
       sesion_id: sesionId || null,
       tono: entrada.tono || 'normal',
       responder_a_id: entrada.responder_a_id || null,
+      emocion_interna: entrada.emocion_interna || null,
     }).select().single()
     return { data }
   }
@@ -1405,6 +1416,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   {e.contenido && <p className={e.tono && e.tono !== 'normal' ? `entrada-tono-${e.tono}` : ''}>{renderTexto(e.contenido, miNombrePerfil)}</p>}
                   {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '240px', borderRadius: '8px', marginTop: '0.4rem', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
                   <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
+                  {e.emocion_interna && <span className="emocion-badge">{e.emocion_interna}</span>}
                   {e.user_id === userId && (
                     <div className="entrada-acciones">
                       {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
@@ -1421,6 +1433,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                     {e.contenido && <p className={e.tono && e.tono !== 'normal' ? `entrada-tono-${e.tono}` : ''}>"{renderTexto(e.contenido, miNombrePerfil)}"</p>}
                     {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => window.open(e.imagen_url, '_blank')} />}
                     <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
+                    {e.emocion_interna && <span className="emocion-badge">{e.emocion_interna}</span>}
                     {e.user_id === userId && (
                       <div className="entrada-acciones">
                         {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
@@ -1438,6 +1451,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                     {e.contenido && <em className={e.tono && e.tono !== 'normal' ? `entrada-tono-${e.tono}` : ''}> {renderTexto(e.contenido, miNombrePerfil)}</em>}
                     {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '220px', borderRadius: '8px', marginTop: '0.4rem', display: 'block', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
                     <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
+                    {e.emocion_interna && <span className="emocion-badge">{e.emocion_interna}</span>}
                     {e.user_id === userId && (
                       <div className="entrada-acciones">
                         {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
@@ -1564,6 +1578,65 @@ export default function Mesa({ navigate, selectedUniverso }) {
               >{t.icono}</button>
             ))}
           </div>
+          {/* Selector de Emoción Interna */}
+          <div className="emocion-bar">
+            <select
+              className="emocion-select"
+              value={emocionInterna || ''}
+              onChange={async e => {
+                const val = e.target.value
+                if (val === '__personalizada__') {
+                  setShowEmocionInput(true)
+                } else {
+                  setEmocionInterna(val || null)
+                }
+              }}
+              title="Estado interno (opcional)"
+            >
+              <option value="">💭 Estado interno...</option>
+              {['Inseguridad', 'Culpa', 'Miedo al abandono', 'Vulnerabilidad', 'Orgullo', 'Ira contenida', 'Vergüenza', 'Esperanza', 'Soledad', 'Alivio'].map(em => (
+                <option key={em} value={em}>{em}</option>
+              ))}
+              {emocionesPersonalizadas.map(em => (
+                <option key={`custom-${em}`} value={em}>{em} ✦</option>
+              ))}
+              <option value="__personalizada__">＋ Añadir personalizada...</option>
+            </select>
+            {emocionInterna && (
+              <button className="emocion-clear" onClick={() => setEmocionInterna(null)} title="Quitar emoción">✕</button>
+            )}
+          </div>
+          {showEmocionInput && (
+            <div className="emocion-custom-row">
+              <input
+                autoFocus
+                placeholder="Nombre de la emoción..."
+                value={nuevaEmocion}
+                onChange={e => setNuevaEmocion(e.target.value)}
+                onKeyDown={async e => {
+                  if (e.key === 'Enter' && nuevaEmocion.trim()) {
+                    const nombre = nuevaEmocion.trim()
+                    await supabase.from('emociones_personalizadas').insert({ user_id: userId, nombre })
+                    setEmocionesPersonalizadas(prev => [...prev, nombre])
+                    setEmocionInterna(nombre)
+                    setNuevaEmocion('')
+                    setShowEmocionInput(false)
+                  }
+                  if (e.key === 'Escape') { setShowEmocionInput(false); setNuevaEmocion('') }
+                }}
+              />
+              <button className="btn-primary btn-sm" onClick={async () => {
+                if (!nuevaEmocion.trim()) return
+                const nombre = nuevaEmocion.trim()
+                await supabase.from('emociones_personalizadas').insert({ user_id: userId, nombre })
+                setEmocionesPersonalizadas(prev => [...prev, nombre])
+                setEmocionInterna(nombre)
+                setNuevaEmocion('')
+                setShowEmocionInput(false)
+              }}>✓</button>
+              <button className="btn-ghost btn-sm" onClick={() => { setShowEmocionInput(false); setNuevaEmocion('') }}>✕</button>
+            </div>
+          )}
           <div className="input-row" style={{ position: 'relative' }}>
             {showSelector && <SelectorImagenSticker userId={userId} onEnviarImagen={enviarImagen} onEnviarSticker={enviarImagen} onCerrar={() => setShowSelector(false)} />}
             <button className="btn-adjunto" onClick={() => setShowSelector(!showSelector)} disabled={!sesionActiva}>📎</button>
