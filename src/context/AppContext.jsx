@@ -150,9 +150,10 @@ const crearSesion = async (universoId, nombre, esPrivada = false, miembros = [],
     .single()
   if (!error) {
     if (esPrivada) {
+      const ahora = new Date().toISOString()
       const inserts = [
-        { sesion_id: data.id, user_id: userId },
-        ...miembros.map(uid => ({ sesion_id: data.id, user_id: uid }))
+        { sesion_id: data.id, user_id: userId, joined_at: '2000-01-01T00:00:00Z' },
+        ...miembros.map(uid => ({ sesion_id: data.id, user_id: uid, joined_at: ahora }))
       ]
       await supabase.from('sesion_miembros').insert(inserts)
     }
@@ -173,11 +174,26 @@ const eliminarSesion = async (sesionId, universoId) => {
 }
 
 const cargarSesion = async (sesionId) => {
-  const { data } = await supabase
+  // Obtener joined_at del usuario en esta sesión (si es privada)
+  const { data: membresia } = await supabase
+    .from('sesion_miembros')
+    .select('joined_at')
+    .eq('sesion_id', sesionId)
+    .eq('user_id', userId)
+    .single()
+
+  let query = supabase
     .from('entradas')
     .select('*')
     .eq('sesion_id', sesionId)
     .order('created_at')
+
+  // Si tiene joined_at y no es desde el principio de los tiempos, filtrar
+  if (membresia?.joined_at && membresia.joined_at > '2001-01-01') {
+    query = query.gte('created_at', membresia.joined_at)
+  }
+
+  const { data } = await query
   const formateadas = (data || []).map(formatearEntrada)
   setSesiones(prev => ({ ...prev, [sesionId]: formateadas }))
 }

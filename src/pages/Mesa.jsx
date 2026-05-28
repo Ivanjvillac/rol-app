@@ -799,7 +799,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const añadirMiembroSesion = async (usuarioId, nombre) => {
     const yaMiembro = miembrosSesion.some(m => m.id === usuarioId)
     if (yaMiembro) return
-    await supabase.from('sesion_miembros').insert({ sesion_id: gestionarSesion.id, user_id: usuarioId })
+    const joined_at = new Date().toISOString()
+    await supabase.from('sesion_miembros').insert({ sesion_id: gestionarSesion.id, user_id: usuarioId, joined_at })
     setMiembrosSesion(prev => [...prev, { id: usuarioId, nombre }])
     // Actualizar sesionesConMiembros para que el nuevo miembro la vea
     setSesionesConMiembros(prev => prev.map(s =>
