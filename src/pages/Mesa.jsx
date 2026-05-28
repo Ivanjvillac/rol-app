@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import SelectorImagenSticker from '../components/SelectorImagenSticker'
 import FichaPersonaje from '../components/FichaPersonaje'
+import { jsPDF } from 'jspdf'
 const renderTexto = (texto) => {
   if (!texto) return null
   const partes = texto.split(/(\*\*[^*]+\*\*|__[^_]+__|_[^_]+_|\*[^*]+\*)/g)
@@ -177,12 +178,14 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [otrosEscribiendo, setOtrosEscribiendo] = useState([])
   const [mostrarIrAbajo, setMostrarIrAbajo] = useState(false)
   const [showMusica, setShowMusica] = useState(false)
+  const [showStats, setShowStats] = useState(false)
   const [youtubeUrl, setYoutubeUrl] = useState('')
   const [youtubeEmbed, setYoutubeEmbed] = useState(null)
   const historialRef = useRef(null)
   const inputRef = useRef(null)
   const timeoutEscribiendoRef = useRef(null)
   const canalEscribiendoRef = useRef(null)
+  const canalPresenciaRef = useRef(null)
 
   const [sesionesConMiembros, setSesionesConMiembros] = useState([])
 
@@ -236,6 +239,16 @@ export default function Mesa({ navigate, selectedUniverso }) {
     return unsub
   }, [sesionActiva?.id])
 
+  // Actualizar presencia cuando cambia el personaje activo
+  useEffect(() => {
+    if (!canalPresenciaRef.current || !canalPresenciaRef.current._nombre) return
+    canalPresenciaRef.current.track({
+      user_id: userId,
+      nombre: canalPresenciaRef.current._nombre,
+      personaje: personajeActivo ? { nombre: personajeActivo.nombre, color: personajeActivo.color, iniciales: personajeActivo.iniciales, avatar_url: personajeActivo.avatar_url } : null,
+    })
+  }, [personajeActivo?.id])
+
   useEffect(() => {
     if (!selectedUniverso || !userId) return
     const channel = supabase
@@ -264,16 +277,35 @@ export default function Mesa({ navigate, selectedUniverso }) {
     canal
       .on('presence', { event: 'sync' }, () => {
         const estado = canal.presenceState()
-        const conectados = Object.values(estado).flat().map(u => u.nombre || u.user_id?.slice(0, 8))
+        // Cada key del estado es un userId, su valor es un array de tracks
+        // Tomamos solo el último track de cada usuario para evitar duplicados
+        const conectados = Object.values(estado).map(tracks => {
+          const ultimo = tracks[tracks.length - 1]
+          return {
+            userId: ultimo.user_id,
+            nombre: ultimo.nombre || ultimo.user_id?.slice(0, 8),
+            personaje: ultimo.personaje || null,
+          }
+        })
         setUsuariosConectados(conectados)
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           const perfil = await supabase.from('perfiles').select('nombre').eq('id', userId).single()
-          await canal.track({ user_id: userId, nombre: perfil.data?.nombre || 'Jugador' })
+          const nombrePerfil = perfil.data?.nombre || 'Jugador'
+          canalPresenciaRef.current = canal
+          canalPresenciaRef.current._nombre = nombrePerfil
+          await canal.track({
+            user_id: userId,
+            nombre: nombrePerfil,
+            personaje: personajeActivo ? { nombre: personajeActivo.nombre, color: personajeActivo.color, iniciales: personajeActivo.iniciales, avatar_url: personajeActivo.avatar_url } : null,
+          })
         }
       })
-    return () => supabase.removeChannel(canal)
+    return () => {
+      supabase.removeChannel(canal)
+      canalPresenciaRef.current = null
+    }
   }, [selectedUniverso?.id, userId])
 
   useEffect(() => {
@@ -410,6 +442,167 @@ export default function Mesa({ navigate, selectedUniverso }) {
     a.href = URL.createObjectURL(blob)
     a.download = `${selectedUniverso.nombre}-${sesionActiva.nombre}.txt`
     a.click()
+  }
+
+  const exportarPDF = () => {
+    if (!sesionActiva || !sesionCompleta.length) return
+
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+    const W = doc.internal.pageSize.getWidth()
+    const H = doc.internal.pageSize.getHeight()
+    const margen = 20
+    const anchoTexto = W - margen * 2
+    let y = margen
+
+    const hexToRgb = (hex) => {
+      if (!hex || !hex.startsWith('#')) return [180, 140, 60]
+      const r = parseInt(hex.slice(1, 3), 16)
+      const g = parseInt(hex.slice(3, 5), 16)
+      const b = parseInt(hex.slice(5, 7), 16)
+      return [r, g, b]
+    }
+
+    const saltarPaginaSiNecesario = (altoNecesario = 10) => {
+      if (y + altoNecesario > H - margen) {
+        doc.addPage()
+        y = margen
+        dibujarPie()
+      }
+    }
+
+    const escribirTextoMultilinea = (texto, x, maxAncho, lineHeight) => {
+      const lineas = doc.splitTextToSize(texto, maxAncho)
+      lineas.forEach(linea => {
+        saltarPaginaSiNecesario(lineHeight)
+        doc.text(linea, x, y)
+        y += lineHeight
+      })
+      return lineas.length
+    }
+
+    const dibujarPie = () => {
+      const pageCount = doc.internal.getNumberOfPages()
+      doc.setFontSize(8)
+      doc.setTextColor(120, 100, 60)
+      doc.text(`${selectedUniverso.nombre} · ${sesionActiva.nombre}`, margen, H - 10)
+      doc.text(`Pág. ${pageCount}`, W - margen, H - 10, { align: 'right' })
+    }
+
+    // ── CABECERA ──
+    // Fondo dorado oscuro
+    doc.setFillColor(30, 22, 8)
+    doc.rect(0, 0, W, 42, 'F')
+
+    // Línea decorativa superior
+    doc.setDrawColor(180, 140, 60)
+    doc.setLineWidth(0.5)
+    doc.line(margen, 8, W - margen, 8)
+
+    // Título universo
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(20)
+    doc.setTextColor(200, 160, 70)
+    doc.text(selectedUniverso.nombre.toUpperCase(), W / 2, 20, { align: 'center' })
+
+    // Nombre sesión
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(11)
+    doc.setTextColor(180, 160, 120)
+    doc.text(sesionActiva.nombre, W / 2, 29, { align: 'center' })
+
+    // Fecha y stats
+    const fecha = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })
+    const numEntradas = sesionCompleta.filter(e => e.tipo !== 'dado').length
+    doc.setFontSize(8)
+    doc.setTextColor(140, 120, 80)
+    doc.text(`${fecha}  ·  ${numEntradas} entradas`, W / 2, 36, { align: 'center' })
+
+    // Línea decorativa inferior cabecera
+    doc.setDrawColor(180, 140, 60)
+    doc.line(margen, 40, W - margen, 40)
+
+    y = 52
+
+    // ── ENTRADAS ──
+    sesionCompleta.forEach((e, idx) => {
+      if (e.tipo === 'dado') return // omitir dados en el PDF
+
+      saltarPaginaSiNecesario(16)
+
+      if (e.tipo === 'narrador') {
+        // Línea separadora suave antes del narrador (excepto el primero)
+        if (idx > 0) {
+          doc.setDrawColor(60, 50, 30)
+          doc.setLineWidth(0.2)
+          doc.line(margen + 10, y - 2, W - margen - 10, y - 2)
+          y += 2
+        }
+        // Label narrador
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(7)
+        doc.setTextColor(140, 110, 50)
+        doc.text('— NARRADOR —', margen, y)
+        y += 5
+
+        // Texto en cursiva
+        doc.setFont('helvetica', 'italic')
+        doc.setFontSize(10.5)
+        doc.setTextColor(200, 185, 155)
+        escribirTextoMultilinea(e.contenido || '', margen, anchoTexto, 6)
+        y += 4
+
+      } else if (e.tipo === 'dialogo') {
+        saltarPaginaSiNecesario(18)
+        // Nombre personaje en su color
+        const [r, g, b] = hexToRgb(e.personaje?.color)
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(9)
+        doc.setTextColor(r, g, b)
+        doc.text((e.personaje?.nombre || 'Desconocido').toUpperCase(), margen, y)
+        y += 5
+
+        // Texto diálogo entre comillas
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(10.5)
+        doc.setTextColor(220, 210, 190)
+        escribirTextoMultilinea(`"${e.contenido || ''}"`, margen + 3, anchoTexto - 3, 6)
+        y += 3
+
+      } else if (e.tipo === 'accion') {
+        saltarPaginaSiNecesario(14)
+        // Nombre personaje
+        const [r, g, b] = hexToRgb(e.personaje?.color)
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(8.5)
+        doc.setTextColor(r, g, b)
+        const nombreAccion = e.personaje?.nombre || 'Desconocido'
+
+        // Línea de acción: "⚡ NOMBRE  contenido"
+        doc.setFont('helvetica', 'italic')
+        doc.setFontSize(10)
+        doc.setTextColor(180, 165, 130)
+        const textoAccion = `· ${nombreAccion} ${e.contenido || ''}`
+        escribirTextoMultilinea(textoAccion, margen, anchoTexto, 6)
+        y += 3
+      }
+    })
+
+    // Pie de la última página
+    dibujarPie()
+
+    // ── PIE FINAL ──
+    saltarPaginaSiNecesario(20)
+    y += 6
+    doc.setDrawColor(180, 140, 60)
+    doc.setLineWidth(0.4)
+    doc.line(margen, y, W - margen, y)
+    y += 6
+    doc.setFont('helvetica', 'italic')
+    doc.setFontSize(8)
+    doc.setTextColor(120, 100, 60)
+    doc.text('Generado con Tinta y Dados', W / 2, y, { align: 'center' })
+
+    doc.save(`${selectedUniverso.nombre} - ${sesionActiva.nombre}.pdf`)
   }
 
   const tirarDado = async (caras) => {
@@ -628,18 +821,33 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
         <div className="sidebar-section">
           <h4>Conectados</h4>
+          {usuariosConectados.length === 0 && <p className="sidebar-empty">Solo tú</p>}
           {usuariosConectados.map((u, i) => (
-            <div key={i} className="conectado-item">
-              <span className="conectado-dot" />
-              <span>{u}</span>
+            <div key={i} className="conectado-item" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.2rem', padding: '0.4rem 0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className="conectado-dot" />
+                <span style={{ fontSize: '0.88rem', color: 'var(--text)' }}>{u.nombre}</span>
+              </div>
+              {u.personaje ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: '1.1rem' }}>
+                  {u.personaje.avatar_url
+                    ? <img src={u.personaje.avatar_url} alt={u.personaje.nombre} style={{ width: '16px', height: '16px', borderRadius: '50%', objectFit: 'cover' }} />
+                    : <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: u.personaje.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', color: 'white', fontWeight: 700, flexShrink: 0 }}>{u.personaje.iniciales}</div>
+                  }
+                  <span style={{ fontSize: '0.78rem', color: u.personaje.color, fontFamily: 'Cinzel, serif' }}>{u.personaje.nombre}</span>
+                </div>
+              ) : (
+                <span style={{ marginLeft: '1.1rem', fontSize: '0.75rem', color: 'var(--text3)', fontStyle: 'italic' }}>📖 Narrador</span>
+              )}
             </div>
           ))}
-          {usuariosConectados.length === 0 && <p className="sidebar-empty">Solo tú</p>}
         </div>
 
         <div className="sidebar-section">
           <h4>Opciones</h4>
           <button className="modo-btn" onClick={exportarSesion} disabled={!sesionActiva}>📄 Exportar TXT</button>
+          <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={exportarPDF} disabled={!sesionActiva}>📕 Exportar PDF</button>
+          <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowStats(true)} disabled={!sesionActiva}>📊 Estadísticas</button>
           <button className="modo-btn notif-btn" style={{ marginTop: '0.4rem' }} onClick={() => { setShowChat(true); setTieneNoLeidos(false); setSidebarAbierto(false) }}>
             🔒 Mensajes privados
             {tieneNoLeidos && <span className="notif-dot" />}
@@ -983,6 +1191,78 @@ export default function Mesa({ navigate, selectedUniverso }) {
           </div>
         </div>
       )}
+
+      {showStats && sesionActiva && (() => {
+        const entradas = sesionCompleta
+        const porTipo = {
+          narrador: entradas.filter(e => e.tipo === 'narrador'),
+          dialogo: entradas.filter(e => e.tipo === 'dialogo'),
+          accion: entradas.filter(e => e.tipo === 'accion'),
+          dado: entradas.filter(e => e.tipo === 'dado'),
+        }
+        const palabras = entradas.reduce((acc, e) => acc + (e.contenido?.split(/\s+/).filter(Boolean).length || 0), 0)
+        const porPersonaje = {}
+        entradas.filter(e => e.personaje_nombre).forEach(e => {
+          const k = e.personaje_nombre
+          if (!porPersonaje[k]) porPersonaje[k] = { nombre: k, color: e.personaje_color, count: 0, palabras: 0 }
+          porPersonaje[k].count++
+          porPersonaje[k].palabras += e.contenido?.split(/\s+/).filter(Boolean).length || 0
+        })
+        const rankPersonajes = Object.values(porPersonaje).sort((a, b) => b.count - a.count)
+        return (
+          <div className="modal-overlay" onClick={() => setShowStats(false)}>
+            <div className="modal" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
+              <h3>📊 Estadísticas — {sesionActiva.nombre}</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem', margin: '1.2rem 0' }}>
+                {[
+                  { label: 'Entradas', valor: entradas.length, icono: '📝' },
+                  { label: 'Palabras', valor: palabras, icono: '✍️' },
+                  { label: 'Dados', valor: porTipo.dado.length, icono: '🎲' },
+                ].map(({ label, valor, icono }) => (
+                  <div key={label} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.8rem', textAlign: 'center' }}>
+                    <div style={{ fontSize: '1.4rem' }}>{icono}</div>
+                    <div style={{ fontFamily: 'Cinzel, serif', fontSize: '1.3rem', color: 'var(--accent)', fontWeight: 700 }}>{valor}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginBottom: '1.2rem' }}>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.6rem' }}>Por tipo</p>
+                {[
+                  { label: 'Narrador', count: porTipo.narrador.length, icono: '📖', color: 'var(--narrador)' },
+                  { label: 'Diálogo', count: porTipo.dialogo.length, icono: '💬', color: 'var(--accent)' },
+                  { label: 'Acción', count: porTipo.accion.length, icono: '⚡', color: '#e67e22' },
+                ].map(({ label, count, icono, color }) => (
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.4rem' }}>
+                    <span style={{ width: '70px', fontSize: '0.82rem', color: 'var(--text2)' }}>{icono} {label}</span>
+                    <div style={{ flex: 1, height: '6px', background: 'var(--bg3)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ width: entradas.length ? `${(count / entradas.length) * 100}%` : '0%', height: '100%', background: color, borderRadius: '3px', transition: 'width 0.4s' }} />
+                    </div>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text2)', minWidth: '28px', textAlign: 'right' }}>{count}</span>
+                  </div>
+                ))}
+              </div>
+              {rankPersonajes.length > 0 && (
+                <div>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.6rem' }}>Participación por personaje</p>
+                  {rankPersonajes.map((p, i) => (
+                    <div key={p.nombre} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text3)', minWidth: '14px' }}>#{i + 1}</span>
+                      <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                      <span style={{ flex: 1, fontSize: '0.85rem', color: p.color, fontFamily: 'Cinzel, serif' }}>{p.nombre}</span>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>{p.palabras} pal.</span>
+                      <span style={{ fontSize: '0.82rem', color: 'var(--text2)', minWidth: '36px', textAlign: 'right' }}>{p.count} entr.</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="modal-actions" style={{ marginTop: '1.5rem' }}>
+                <button className="btn-primary" onClick={() => setShowStats(false)}>Cerrar</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {fichaPersonaje && <FichaPersonaje personaje={fichaPersonaje} userId={userId} onCerrar={() => setFichaPersonaje(null)} />}
       {showChat && <ChatPrivado universo={selectedUniverso} personajes={personajes} userId={userId} onCerrar={() => setShowChat(false)} />}
