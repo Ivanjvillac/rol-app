@@ -5,6 +5,7 @@ import ImportadorDiscord from '../components/ImportadorDiscord'
 export default function Admin() {
   const [tab, setTab] = useState('stats')
   const [stats, setStats] = useState({})
+  const [almacenamiento, setAlmacenamiento] = useState(null)
   const [universos, setUniversos] = useState([])
   const [usuarios, setUsuarios] = useState([])
   const [entradas, setEntradas] = useState([])
@@ -48,6 +49,42 @@ export default function Admin() {
       personajes: (pers || []).filter(x => x.user_id === user.id).length,
       entradas: (entr || []).filter(x => x.user_id === user.id).length,
     })))
+
+    // Calcular uso de storage listando archivos de cada bucket
+    try {
+      const buckets = ['avatares', 'stickers', 'imagenes-chat', 'perfiles']
+      let totalBytes = 0
+      const detalleBuckets = []
+      for (const bucket of buckets) {
+        const { data: archivos } = await supabase.storage.from(bucket).list('', { limit: 1000, offset: 0 })
+        // Listar también subcarpetas (por userId)
+        let bytesEnBucket = 0
+        if (archivos) {
+          // Archivos en raíz
+          const archivosRaiz = archivos.filter(f => f.metadata)
+          bytesEnBucket += archivosRaiz.reduce((acc, f) => acc + (f.metadata?.size || 0), 0)
+          // Subcarpetas
+          const carpetas = archivos.filter(f => !f.metadata)
+          for (const carpeta of carpetas) {
+            const { data: subcarpeta } = await supabase.storage.from(bucket).list(carpeta.name, { limit: 1000 })
+            if (subcarpeta) bytesEnBucket += subcarpeta.reduce((acc, f) => acc + (f.metadata?.size || 0), 0)
+          }
+        }
+        detalleBuckets.push({ nombre: bucket, bytes: bytesEnBucket })
+        totalBytes += bytesEnBucket
+      }
+      const LIMITE_STORAGE_GB = 1
+      const LIMITE_DB_MB = 500
+      // Obtener tamaño de DB via RPC si existe, si no estimamos por entradas
+      const bytesEstimadosDB = (entr?.length || 0) * 500 + (pers?.length || 0) * 300 + (univs?.length || 0) * 200
+      setAlmacenamiento({
+        storage: { usado: totalBytes, limite: LIMITE_STORAGE_GB * 1024 * 1024 * 1024, buckets: detalleBuckets },
+        db: { usadoBytes: bytesEstimadosDB, limite: LIMITE_DB_MB * 1024 * 1024 }
+      })
+    } catch (e) {
+      console.warn('No se pudo calcular almacenamiento:', e)
+    }
+
     setCargando(false)
   }
 
@@ -147,6 +184,7 @@ export default function Admin() {
       ) : (
         <>
           {tab === 'stats' && (
+            <>
             <div className="admin-stats-grid">
               {[
                 { label: 'Universos', value: stats.universos, icon: '🌍' },
@@ -162,6 +200,73 @@ export default function Admin() {
                 </div>
               ))}
             </div>
+
+            {almacenamiento && (() => {
+              const fmtBytes = (b) => {
+                if (b >= 1024*1024*1024) return (b/(1024*1024*1024)).toFixed(2) + ' GB'
+                if (b >= 1024*1024) return (b/(1024*1024)).toFixed(1) + ' MB'
+                if (b >= 1024) return (b/1024).toFixed(0) + ' KB'
+                return b + ' B'
+              }
+              const pctStorage = Math.min((almacenamiento.storage.usado / almacenamiento.storage.limite) * 100, 100)
+              const pctDB = Math.min((almacenamiento.db.usadoBytes / almacenamiento.db.limite) * 100, 100)
+              const colorBarra = (pct) => pct > 80 ? '#e74c3c' : pct > 60 ? '#e67e22' : '#2ecc71'
+              return (
+                <div style={{ marginTop: '1.5rem', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '1.5rem' }}>
+                  <h3 style={{ fontFamily: 'Cinzel, serif', fontSize: '0.85rem', color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1.2rem' }}>
+                    💾 Almacenamiento — Plan gratuito Supabase
+                  </h3>
+
+                  {/* Storage */}
+                  <div style={{ marginBottom: '1.2rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                      <span style={{ fontSize: '0.88rem', color: 'var(--text2)' }}>📁 Storage (archivos e imágenes)</span>
+                      <span style={{ fontSize: '0.88rem', color: pctStorage > 80 ? '#e74c3c' : 'var(--text2)' }}>
+                        {fmtBytes(almacenamiento.storage.usado)} / 1 GB
+                      </span>
+                    </div>
+                    <div style={{ height: '8px', background: 'var(--bg3)', borderRadius: '4px', overflow: 'hidden' }}>
+                      <div style={{ width: `${pctStorage}%`, height: '100%', background: colorBarra(pctStorage), borderRadius: '4px', transition: 'width 0.5s' }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: '1rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
+                      {almacenamiento.storage.buckets.map(b => (
+                        <span key={b.nombre} style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>
+                          {b.nombre}: <strong style={{ color: 'var(--text2)' }}>{fmtBytes(b.bytes)}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Base de datos */}
+                  <div style={{ marginBottom: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                      <span style={{ fontSize: '0.88rem', color: 'var(--text2)' }}>🗄️ Base de datos (estimado)</span>
+                      <span style={{ fontSize: '0.88rem', color: pctDB > 80 ? '#e74c3c' : 'var(--text2)' }}>
+                        {fmtBytes(almacenamiento.db.usadoBytes)} / 500 MB
+                      </span>
+                    </div>
+                    <div style={{ height: '8px', background: 'var(--bg3)', borderRadius: '4px', overflow: 'hidden' }}>
+                      <div style={{ width: `${pctDB}%`, height: '100%', background: colorBarra(pctDB), borderRadius: '4px', transition: 'width 0.5s' }} />
+                    </div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text3)', marginTop: '0.4rem' }}>
+                      * Estimado en base al número de entradas, personajes y universos. El valor real puede consultarse en el dashboard de Supabase.
+                    </p>
+                  </div>
+
+                  {pctStorage > 70 && (
+                    <div style={{ background: 'rgba(231,76,60,0.1)', border: '1px solid rgba(231,76,60,0.3)', borderRadius: 'var(--radius)', padding: '0.6rem 1rem', fontSize: '0.85rem', color: '#e74c3c' }}>
+                      ⚠️ Storage al {pctStorage.toFixed(0)}% — considera limpiar imágenes antiguas o actualizar al plan Pro.
+                    </div>
+                  )}
+                  {pctStorage <= 70 && (
+                    <div style={{ background: 'rgba(46,204,113,0.1)', border: '1px solid rgba(46,204,113,0.2)', borderRadius: 'var(--radius)', padding: '0.6rem 1rem', fontSize: '0.85rem', color: '#2ecc71' }}>
+                      ✓ Almacenamiento en buen estado — {(100 - pctStorage).toFixed(0)}% libre en storage.
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+            </>
           )}
 
           {tab === 'universos' && (

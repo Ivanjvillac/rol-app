@@ -51,7 +51,17 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
   }, [miPersonaje?.id, destinatario?.id])
 
   useEffect(() => {
-    if (historialRef.current) historialRef.current.scrollTop = historialRef.current.scrollHeight
+    if (!historialRef.current) return
+    const key = miPersonaje && destinatario ? claveConv(miPersonaje.id, destinatario.id) : null
+    const msgs = key ? (conversaciones[key] || []) : []
+    // Buscar primer mensaje no leído dirigido a mí
+    const primerNoLeido = msgs.find(m => m.destinatario_user_id === userId && !m.leido)
+    if (primerNoLeido) {
+      const el = document.getElementById(`msg-${primerNoLeido.id}`)
+      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return }
+    }
+    // Si no hay no leídos, ir al final
+    historialRef.current.scrollTop = historialRef.current.scrollHeight
   }, [conversaciones, destinatario])
 
   const claveConv = (a, b) => [a, b].sort().join('-')
@@ -112,11 +122,21 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
                 </div>
                 <div className="chat-historial" ref={historialRef}>
                   {mensajesActuales.length === 0 && <div className="chat-vacio"><span>🔐</span><p>Inicio de la conversación privada.</p></div>}
-                  {mensajesActuales.map(m => {
+                  {mensajesActuales.map((m, idx) => {
                     const esMio = m.remitente_id === miPersonaje.id
                     const autor = esMio ? miPersonaje : destinatario
+                    const esNoLeido = m.destinatario_user_id === userId && !m.leido
+                    const esPrimerNoLeido = esNoLeido && !mensajesActuales.slice(0, idx).some(x => x.destinatario_user_id === userId && !x.leido)
                     return (
-                      <div key={m.id} className={`chat-mensaje ${esMio ? 'propio' : 'ajeno'}`}>
+                      <div key={m.id} id={`msg-${m.id}`}>
+                        {esPrimerNoLeido && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0.5rem 0', opacity: 0.6 }}>
+                            <div style={{ flex: 1, height: '1px', background: 'var(--accent)' }} />
+                            <span style={{ fontSize: '0.7rem', color: 'var(--accent)', fontFamily: 'Cinzel, serif', whiteSpace: 'nowrap' }}>nuevos mensajes</span>
+                            <div style={{ flex: 1, height: '1px', background: 'var(--accent)' }} />
+                          </div>
+                        )}
+                      <div className={`chat-mensaje ${esMio ? 'propio' : 'ajeno'}`}>
                         {!esMio && (autor.avatar_url ? <img src={autor.avatar_url} alt={autor.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: autor.color }}>{autor.iniciales}</div>)}
                         <div className="chat-burbuja" style={{ borderColor: autor.color }}>
                           {m.contenido && <p>{m.contenido}</p>}
@@ -124,6 +144,7 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
                           <span className="entrada-hora">{formatHora(m.created_at)}</span>
                         </div>
                         {esMio && (autor.avatar_url ? <img src={autor.avatar_url} alt={autor.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: autor.color }}>{autor.iniciales}</div>)}
+                      </div>
                       </div>
                     )
                   })}
@@ -168,9 +189,16 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [confirmDeleteSesion, setConfirmDeleteSesion] = useState(null)
   const [sesionPrivada, setSesionPrivada] = useState(false)
   const [miembrosPrivados, setMiembrosPrivados] = useState([])
+  const [gestionarSesion, setGestionarSesion] = useState(null)
+  const [miembrosSesion, setMiembrosSesion] = useState([])
+  const [loadingGestion, setLoadingGestion] = useState(false)
   const [usuariosUniverso, setUsuariosUniverso] = useState([])
   const [padreSesion, setPadreSesion] = useState(null)
   const [busqueda, setBusqueda] = useState('')
+  const [busquedaGlobal, setBusquedaGlobal] = useState('')
+  const [resultadosGlobales, setResultadosGlobales] = useState([])
+  const [buscandoGlobal, setBuscandoGlobal] = useState(false)
+  const [showBusquedaGlobal, setShowBusquedaGlobal] = useState(false)
   const [editandoEntrada, setEditandoEntrada] = useState(null)
   const [confirmDeleteEntrada, setConfirmDeleteEntrada] = useState(null)
   const [fichaPersonaje, setFichaPersonaje] = useState(null)
@@ -179,8 +207,13 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [mostrarIrAbajo, setMostrarIrAbajo] = useState(false)
   const [showMusica, setShowMusica] = useState(false)
   const [showStats, setShowStats] = useState(false)
+  const [showDados, setShowDados] = useState(false)
   const [youtubeUrl, setYoutubeUrl] = useState('')
   const [youtubeEmbed, setYoutubeEmbed] = useState(null)
+  const [reacciones, setReacciones] = useState({})
+  const [showReacciones, setShowReacciones] = useState(null)
+  const [notifsSesion, setNotifsSesion] = useState({})
+  const [fijadas, setFijadas] = useState({}) // { entrada_id: true/false } estado local
   const historialRef = useRef(null)
   const inputRef = useRef(null)
   const timeoutEscribiendoRef = useRef(null)
@@ -188,6 +221,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const canalPresenciaRef = useRef(null)
 
   const [sesionesConMiembros, setSesionesConMiembros] = useState([])
+  const [seccionSesiones, setSeccionSesiones] = useState(true)
+  const [seccionPersonajes, setSeccionPersonajes] = useState(true)
+  const [seccionConectados, setSeccionConectados] = useState(true)
+  const [seccionOpciones, setSeccionOpciones] = useState(false)
 
   const personajesTodos = selectedUniverso ? getPersonajesDeUniverso(selectedUniverso.id) : []
   const personajes = personajesTodos.filter(p => !p.oculto || p.user_id === userId)
@@ -732,59 +769,232 @@ export default function Mesa({ navigate, selectedUniverso }) {
     setConfirmDeleteSesion(null)
   }
 
+  const abrirGestionSesion = async (sesion) => {
+    setGestionarSesion(sesion)
+    setLoadingGestion(true)
+    // Cargar miembros actuales de la sesión
+    const { data: mbs } = await supabase
+      .from('sesion_miembros')
+      .select('user_id')
+      .eq('sesion_id', sesion.id)
+    const ids = (mbs || []).map(m => m.user_id)
+    if (ids.length > 0) {
+      const { data: perfs } = await supabase.from('perfiles').select('id, nombre').in('id', ids)
+      setMiembrosSesion(perfs || [])
+    } else {
+      setMiembrosSesion([])
+    }
+    // Cargar todos los miembros del universo si no están cargados
+    if (usuariosUniverso.length === 0) {
+      const { data: univMbs } = await supabase.from('miembros').select('user_id').eq('universo_id', selectedUniverso.id)
+      const univIds = (univMbs || []).map(m => m.user_id)
+      if (univIds.length > 0) {
+        const { data: perfs } = await supabase.from('perfiles').select('id, nombre').in('id', univIds)
+        setUsuariosUniverso(perfs || [])
+      }
+    }
+    setLoadingGestion(false)
+  }
+
+  const añadirMiembroSesion = async (usuarioId, nombre) => {
+    const yaMiembro = miembrosSesion.some(m => m.id === usuarioId)
+    if (yaMiembro) return
+    await supabase.from('sesion_miembros').insert({ sesion_id: gestionarSesion.id, user_id: usuarioId })
+    setMiembrosSesion(prev => [...prev, { id: usuarioId, nombre }])
+    // Actualizar sesionesConMiembros para que el nuevo miembro la vea
+    setSesionesConMiembros(prev => prev.map(s =>
+      s.id === gestionarSesion.id ? { ...s, miembros: [...(s.miembros || []), usuarioId] } : s
+    ))
+  }
+
+  const quitarMiembroSesion = async (usuarioId) => {
+    if (usuarioId === gestionarSesion.user_id) return
+    await supabase.from('sesion_miembros').delete().eq('sesion_id', gestionarSesion.id).eq('user_id', usuarioId)
+    setMiembrosSesion(prev => prev.filter(m => m.id !== usuarioId))
+    setSesionesConMiembros(prev => prev.map(s =>
+      s.id === gestionarSesion.id ? { ...s, miembros: (s.miembros || []).filter(id => id !== usuarioId) } : s
+    ))
+  }
+
+  // ── REACCIONES ──
+  const EMOJIS_RAPIDOS = ['❤️', '😂', '😮', '👏', '🎲', '⚔️', '✨', '💀']
+
+  const cargarReacciones = async () => {
+    const ids = sesionCompleta.map(e => e.id)
+    if (ids.length === 0) return
+    const { data } = await supabase.from('reacciones').select('*').in('entrada_id', ids)
+    const agrupadas = {}
+    ;(data || []).forEach(r => {
+      if (!agrupadas[r.entrada_id]) agrupadas[r.entrada_id] = []
+      agrupadas[r.entrada_id].push(r)
+    })
+    setReacciones(agrupadas)
+  }
+
+  const toggleReaccion = async (entradaId, emoji) => {
+    const existente = (reacciones[entradaId] || []).find(r => r.user_id === userId && r.emoji === emoji)
+    if (existente) {
+      await supabase.from('reacciones').delete().eq('id', existente.id)
+      setReacciones(prev => ({ ...prev, [entradaId]: (prev[entradaId] || []).filter(r => r.id !== existente.id) }))
+    } else {
+      const { data } = await supabase.from('reacciones').insert({ entrada_id: entradaId, user_id: userId, emoji }).select().single()
+      if (data) setReacciones(prev => ({ ...prev, [entradaId]: [...(prev[entradaId] || []), data] }))
+    }
+    setShowReacciones(null)
+  }
+
+  const agruparReacciones = (entradaId) => {
+    const rs = reacciones[entradaId] || []
+    const grupos = {}
+    rs.forEach(r => { if (!grupos[r.emoji]) grupos[r.emoji] = []; grupos[r.emoji].push(r.user_id) })
+    return Object.entries(grupos).map(([emoji, uids]) => ({ emoji, count: uids.length, mia: uids.includes(userId) }))
+  }
+
+  // ── FIJAR ENTRADAS (estado local, sin depender del store del contexto) ──
+  const cargarFijadas = async () => {
+    const ids = sesionCompleta.map(e => e.id)
+    if (ids.length === 0) return
+    const { data } = await supabase.from('entradas').select('id, fijada').in('id', ids)
+    const mapa = {}
+    ;(data || []).forEach(e => { if (e.fijada) mapa[e.id] = true })
+    setFijadas(mapa)
+  }
+
+  const toggleFijar = async (entrada) => {
+    const nuevoValor = !fijadas[entrada.id]
+    await supabase.from('entradas').update({ fijada: nuevoValor }).eq('id', entrada.id)
+    setFijadas(prev => ({ ...prev, [entrada.id]: nuevoValor }))
+  }
+
+  const entradasFijadas = sesionCompleta.filter(e => fijadas[e.id])
+
+  // ── HISTORIAL DE DADOS ──
+  const tiradas = sesionCompleta.filter(e => e.tipo === 'dado')
+
+  // ── BUSCADOR GLOBAL ──
+  const buscarGlobal = async () => {
+    if (!busquedaGlobal.trim() || !selectedUniverso) return
+    setBuscandoGlobal(true)
+    const { data } = await supabase
+      .from('entradas')
+      .select('*, sesiones(nombre)')
+      .eq('universo_id', selectedUniverso.id)
+      .ilike('contenido', `%${busquedaGlobal.trim()}%`)
+      .order('created_at', { ascending: false })
+      .limit(50)
+    setResultadosGlobales(data || [])
+    setBuscandoGlobal(false)
+  }
+
+  // ── NOTIFICACIONES DE SESIÓN ──
+  useEffect(() => {
+    if (!selectedUniverso || !userId) return
+    const canal = supabase
+      .channel(`notif-${selectedUniverso.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'entradas',
+        filter: `universo_id=eq.${selectedUniverso.id}`
+      }, (payload) => {
+        const nueva = payload.new
+        if (nueva.user_id === userId) return
+        if (nueva.sesion_id === sesionActiva?.id) return
+        if (nueva.sesion_id) setNotifsSesion(prev => ({ ...prev, [nueva.sesion_id]: (prev[nueva.sesion_id] || 0) + 1 }))
+      })
+      .subscribe()
+    return () => supabase.removeChannel(canal)
+  }, [selectedUniverso?.id, sesionActiva?.id, userId])
+
+  // Limpiar notifs y cargar reacciones/fijadas al entrar a sesión
+  useEffect(() => {
+    if (!sesionActiva?.id) return
+    setNotifsSesion(prev => { const n = { ...prev }; delete n[sesionActiva.id]; return n })
+    // Pequeño delay para que sesionCompleta esté poblada
+    setTimeout(() => { cargarReacciones(); cargarFijadas() }, 500)
+  }, [sesionActiva?.id])
+
   return (
     <div className="mesa">
       <div className={`sidebar-overlay ${sidebarAbierto ? 'visible' : ''}`} onClick={() => setSidebarAbierto(false)} />
 
       <aside className={`mesa-sidebar ${sidebarAbierto ? 'abierto' : ''}`}>
         <div className="sidebar-section">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
-            <h4>Sesiones</h4>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: seccionSesiones ? '0.6rem' : 0 }}>
+            <h4 style={{ marginBottom: 0, cursor: 'pointer', userSelect: 'none' }} onClick={() => setSeccionSesiones(p => !p)}>
+              {seccionSesiones ? '▾' : '▸'} Sesiones
+            </h4>
             <button className="btn-adjunto" style={{ fontSize: '1rem' }} onClick={() => setShowNuevaSesion(true)}>＋</button>
           </div>
-          {sesiones.length === 0 && <p className="sidebar-empty">Sin sesiones. Crea la primera.</p>}
-          {sesiones.filter(s => !s.padre_id).map(s => (
-            <div key={s.id}>
-              <div className={`sesion-item ${sesionActiva?.id === s.id ? 'activa' : ''}`} onClick={() => { setSesionActiva(s); setSidebarAbierto(false) }}>
-                <span>{s.es_privada ? '🔒' : '#'} {s.nombre}</span>
-                <button className="sesion-delete" onClick={e => { e.stopPropagation(); setConfirmDeleteSesion(s) }}>✕</button>
-              </div>
-              {sesiones.filter(sub => sub.padre_id === s.id).map(sub => (
-                <div key={sub.id} className={`sesion-item sesion-sub ${sesionActiva?.id === sub.id ? 'activa' : ''}`} onClick={() => { setSesionActiva(sub); setSidebarAbierto(false) }}>
-                  <span>↳ {sub.es_privada ? '🔒' : '#'} {sub.nombre}</span>
-                  <button className="sesion-delete" onClick={e => { e.stopPropagation(); setConfirmDeleteSesion(sub) }}>✕</button>
+          {seccionSesiones && (
+            <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+              {sesiones.length === 0 && <p className="sidebar-empty">Sin sesiones. Crea la primera.</p>}
+              {sesiones.filter(s => !s.padre_id).map(s => (
+                <div key={s.id}>
+                  <div className={`sesion-item ${sesionActiva?.id === s.id ? 'activa' : ''}`} onClick={() => { setSesionActiva(s); setSidebarAbierto(false) }}>
+                    <span style={{ flex: 1 }}>{s.es_privada ? '🔒' : '#'} {s.nombre}</span>
+                    {notifsSesion[s.id] > 0 && <span style={{ background: 'var(--accent)', color: '#000', borderRadius: '999px', fontSize: '0.65rem', padding: '0.1rem 0.4rem', fontWeight: 700, marginRight: '0.2rem' }}>{notifsSesion[s.id]}</span>}
+                    <div style={{ display: 'flex', gap: '0.2rem' }}>
+                      {s.es_privada && s.user_id === userId && (
+                        <button className="sesion-delete" title="Gestionar miembros" onClick={e => { e.stopPropagation(); abrirGestionSesion(s) }}>👥</button>
+                      )}
+                      <button className="sesion-delete" onClick={e => { e.stopPropagation(); setConfirmDeleteSesion(s) }}>✕</button>
+                    </div>
+                  </div>
+                  {sesiones.filter(sub => sub.padre_id === s.id).map(sub => (
+                    <div key={sub.id} className={`sesion-item sesion-sub ${sesionActiva?.id === sub.id ? 'activa' : ''}`} onClick={() => { setSesionActiva(sub); setSidebarAbierto(false) }}>
+                      <span style={{ flex: 1 }}>↳ {sub.es_privada ? '🔒' : '#'} {sub.nombre}</span>
+                      {notifsSesion[sub.id] > 0 && <span style={{ background: 'var(--accent)', color: '#000', borderRadius: '999px', fontSize: '0.65rem', padding: '0.1rem 0.4rem', fontWeight: 700, marginRight: '0.2rem' }}>{notifsSesion[sub.id]}</span>}
+                      <div style={{ display: 'flex', gap: '0.2rem' }}>
+                        {sub.es_privada && sub.user_id === userId && (
+                          <button className="sesion-delete" title="Gestionar miembros" onClick={e => { e.stopPropagation(); abrirGestionSesion(sub) }}>👥</button>
+                        )}
+                        <button className="sesion-delete" onClick={e => { e.stopPropagation(); setConfirmDeleteSesion(sub) }}>✕</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
-          ))}
+          )}
         </div>
 
         <div className="sidebar-section">
-          <h4>Personajes</h4>
-          <div className={`personaje-btn narrador-btn ${modoEntrada === 'narrador' && !personajeActivo ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(null); setModoEntrada('narrador'); setSidebarAbierto(false) }}>
-            <div className="personaje-avatar-sm narrador-avatar">📖</div>
-            <span>Narrador</span>
-          </div>
-          {personajes.filter(p => !p.es_npc).map(p => (
-            <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) }}>
-              {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
-              <div style={{ flex: 1 }}><span>{p.nombre}</span><small>{p.rol}</small></div>
-              <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
+          <h4 style={{ cursor: 'pointer', userSelect: 'none', marginBottom: seccionPersonajes ? '0.6rem' : 0 }} onClick={() => setSeccionPersonajes(p => !p)}>
+            {seccionPersonajes ? '▾' : '▸'} Personajes
+          </h4>
+          {seccionPersonajes && (
+            <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
+              <div className={`personaje-btn narrador-btn ${modoEntrada === 'narrador' && !personajeActivo ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(null); setModoEntrada('narrador'); setSidebarAbierto(false) }}>
+                <div className="personaje-avatar-sm narrador-avatar">📖</div>
+                <span>Narrador</span>
+              </div>
+              {personajes.filter(p => !p.es_npc).map(p => {
+                const esMio = p.user_id === userId
+                return (
+                  <div key={p.id}
+                    className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''} ${!esMio ? 'personaje-ajeno' : ''}`}
+                    onClick={esMio ? () => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) } : undefined}
+                    style={!esMio ? { opacity: 0.5, cursor: 'default' } : {}}>
+                    {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
+                    <div style={{ flex: 1 }}><span>{p.nombre}</span><small>{p.rol}</small></div>
+                    <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
+                  </div>
+                )
+              })}
+              {personajes.filter(p => p.es_npc).length > 0 && (
+                <>
+                  <p style={{ fontSize: '0.7rem', color: 'var(--text3)', padding: '0.4rem 0.2rem 0.2rem', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em' }}>NPCs</p>
+                  {personajes.filter(p => p.es_npc).map(p => (
+                    <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) }}>
+                      {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
+                      <div style={{ flex: 1 }}><span>{p.nombre}</span><small>🤖 {p.rol}</small></div>
+                      <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
+                    </div>
+                  ))}
+                </>
+              )}
+              {personajes.length === 0 && <p className="sidebar-empty">Sin personajes en este universo.</p>}
             </div>
-          ))}
-          {personajes.filter(p => p.es_npc).length > 0 && (
-            <>
-              <p style={{ fontSize: '0.7rem', color: 'var(--text3)', padding: '0.4rem 0.2rem 0.2rem', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em' }}>NPCs</p>
-              {personajes.filter(p => p.es_npc).map(p => (
-                <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) }}>
-                  {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
-                  <div style={{ flex: 1 }}><span>{p.nombre}</span><small>🤖 {p.rol}</small></div>
-                  <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
-                </div>
-              ))}
-            </>
           )}
-          {personajes.length === 0 && <p className="sidebar-empty">Sin personajes en este universo.</p>}
         </div>
 
         {personajeActivo && (
@@ -820,56 +1030,59 @@ export default function Mesa({ navigate, selectedUniverso }) {
         </div>
 
         <div className="sidebar-section">
-          <h4>Conectados</h4>
-          {usuariosConectados.length === 0 && <p className="sidebar-empty">Solo tú</p>}
-          {usuariosConectados.map((u, i) => (
-            <div key={i} className="conectado-item" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.2rem', padding: '0.4rem 0' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span className="conectado-dot" />
-                <span style={{ fontSize: '0.88rem', color: 'var(--text)' }}>{u.nombre}</span>
-              </div>
-              {u.personaje ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: '1.1rem' }}>
-                  {u.personaje.avatar_url
-                    ? <img src={u.personaje.avatar_url} alt={u.personaje.nombre} style={{ width: '16px', height: '16px', borderRadius: '50%', objectFit: 'cover' }} />
-                    : <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: u.personaje.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', color: 'white', fontWeight: 700, flexShrink: 0 }}>{u.personaje.iniciales}</div>
-                  }
-                  <span style={{ fontSize: '0.78rem', color: u.personaje.color, fontFamily: 'Cinzel, serif' }}>{u.personaje.nombre}</span>
+          <h4 style={{ cursor: 'pointer', userSelect: 'none', marginBottom: seccionConectados ? '0.6rem' : 0 }} onClick={() => setSeccionConectados(p => !p)}>
+            {seccionConectados ? '▾' : '▸'} Conectados
+          </h4>
+          {seccionConectados && (
+            <div style={{ maxHeight: '160px', overflowY: 'auto' }}>
+              {usuariosConectados.length === 0 && <p className="sidebar-empty">Solo tú</p>}
+              {usuariosConectados.map((u, i) => (
+                <div key={i} className="conectado-item" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.2rem', padding: '0.4rem 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span className="conectado-dot" />
+                    <span style={{ fontSize: '0.88rem', color: 'var(--text)' }}>{u.nombre}</span>
+                  </div>
+                  {u.personaje ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: '1.1rem' }}>
+                      {u.personaje.avatar_url
+                        ? <img src={u.personaje.avatar_url} alt={u.personaje.nombre} style={{ width: '16px', height: '16px', borderRadius: '50%', objectFit: 'cover' }} />
+                        : <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: u.personaje.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', color: 'white', fontWeight: 700, flexShrink: 0 }}>{u.personaje.iniciales}</div>
+                      }
+                      <span style={{ fontSize: '0.78rem', color: u.personaje.color, fontFamily: 'Cinzel, serif' }}>{u.personaje.nombre}</span>
+                    </div>
+                  ) : (
+                    <span style={{ marginLeft: '1.1rem', fontSize: '0.75rem', color: 'var(--text3)', fontStyle: 'italic' }}>📖 Narrador</span>
+                  )}
                 </div>
-              ) : (
-                <span style={{ marginLeft: '1.1rem', fontSize: '0.75rem', color: 'var(--text3)', fontStyle: 'italic' }}>📖 Narrador</span>
-              )}
+              ))}
             </div>
-          ))}
+          )}
         </div>
 
         <div className="sidebar-section">
-          <h4>Opciones</h4>
-          <button className="modo-btn" onClick={exportarSesion} disabled={!sesionActiva}>📄 Exportar TXT</button>
-          <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={exportarPDF} disabled={!sesionActiva}>📕 Exportar PDF</button>
-          <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowStats(true)} disabled={!sesionActiva}>📊 Estadísticas</button>
-          <button className="modo-btn notif-btn" style={{ marginTop: '0.4rem' }} onClick={() => { setShowChat(true); setTieneNoLeidos(false); setSidebarAbierto(false) }}>
-            🔒 Mensajes privados
-            {tieneNoLeidos && <span className="notif-dot" />}
-          </button>
-          {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirInvitar}>✉️ Invitar jugador</button>}
-          <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMusica(true)}>🎵 Música</button>
-          {youtubeEmbed && (
-            <div style={{ marginTop: '0.6rem', borderRadius: 'var(--radius)', overflow: 'hidden', position: 'relative' }}>
-              <iframe
-                src={youtubeEmbed}
-                width="100%"
-                height="52"
-                frameBorder="0"
-                allow="autoplay; encrypted-media"
-                style={{ display: 'block' }}
-              />
-              <button
-                onClick={() => { setYoutubeEmbed(null); setYoutubeUrl('') }}
-                style={{ position: 'absolute', top: '2px', right: '2px', background: 'rgba(0,0,0,0.6)', border: 'none', color: 'white', borderRadius: '3px', padding: '1px 5px', fontSize: '0.7rem', cursor: 'pointer', lineHeight: 1.4 }}
-              >✕</button>
-            </div>
-          )}
+          <h4 style={{ cursor: 'pointer', userSelect: 'none', marginBottom: seccionOpciones ? '0.6rem' : 0 }} onClick={() => setSeccionOpciones(p => !p)}>
+            {seccionOpciones ? '▾' : '▸'} Opciones
+          </h4>
+          {seccionOpciones && (<>
+            <button className="modo-btn" onClick={exportarSesion} disabled={!sesionActiva}>📄 Exportar TXT</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={exportarPDF} disabled={!sesionActiva}>📕 Exportar PDF</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowStats(true)} disabled={!sesionActiva}>📊 Estadísticas</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowDados(true)} disabled={!sesionActiva}>🎲 Historial de dados</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowBusquedaGlobal(true)} disabled={!selectedUniverso}>🔍 Buscar en universo</button>
+            <button className="modo-btn notif-btn" style={{ marginTop: '0.4rem' }} onClick={() => { setShowChat(true); setTieneNoLeidos(false); setSidebarAbierto(false) }}>
+              🔒 Mensajes privados
+              {tieneNoLeidos && <span className="notif-dot" />}
+            </button>
+            {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirInvitar}>✉️ Invitar jugador</button>}
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMusica(true)}>🎵 Música</button>
+            {youtubeEmbed && (
+              <div style={{ marginTop: '0.6rem', borderRadius: 'var(--radius)', overflow: 'hidden', position: 'relative' }}>
+                <iframe src={youtubeEmbed} width="100%" height="52" frameBorder="0" allow="autoplay; encrypted-media" style={{ display: 'block' }} />
+                <button onClick={() => { setYoutubeEmbed(null); setYoutubeUrl('') }}
+                  style={{ position: 'absolute', top: '2px', right: '2px', background: 'rgba(0,0,0,0.6)', border: 'none', color: 'white', borderRadius: '3px', padding: '1px 5px', fontSize: '0.7rem', cursor: 'pointer', lineHeight: 1.4 }}>✕</button>
+              </div>
+            )}
+          </>)}
         </div>
       </aside>
 
@@ -897,8 +1110,23 @@ export default function Mesa({ navigate, selectedUniverso }) {
             </div>
           )}
           {sesionActiva && sesion.length === 0 && <div className="historial-empty"><p>{busqueda ? 'Sin resultados.' : '¡Empieza a escribir!'}</p></div>}
+
+          {/* Panel de entradas fijadas */}
+          {entradasFijadas.length > 0 && !busqueda && (
+            <div style={{ background: 'rgba(180,140,60,0.08)', border: '1px solid rgba(180,140,60,0.2)', borderRadius: 'var(--radius)', margin: '0.5rem 0 1rem', padding: '0.6rem 1rem' }}>
+              <p style={{ fontSize: '0.72rem', color: 'var(--accent)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>📌 Fijadas</p>
+              {entradasFijadas.map(e => (
+                <div key={e.id} style={{ fontSize: '0.85rem', color: 'var(--text2)', padding: '0.25rem 0', borderBottom: '1px solid rgba(180,140,60,0.1)', cursor: 'pointer' }}
+                  onClick={() => document.getElementById(`entrada-${e.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+                  {e.personaje_nombre && <span style={{ color: e.personaje_color, fontFamily: 'Cinzel, serif', fontSize: '0.78rem', marginRight: '0.4rem' }}>{e.personaje_nombre}:</span>}
+                  <span style={{ fontStyle: 'italic' }}>{e.contenido?.slice(0, 80)}{e.contenido?.length > 80 ? '…' : ''}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           {sesion.map(e => (
-            <div key={e.id} className={`entrada entrada-${e.tipo}`}>
+            <div key={e.id} id={`entrada-${e.id}`} className={`entrada entrada-${e.tipo}${fijadas[e.id] ? ' entrada-fijada' : ''}`}>
               {e.tipo === 'narrador' && (
                 <div className="entrada-narrador">
                   <span className="entrada-label">📖 Narrador</span>
@@ -955,6 +1183,38 @@ export default function Mesa({ navigate, selectedUniverso }) {
                     <span>{e.contenido}</span>
                   </div>
                   <span className="entrada-hora">{formatHora(e.timestamp)}</span>
+                </div>
+              )}
+
+              {/* Reacciones */}
+              {e.tipo !== 'dado' && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', padding: '0.2rem 0.8rem 0.4rem', alignItems: 'center' }}>
+                  {agruparReacciones(e.id).map(({ emoji, count, mia }) => (
+                    <button key={emoji} onClick={() => toggleReaccion(e.id, emoji)}
+                      style={{ background: mia ? 'rgba(180,140,60,0.15)' : 'var(--bg3)', border: `1px solid ${mia ? 'var(--accent)' : 'var(--border)'}`, borderRadius: '999px', padding: '0.1rem 0.5rem', fontSize: '0.82rem', cursor: 'pointer', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                      {emoji} <span style={{ fontSize: '0.75rem', color: mia ? 'var(--accent)' : 'var(--text3)' }}>{count}</span>
+                    </button>
+                  ))}
+                  <div style={{ position: 'relative' }}>
+                    <button onClick={() => setShowReacciones(showReacciones === e.id ? null : e.id)}
+                      style={{ background: 'none', border: '1px dashed var(--border)', borderRadius: '999px', padding: '0.1rem 0.4rem', fontSize: '0.75rem', cursor: 'pointer', color: 'var(--text3)' }}>＋😊</button>
+                    {showReacciones === e.id && (
+                      <div style={{ position: 'absolute', bottom: '100%', left: 0, background: 'var(--bg2)', border: '1px solid var(--border2)', borderRadius: 'var(--radius)', padding: '0.4rem', display: 'flex', gap: '0.3rem', zIndex: 100, boxShadow: 'var(--shadow)' }}>
+                        {EMOJIS_RAPIDOS.map(em => (
+                          <button key={em} onClick={() => toggleReaccion(e.id, em)}
+                            style={{ background: 'none', border: 'none', fontSize: '1.1rem', cursor: 'pointer', padding: '0.1rem', borderRadius: '4px' }}>
+                            {em}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {(e.user_id === userId || esDueno) && (
+                    <button onClick={() => toggleFijar(e)} title={fijadas[e.id] ? 'Desfijar' : 'Fijar'}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', color: fijadas[e.id] ? 'var(--accent)' : 'var(--text3)', marginLeft: 'auto', padding: '0.1rem 0.3rem' }}>
+                      {fijadas[e.id] ? '📌' : '📍'}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -1263,6 +1523,131 @@ export default function Mesa({ navigate, selectedUniverso }) {
           </div>
         )
       })()}
+
+      {gestionarSesion && (
+        <div className="modal-overlay" onClick={() => setGestionarSesion(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3>👥 Miembros — {gestionarSesion.nombre}</h3>
+
+            {loadingGestion ? (
+              <p style={{ color: 'var(--text3)', margin: '1rem 0' }}>Cargando...</p>
+            ) : (
+              <>
+                {/* Miembros actuales */}
+                <div style={{ marginBottom: '1.2rem' }}>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.5rem' }}>En esta sala</label>
+                  {miembrosSesion.length === 0 && <p style={{ color: 'var(--text3)', fontSize: '0.85rem', fontStyle: 'italic' }}>Solo tú por ahora.</p>}
+                  {miembrosSesion.map(m => (
+                    <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0', borderBottom: '1px solid var(--border)' }}>
+                      <span className="conectado-dot" style={{ background: m.id === gestionarSesion.user_id ? 'var(--accent)' : 'var(--text3)' }} />
+                      <span style={{ flex: 1, fontSize: '0.9rem', color: 'var(--text)' }}>{m.nombre || m.id.slice(0, 8)}</span>
+                      {m.id === gestionarSesion.user_id
+                        ? <span style={{ fontSize: '0.75rem', color: 'var(--accent)' }}>creador</span>
+                        : <button className="btn-danger btn-sm" onClick={() => quitarMiembroSesion(m.id)}>Quitar</button>
+                      }
+                    </div>
+                  ))}
+                </div>
+
+                {/* Añadir miembro desde los del universo */}
+                {usuariosUniverso.filter(u => u.id !== userId && !miembrosSesion.some(m => m.id === u.id)).length > 0 && (
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.5rem' }}>Añadir jugador del universo</label>
+                    {usuariosUniverso
+                      .filter(u => u.id !== userId && !miembrosSesion.some(m => m.id === u.id))
+                      .map(u => (
+                        <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0', borderBottom: '1px solid var(--border)' }}>
+                          <span style={{ flex: 1, fontSize: '0.9rem', color: 'var(--text2)' }}>{u.nombre || u.id.slice(0, 8)}</span>
+                          <button className="btn-primary btn-sm" onClick={() => añadirMiembroSesion(u.id, u.nombre)}>＋ Añadir</button>
+                        </div>
+                      ))
+                    }
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="modal-actions" style={{ marginTop: '1.5rem' }}>
+              <button className="btn-primary" onClick={() => setGestionarSesion(null)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal historial de dados */}
+      {showDados && (
+        <div className="modal-overlay" onClick={() => setShowDados(false)}>
+          <div className="modal" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
+            <h3>🎲 Historial de dados — {sesionActiva?.nombre}</h3>
+            {tiradas.length === 0
+              ? <p style={{ color: 'var(--text3)', margin: '1rem 0', fontStyle: 'italic' }}>No se han tirado dados en esta sesión.</p>
+              : <div style={{ maxHeight: '400px', overflowY: 'auto', marginTop: '1rem' }}>
+                  {tiradas.map(t => (
+                    <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ fontSize: '1.2rem' }}>🎲</span>
+                      <div style={{ flex: 1 }}>
+                        {t.personaje_nombre && <span style={{ color: t.personaje_color, fontFamily: 'Cinzel, serif', fontSize: '0.8rem', display: 'block' }}>{t.personaje_nombre}</span>}
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text2)' }}>{t.contenido}</span>
+                      </div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>{formatHora(t.timestamp)}</span>
+                    </div>
+                  ))}
+                </div>
+            }
+            <div style={{ marginTop: '1rem', padding: '0.6rem', background: 'var(--bg3)', borderRadius: 'var(--radius)', fontSize: '0.82rem', color: 'var(--text3)' }}>
+              Total: <strong style={{ color: 'var(--accent)' }}>{tiradas.length}</strong> tiradas en esta sesión
+            </div>
+            <div className="modal-actions" style={{ marginTop: '1rem' }}>
+              <button className="btn-primary" onClick={() => setShowDados(false)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal buscador global */}
+      {showBusquedaGlobal && (
+        <div className="modal-overlay" onClick={() => { setShowBusquedaGlobal(false); setResultadosGlobales([]); setBusquedaGlobal('') }}>
+          <div className="modal" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
+            <h3>🔍 Buscar en {selectedUniverso?.nombre}</h3>
+            <div style={{ display: 'flex', gap: '0.5rem', margin: '1rem 0' }}>
+              <input placeholder="Buscar en todas las sesiones..."
+                value={busquedaGlobal} onChange={e => setBusquedaGlobal(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && buscarGlobal()} autoFocus
+                style={{ flex: 1, background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text)', padding: '0.5rem 0.8rem', borderRadius: 'var(--radius)', fontSize: '0.9rem' }} />
+              <button className="btn-primary" onClick={buscarGlobal} disabled={buscandoGlobal || !busquedaGlobal.trim()}>
+                {buscandoGlobal ? '...' : 'Buscar'}
+              </button>
+            </div>
+            {resultadosGlobales.length > 0 && (
+              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text3)', marginBottom: '0.6rem' }}>{resultadosGlobales.length} resultados</p>
+                {resultadosGlobales.map(r => (
+                  <div key={r.id} style={{ padding: '0.6rem', background: 'var(--bg3)', borderRadius: 'var(--radius)', marginBottom: '0.4rem', cursor: 'pointer', border: '1px solid var(--border)' }}
+                    onClick={() => {
+                      const ses = sesionesConMiembros.find(s => s.id === r.sesion_id)
+                      if (ses) { setSesionActiva(ses); setShowBusquedaGlobal(false); setResultadosGlobales([]); setBusquedaGlobal('') }
+                    }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--accent)', fontFamily: 'Cinzel, serif' }}>#{r.sesiones?.nombre || 'Sesión'}</span>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{new Date(r.created_at).toLocaleDateString('es-ES')}</span>
+                    </div>
+                    {r.personaje_nombre && <span style={{ color: r.personaje_color, fontSize: '0.8rem', fontFamily: 'Cinzel, serif' }}>{r.personaje_nombre}: </span>}
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text2)', fontStyle: r.tipo === 'narrador' ? 'italic' : 'normal' }}>
+                      {r.contenido?.slice(0, 120)}{r.contenido?.length > 120 ? '…' : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {resultadosGlobales.length === 0 && busquedaGlobal && !buscandoGlobal && (
+              <p style={{ color: 'var(--text3)', fontStyle: 'italic', textAlign: 'center', margin: '1rem 0' }}>Sin resultados para "{busquedaGlobal}"</p>
+            )}
+            <div className="modal-actions" style={{ marginTop: '1rem' }}>
+              <button className="btn-ghost" onClick={() => { setShowBusquedaGlobal(false); setResultadosGlobales([]); setBusquedaGlobal('') }}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {fichaPersonaje && <FichaPersonaje personaje={fichaPersonaje} userId={userId} onCerrar={() => setFichaPersonaje(null)} />}
       {showChat && <ChatPrivado universo={selectedUniverso} personajes={personajes} userId={userId} onCerrar={() => setShowChat(false)} />}
