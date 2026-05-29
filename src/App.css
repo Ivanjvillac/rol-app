@@ -668,6 +668,21 @@ input, textarea, select {
   box-shadow: 0 2px 10px hsla(0,0%,0%,0.3);
 }
 
+/* Variante para entradas de tipo 'accion' — misma burbuja pero borde azul-violeta e itálica */
+.entrada-burbuja-accion {
+  border-left-color: hsl(250, 45%, 55%);
+}
+
+/* Texto de acción dentro de la burbuja de acción */
+.burbuja-accion-texto {
+  font-style: italic;
+  color: hsl(220, 15%, 80%);
+  font-size: 0.95rem;
+  line-height: 1.55;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
 .entrada-nombre {
   font-family: 'Cinzel', serif;
   font-size: 0.8rem;

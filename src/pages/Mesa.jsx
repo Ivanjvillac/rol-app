@@ -1745,24 +1745,33 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   )
                 }
 
-                // Tipo acción — estilo narrativo centrado (como descripciones de novela)
+                // Tipo acción — también en burbuja, pero con estilo de acción (cursiva, borde diferente)
                 return (
-                  <div className={containerClass}>
-                    <div className="entrada-accion-texto">
-                      <p className="msg-accion" style={{ margin: 0 }}>
-                        {e.personaje?.nombre && (
-                          <span className="entrada-nombre" style={{ color: e.personaje?.color }}>
-                            {e.personaje.nombre}{' '}
-                          </span>
-                        )}
-                        {chunks.map((chunk, ci) => {
-                          const inner = chunk.segments.map((seg, si) => (
-                            <span key={si} className={seg.classes.join(' ') || undefined}>{seg.text}</span>
-                          ))
-                          return <span key={ci}>{inner}</span>
-                        })}
-                      </p>
-                      {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '220px', borderRadius: '8px', marginTop: '0.4rem', display: 'block', cursor: 'pointer', margin: '0.4rem auto 0' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
+                  <div className="entrada-dialogo">
+                    {avatar}
+                    <div className="entrada-burbuja entrada-burbuja-accion">
+                      <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
+                      {e.contenido && (
+                        <div className="burbuja-bloques">
+                          {chunks.map((chunk, ci) => {
+                            const inner = chunk.segments.map((seg, si) => (
+                              <span key={si} className={seg.classes.join(' ') || undefined}>{seg.text}</span>
+                            ))
+                            if (chunk.type === 'inline-action') {
+                              return (
+                                <div key={ci} className="burbuja-inline-accion">
+                                  <span className="burbuja-inline-accion-icono">⚡</span>
+                                  <span>{inner}</span>
+                                </div>
+                              )
+                            }
+                            return (
+                              <span key={ci} className="burbuja-accion-texto">{inner}</span>
+                            )
+                          })}
+                        </div>
+                      )}
+                      {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => window.open(e.imagen_url, '_blank')} />}
                       {hora}
                       {acciones}
                     </div>
