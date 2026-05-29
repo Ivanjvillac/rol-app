@@ -76,8 +76,10 @@ export default function App() {
     const tokenGuardado = sessionStorage.getItem('invitacion_token')
     const token = tokenUrl || tokenGuardado
     if (token) {
+      // Limpiar inmediatamente — no dejar el token más tiempo del necesario
+      sessionStorage.removeItem('invitacion_token')
+      window.history.replaceState({}, '', '/')
       setInvitacionToken(token)
-      if (tokenUrl) window.history.replaceState({}, '', '/')
     }
 const paginaGuardada = sessionStorage.getItem('pagina_activa')
 const universoGuardado = sessionStorage.getItem('universo_activo')
@@ -86,10 +88,12 @@ if (universoGuardado) setSelectedUniverso(JSON.parse(universoGuardado))
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setSession(session)
-      // Cuando el usuario inicia sesión, activar token pendiente
       if (session) {
         const t = sessionStorage.getItem('invitacion_token')
-        if (t) setInvitacionToken(t)
+        if (t) {
+          sessionStorage.removeItem('invitacion_token')
+          setInvitacionToken(t)
+        }
       }
     })
     return () => subscription.unsubscribe()

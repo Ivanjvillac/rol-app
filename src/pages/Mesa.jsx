@@ -3,6 +3,11 @@ import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import SelectorImagenSticker from '../components/SelectorImagenSticker'
 import FichaPersonaje from '../components/FichaPersonaje'
+
+const abrirUrlSegura = (url) => {
+  if (!url || !url.startsWith('https://')) return
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
 import { jsPDF } from 'jspdf'
 import { parseMessage } from '../lib/parseMessage'
 
@@ -76,7 +81,7 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
     const noLeidos = (data || []).filter(m => m.destinatario_user_id === userId && !m.leido)
     for (const m of noLeidos) marcarLeido(m.id)
   }
-  const marcarLeido = async (id) => await supabase.from('mensajes_privados').update({ leido: true }).eq('id', id)
+  const marcarLeido = async (id) => await supabase.from('mensajes_privados').update({ leido: true }).eq('id', id).eq('destinatario_user_id', userId)
   const enviar = async () => {
     if (!texto.trim() || !miPersonaje || !destinatario) return
     setEnviando(true)
@@ -142,7 +147,7 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
                         {!esMio && (autor.avatar_url ? <img src={autor.avatar_url} alt={autor.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: autor.color }}>{autor.iniciales}</div>)}
                         <div className="chat-burbuja" style={{ borderColor: autor.color }}>
                           {m.contenido && <p>{m.contenido}</p>}
-                          {m.imagen_url && <img src={m.imagen_url} alt="imagen" style={{ maxWidth: '180px', borderRadius: '8px', cursor: 'pointer' }} onClick={() => window.open(m.imagen_url, '_blank')} />}
+                          {m.imagen_url && <img src={m.imagen_url} alt="imagen" style={{ maxWidth: '180px', borderRadius: '8px', cursor: 'pointer' }} onClick={() => abrirUrlSegura(m.imagen_url)} />}
                           <span className="entrada-hora">{formatHora(m.created_at)}</span>
                         </div>
                         {esMio && (autor.avatar_url ? <img src={autor.avatar_url} alt={autor.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: autor.color }}>{autor.iniciales}</div>)}
@@ -1778,7 +1783,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                 <div className="entrada-narrador">
                   <span className="entrada-label">📖 Narrador</span>
                   {e.contenido && <p className={e.tono && e.tono !== 'normal' ? `entrada-tono-${e.tono}` : ''}>{renderMensaje(e.contenido, miNombrePerfil)}</p>}
-                  {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '240px', borderRadius: '8px', marginTop: '0.4rem', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
+                  {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '240px', borderRadius: '8px', marginTop: '0.4rem', cursor: 'pointer' }} onClick={() => abrirUrlSegura(e.imagen_url)} />}
                   <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
                   {e.user_id === userId && (
                     <div className="entrada-acciones">
@@ -1838,7 +1843,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                       <div className="entrada-burbuja">
                         <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
                         {e.contenido && renderChunks}
-                        {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => window.open(e.imagen_url, '_blank')} />}
+                        {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => abrirUrlSegura(e.imagen_url)} />}
                         {hora}
                         {acciones}
                       </div>
@@ -1872,7 +1877,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                           })}
                         </div>
                       )}
-                      {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => window.open(e.imagen_url, '_blank')} />}
+                      {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => abrirUrlSegura(e.imagen_url)} />}
                       {hora}
                       {acciones}
                     </div>

@@ -46,6 +46,7 @@ export default function Auth() {
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
       if (error) setError('Email o contraseña incorrectos.')
     } else {
+      if (password.length < 8) { setError('La contraseña debe tener al menos 8 caracteres.'); setCargando(false); return }
       const { error } = await supabase.auth.signUp({ email: email.trim(), password })
       if (error) setError('Error al crear la cuenta. Prueba con otro email.')
       else setMensaje('¡Cuenta creada! Revisa tu email para confirmarla y luego inicia sesión.')
@@ -65,7 +66,7 @@ export default function Auth() {
   }
 
   const handleCambiarPassword = async () => {
-    if (!nuevaPassword || nuevaPassword.length < 6) { setError('La contraseña debe tener al menos 6 caracteres.'); return }
+    if (!nuevaPassword || nuevaPassword.length < 8) { setError('La contraseña debe tener al menos 8 caracteres.'); return }
     setError(null); setMensaje(null); setCargando(true)
     const { error } = await supabase.auth.updateUser({ password: nuevaPassword })
     if (error) setError('Error al cambiar la contraseña.')
@@ -94,7 +95,7 @@ export default function Auth() {
             <label>Nueva contraseña</label>
             <input
               type="password"
-              placeholder="Mínimo 6 caracteres"
+              placeholder="Mínimo 8 caracteres"
               value={nuevaPassword}
               onChange={e => setNuevaPassword(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleCambiarPassword()}

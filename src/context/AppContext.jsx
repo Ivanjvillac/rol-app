@@ -84,9 +84,12 @@ export function AppProvider({ userId, children }) {
   }
 
   const deleteUniverso = async (id) => {
-    await supabase.from('universos').delete().eq('id', id)
-    setUniversos(prev => prev.filter(u => u.id !== id))
-    setPersonajes(prev => prev.filter(p => p.universo_id !== id))
+    const { error } = await supabase.from('universos').delete().eq('id', id).eq('user_id', userId)
+    if (!error) {
+      setUniversos(prev => prev.filter(u => u.id !== id))
+      setPersonajes(prev => prev.filter(p => p.universo_id !== id))
+    }
+    return { error }
   }
 
   const updateUniverso = async (id, cambios) => {
@@ -94,6 +97,7 @@ export function AppProvider({ userId, children }) {
       .from('universos')
       .update(cambios)
       .eq('id', id)
+      .eq('user_id', userId)
       .select()
       .single()
     if (!error) setUniversos(prev => prev.map(u => u.id === id ? data : u))
@@ -121,8 +125,9 @@ export function AppProvider({ userId, children }) {
   return { data: data?.[0], error }
 }
   const deletePersonaje = async (id) => {
-    await supabase.from('personajes').delete().eq('id', id)
-    setPersonajes(prev => prev.filter(p => p.id !== id))
+    const { error } = await supabase.from('personajes').delete().eq('id', id).eq('user_id', userId)
+    if (!error) setPersonajes(prev => prev.filter(p => p.id !== id))
+    return { error }
   }
 
   const updatePersonaje = async (id, cambios) => {
@@ -130,6 +135,7 @@ export function AppProvider({ userId, children }) {
       .from('personajes')
       .update(cambios)
       .eq('id', id)
+      .eq('user_id', userId)
       .select()
       .single()
     if (!error) setPersonajes(prev => prev.map(p => p.id === id ? data : p))
@@ -174,12 +180,15 @@ const crearSesion = async (universoId, nombre, esPrivada = false, miembros = [],
   return { data, error }
 }
 const eliminarSesion = async (sesionId, universoId) => {
-  await supabase.from('sesiones').delete().eq('id', sesionId)
-  setListaSesiones(prev => ({
-    ...prev,
-    [universoId]: (prev[universoId] || []).filter(s => s.id !== sesionId)
-  }))
-  setSesiones(prev => { const n = { ...prev }; delete n[sesionId]; return n })
+  const { error } = await supabase.from('sesiones').delete().eq('id', sesionId).eq('user_id', userId)
+  if (!error) {
+    setListaSesiones(prev => ({
+      ...prev,
+      [universoId]: (prev[universoId] || []).filter(s => s.id !== sesionId)
+    }))
+    setSesiones(prev => { const n = { ...prev }; delete n[sesionId]; return n })
+  }
+  return { error }
 }
 
 const cargarSesion = async (sesionId) => {
@@ -250,6 +259,7 @@ const editarEntrada = async (id, contenido) => {
     .from('entradas')
     .update({ contenido, editado: true })
     .eq('id', id)
+    .eq('user_id', userId)
     .select()
   if (!error && data?.length > 0) {
     setSesiones(prev => {
@@ -263,14 +273,16 @@ const editarEntrada = async (id, contenido) => {
 }
 
 const borrarEntrada = async (id) => {
-  await supabase.from('entradas').delete().eq('id', id)
-  setSesiones(prev => {
-    const nuevo = {}
-    for (const key in prev) {
-      nuevo[key] = prev[key].filter(e => e.id !== id)
-    }
-    return nuevo
-  })
+  const { error } = await supabase.from('entradas').delete().eq('id', id).eq('user_id', userId)
+  if (!error) {
+    setSesiones(prev => {
+      const nuevo = {}
+      for (const key in prev) {
+        nuevo[key] = prev[key].filter(e => e.id !== id)
+      }
+      return nuevo
+    })
+  }
 }
   // INVITACIONES
   const invitarUsuario = async (universoId, email) => {
@@ -300,11 +312,19 @@ const borrarEntrada = async (id) => {
       .single()
     if (error || !inv) return { error: 'Invitación no válida o ya usada.' }
 
+    // Verificar que el email del usuario coincide con el de la invitación (si se especificó)
+    if (inv.email) {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user?.email?.toLowerCase() !== inv.email.toLowerCase()) {
+        return { error: 'Esta invitación pertenece a otra cuenta de correo.' }
+      }
+    }
+
     await supabase.from('invitaciones').update({ estado: 'aceptada' }).eq('id', inv.id)
     const { error: err2 } = await supabase
       .from('miembros')
       .insert({ universo_id: inv.universo_id, user_id: userId })
-    if (err2 && !err2.message.includes('duplicate')) return { error: err2.message }
+    if (err2 && !err2.message.includes('duplicate')) return { error: 'Error al unirse al universo.' }
 
     const { data: u } = await supabase.from('universos').select('*').eq('id', inv.universo_id).single()
     if (u) setUniversos(prev => prev.find(x => x.id === u.id) ? prev : [...prev, u])
@@ -368,7 +388,7 @@ const suscribirMesa = (universoId, sesionId, onNuevaEntrada) => {
 
   // TRANSFERIR PROPIEDAD
   const transferirPropiedad = async (universoId, nuevoUserId) => {
-    const { error } = await supabase.from('universos').update({ user_id: nuevoUserId }).eq('id', universoId)
+    const { error } = await supabase.from('universos').update({ user_id: nuevoUserId }).eq('id', universoId).eq('user_id', userId)
     if (!error) setUniversos(prev => prev.map(u => u.id === universoId ? { ...u, user_id: nuevoUserId } : u))
     return { error }
   }

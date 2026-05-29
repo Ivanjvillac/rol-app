@@ -70,8 +70,8 @@ const [msgPassword, setMsgPassword] = useState(null)
     setGuardando(false)
   }
 const handleCambiarPassword = async () => {
-  if (!passwordNueva || passwordNueva.length < 6) {
-    setMsgPassword({ tipo: 'error', texto: 'La contraseña debe tener al menos 6 caracteres.' })
+  if (!passwordNueva || passwordNueva.length < 8) {
+    setMsgPassword({ tipo: 'error', texto: 'La contraseña debe tener al menos 8 caracteres.' })
     return
   }
   setGuardandoPassword(true)
@@ -143,7 +143,7 @@ const handleCambiarPassword = async () => {
     <label>Nueva contraseña</label>
     <input
       type="password"
-      placeholder="Mínimo 6 caracteres"
+      placeholder="Mínimo 8 caracteres"
       value={passwordNueva}
       onChange={e => setPasswordNueva(e.target.value)}
       onKeyDown={e => e.key === 'Enter' && handleCambiarPassword()}
