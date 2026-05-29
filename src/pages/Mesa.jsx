@@ -245,6 +245,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const fijadosRef = useRef(null)
 
   const [sesionesConMiembros, setSesionesConMiembros] = useState([])
+  const [kickedFrom, setKickedFrom] = useState(null) // nombre de la sala de la que fuiste expulsado
   const [seccionSesiones, setSeccionSesiones] = useState(true)
   const [seccionPersonajes, setSeccionPersonajes] = useState(true)
   const [seccionConectados, setSeccionConectados] = useState(true)
@@ -296,6 +297,106 @@ export default function Mesa({ navigate, selectedUniverso }) {
     cargarSesionesConMiembros()
     cargarMiembros()
   }, [selectedUniverso?.id])
+
+  // ── Realtime: cambios en sesion_miembros que afectan al usuario actual ──
+  // Actualiza el sidebar sin F5 cuando te añaden o expulsan de una sesión privada
+  useEffect(() => {
+    if (!selectedUniverso?.id || !userId) return
+    const canal = supabase
+      .channel(`miembros-sidebar-${selectedUniverso.id}-${userId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'sesion_miembros',
+        filter: `user_id=eq.${userId}`,
+      }, async (payload) => {
+        const sesionId = payload.new?.sesion_id
+        if (!sesionId) return
+        // Comprobar si ya la tenemos en el estado
+        setSesionesConMiembros(prev => {
+          if (prev.some(s => s.id === sesionId)) return prev
+          return prev // la cargamos async abajo
+        })
+        // Cargar la sesión completa con sus miembros
+        const { data } = await supabase
+          .from('sesiones')
+          .select('*, sesion_miembros(user_id)')
+          .eq('id', sesionId)
+          .single()
+        if (!data) return
+        const sesFormateada = { ...data, miembros: (data.sesion_miembros || []).map(m => m.user_id) }
+        setSesionesConMiembros(prev => {
+          if (prev.some(s => s.id === sesionId)) return prev
+          return [...prev, sesFormateada]
+        })
+      })
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'sesion_miembros',
+        filter: `user_id=eq.${userId}`,
+      }, (payload) => {
+        const sesionId = payload.old?.sesion_id
+        if (!sesionId) return
+        setSesionesConMiembros(prev => prev.filter(s => s.id !== sesionId))
+      })
+      .subscribe()
+    return () => supabase.removeChannel(canal)
+  }, [selectedUniverso?.id, userId])
+
+  // ── Realtime: sesiones públicas nuevas creadas por otros en el universo ──
+  useEffect(() => {
+    if (!selectedUniverso?.id) return
+    const canal = supabase
+      .channel(`sesiones-pub-${selectedUniverso.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'sesiones',
+        filter: `universo_id=eq.${selectedUniverso.id}`,
+      }, (payload) => {
+        const nueva = payload.new
+        if (!nueva || nueva.es_privada) return // las privadas se manejan vía sesion_miembros
+        setSesionesConMiembros(prev => {
+          if (prev.some(s => s.id === nueva.id)) return prev
+          return [...prev, { ...nueva, miembros: [] }]
+        })
+      })
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'sesiones',
+        filter: `universo_id=eq.${selectedUniverso.id}`,
+      }, (payload) => {
+        const id = payload.old?.id
+        if (!id) return
+        setSesionesConMiembros(prev => prev.filter(s => s.id !== id))
+      })
+      .subscribe()
+    return () => supabase.removeChannel(canal)
+  }, [selectedUniverso?.id])
+
+  // ── Realtime: expulsión (kick) de la sesión activa ──
+  useEffect(() => {
+    if (!sesionActiva?.id || !userId) return
+    const canal = supabase
+      .channel(`kick-${sesionActiva.id}-${userId}`)
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'sesion_miembros',
+        filter: `sesion_id=eq.${sesionActiva.id}`,
+      }, (payload) => {
+        if (payload.old?.user_id !== userId) return
+        // El usuario actual ha sido expulsado
+        setKickedFrom(sesionActiva.nombre)
+        setSesionActiva(null)
+        // Los demás canales (entradas, reacciones, etc.) se limpian solos al cambiar sesionActiva
+        setTimeout(() => setKickedFrom(null), 6000)
+      })
+      .subscribe()
+    return () => supabase.removeChannel(canal)
+  }, [sesionActiva?.id, userId])
 
   useEffect(() => {
     if (!showNuevaSesion || !selectedUniverso) return
@@ -1940,6 +2041,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <button onClick={() => setNotificaciones(prev => prev.filter(x => x.id !== n.id))}>✕</button>
           </div>
         ))}
+        {kickedFrom && (
+          <div className="notif-toast notif-toast-kick">
+            <span>🚫 Has sido expulsado de <strong>«{kickedFrom}»</strong></span>
+            <button onClick={() => setKickedFrom(null)}>✕</button>
+          </div>
+        )}
       </div>
 
       {showNuevaSesion && (

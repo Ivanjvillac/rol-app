@@ -1209,6 +1209,14 @@ input, textarea, select {
 }
 .notif-toast button:hover { color: var(--text); }
 
+/* Toast de expulsión — borde rojo, más prominente */
+.notif-toast-kick {
+  border-left-color: hsl(0, 70%, 50%) !important;
+  background: hsla(0, 60%, 12%, 0.95);
+  border-color: hsla(0, 60%, 35%, 0.6);
+}
+.notif-toast-kick span { color: hsl(0, 10%, 90%); }
+
 
 /* ===== MESA RESPONSIVE ESTILO DISCORD/TELEGRAM ===== */
 @media (max-width: 768px) {
