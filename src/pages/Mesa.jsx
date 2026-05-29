@@ -770,13 +770,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
     const end = ta.selectionEnd
     const seleccion = texto.slice(start, end)
     let antes, despues
-    if (tipo === 'negrita')    { antes = '**'; despues = '**' }
-    else if (tipo === 'cursiva')    { antes = '*';  despues = '*'  }
-    else if (tipo === 'subrayado')  { antes = '__'; despues = '__' }
-    else if (tipo === 'dialogo')    { antes = '"';  despues = '"'  }
-    else if (tipo === 'susurro')    { antes = '/s/'; despues = '/s/' }
-    else if (tipo === 'grito')      { antes = '/g/'; despues = '/g/' }
-    else if (tipo === 'pensamiento'){ antes = '/p/'; despues = '/p/' }
+    if (tipo === 'negrita')         { antes = '**'; despues = '**' }
+    else if (tipo === 'subrayado')   { antes = '__'; despues = '__' }
+    else if (tipo === 'accion-inline') { antes = '*'; despues = '*' }
+    else if (tipo === 'susurro')     { antes = '/s/'; despues = '/s/' }
+    else if (tipo === 'grito')       { antes = '/g/'; despues = '/g/' }
+    else if (tipo === 'pensamiento') { antes = '/p/'; despues = '/p/' }
     else return
     const nuevoTexto = texto.slice(0, start) + antes + seleccion + despues + texto.slice(end)
     setTexto(nuevoTexto)
@@ -1689,94 +1688,71 @@ export default function Mesa({ navigate, selectedUniverso }) {
                 </div>
               )}
               {(e.tipo === 'dialogo' || e.tipo === 'accion') && (() => {
-                const chunks = e.contenido ? parseMessage(e.contenido, miNombrePerfil, e.tipo) : []
-                const tieneDialogo = chunks.some(c => c.type === 'dialogo')
-                const tieneAccion = chunks.some(c => c.type === 'accion')
-                const esHibrido = tieneDialogo && tieneAccion
+                const chunks = e.contenido ? parseMessage(e.contenido, miNombrePerfil) : []
+                const esTipoDialogo = e.tipo === 'dialogo'
+                const containerClass = esTipoDialogo
+                  ? `entrada-dialogo${e.tono && e.tono !== 'normal' ? ` entrada-tono-${e.tono}` : ''}`
+                  : `entrada-accion${e.tono && e.tono !== 'normal' ? ` entrada-tono-${e.tono}` : ''}`
 
-                if (esHibrido) {
-                  return (
-                    <div className={`entrada-dialogo${e.tono && e.tono !== 'normal' ? ` entrada-tono-${e.tono}` : ''}`}>
-                      {e.personaje?.avatar_url ? (
-                        <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" />
-                      ) : (
-                        <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>
-                      )}
-                      <div className="entrada-hibrida-contenido" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', width: '100%', alignItems: 'flex-start' }}>
-                        <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
-                        
-                        {chunks.map((chunk, ci) => {
-                          const inner = chunk.segments.map((seg, si) => (
-                            <span key={si} className={seg.classes.join(' ') || undefined}>{seg.text}</span>
-                          ))
-                          
-                          if (chunk.type === 'dialogo') {
-                            return (
-                              <div key={ci} className="entrada-burbuja" style={{ marginTop: '0.1rem', marginBottom: '0.1rem', minWidth: 'auto', display: 'inline-block' }}>
-                                <p style={{ display: 'inline', margin: 0 }}>{inner}</p>
-                              </div>
-                            )
-                          } else {
-                            return (
-                              <div key={ci} className="entrada-accion-texto" style={{ paddingLeft: '0.2rem', marginTop: '0.1rem', marginBottom: '0.1rem' }}>
-                                <p className="msg-accion" style={{ margin: 0 }}>{inner}</p>
-                              </div>
-                            )
-                          }
-                        })}
-                        
-                        {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '240px', borderRadius: '8px', marginTop: '0.4rem', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
-                        
-                        <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
-                        
-                        {e.user_id === userId && (
-                          <div className="entrada-acciones">
-                            {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
-                            <button onClick={() => setConfirmDeleteEntrada(e)}>🗑️</button>
+                const avatar = e.personaje?.avatar_url
+                  ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" />
+                  : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>
+
+                // Render the content blocks (diálogo + inline-action dentro de una sola burbuja)
+                const renderChunks = (
+                  <div className="burbuja-bloques">
+                    {chunks.map((chunk, ci) => {
+                      const inner = chunk.segments.map((seg, si) => (
+                        <span key={si} className={seg.classes.join(' ') || undefined}>{seg.text}</span>
+                      ))
+                      if (chunk.type === 'inline-action') {
+                        return (
+                          <div key={ci} className="burbuja-inline-accion">
+                            <span className="burbuja-inline-accion-icono">⚡</span>
+                            <span>{inner}</span>
                           </div>
-                        )}
-                      </div>
-                    </div>
-                  )
-                }
+                        )
+                      }
+                      return (
+                        <span key={ci} className="burbuja-dialogo-texto">{inner}</span>
+                      )
+                    })}
+                  </div>
+                )
 
-                if (tieneDialogo) {
+                const acciones = e.user_id === userId && (
+                  <div className="entrada-acciones">
+                    {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
+                    <button onClick={() => setConfirmDeleteEntrada(e)}>🗑️</button>
+                  </div>
+                )
+                const hora = (
+                  <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
+                )
+
+                if (esTipoDialogo) {
                   return (
-                    <div className={`entrada-dialogo${e.tono && e.tono !== 'normal' ? ` entrada-tono-${e.tono}` : ''}`}>
-                      {e.personaje?.avatar_url ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" /> : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>}
+                    <div className={containerClass}>
+                      {avatar}
                       <div className="entrada-burbuja">
                         <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
-                        {e.contenido && (
-                          <p>
-                            {chunks.map((chunk, ci) => {
-                              const inner = chunk.segments.map((seg, si) => (
-                                <span key={si} className={seg.classes.join(' ') || undefined}>{seg.text}</span>
-                              ))
-                              return <span key={ci} className="msg-dialogo">{inner}</span>
-                            })}
-                          </p>
-                        )}
+                        {e.contenido && renderChunks}
                         {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => window.open(e.imagen_url, '_blank')} />}
-                        <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
-                        {e.user_id === userId && (
-                          <div className="entrada-acciones">
-                            {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
-                            <button onClick={() => setConfirmDeleteEntrada(e)}>🗑️</button>
-                          </div>
-                        )}
+                        {hora}
+                        {acciones}
                       </div>
                     </div>
                   )
                 }
 
-                // Por defecto, 100% Acción
+                // Tipo acción (narrativa sin burbuja)
                 return (
-                  <div className={`entrada-accion${e.tono && e.tono !== 'normal' ? ` entrada-tono-${e.tono}` : ''}`}>
-                    {e.personaje?.avatar_url ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" /> : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>}
+                  <div className={containerClass}>
+                    {avatar}
                     <div className="entrada-accion-texto">
-                      <span style={{ color: e.personaje?.color }} className="entrada-nombre">{e.personaje?.nombre}</span>
+                      <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
                       {e.contenido && (
-                        <p className="msg-accion" style={{ margin: 0, marginTop: '0.2rem' }}>
+                        <p className="msg-accion" style={{ margin: 0, marginTop: '0.25rem' }}>
                           {chunks.map((chunk, ci) => {
                             const inner = chunk.segments.map((seg, si) => (
                               <span key={si} className={seg.classes.join(' ') || undefined}>{seg.text}</span>
@@ -1786,13 +1762,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
                         </p>
                       )}
                       {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '220px', borderRadius: '8px', marginTop: '0.4rem', display: 'block', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
-                      <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
-                      {e.user_id === userId && (
-                        <div className="entrada-acciones">
-                          {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
-                          <button onClick={() => setConfirmDeleteEntrada(e)}>🗑️</button>
-                        </div>
-                      )}
+                      {hora}
+                      {acciones}
                     </div>
                   </div>
                 )
@@ -1905,15 +1876,14 @@ export default function Mesa({ navigate, selectedUniverso }) {
           </div>
           <div className="formato-bar">
             <button type="button" className="formato-btn" onClick={() => insertarFormato('negrita')} title="Negrita"><strong>B</strong></button>
-            <button type="button" className="formato-btn" onClick={() => insertarFormato('cursiva')} title="Cursiva"><em>I</em></button>
             <button type="button" className="formato-btn" onClick={() => insertarFormato('subrayado')} title="Subrayado"><u>S</u></button>
             <div className="tono-separador" />
-            <button type="button" className="formato-btn formato-btn-dialogo" onClick={() => insertarFormato('dialogo')} title='Diálogo — envuelve el texto seleccionado en comillas «»'>💬 Diálogo</button>
+            <button type="button" className="formato-btn formato-btn-accion-inline" onClick={() => insertarFormato('accion-inline')} title="Acción inline — envuelve el texto entre *asteriscos* para mostrarla dentro de la burbuja">⚡ Acción</button>
             <div className="tono-separador" />
             <button type="button" className="formato-btn formato-btn-atajo" onClick={() => insertarFormato('susurro')} title="Susurro — /s/ texto /s/">🤫</button>
             <button type="button" className="formato-btn formato-btn-atajo" onClick={() => insertarFormato('grito')} title="Grito — /g/ texto /g/">📢</button>
             <button type="button" className="formato-btn formato-btn-atajo" onClick={() => insertarFormato('pensamiento')} title="Pensamiento — /p/ texto /p/">💭</button>
-            {/* Rayo de acción — justo al lado del megáfono */}
+
             {personajeActivo && (
               <>
                 <div className="tono-separador" />
