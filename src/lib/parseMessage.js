@@ -95,6 +95,10 @@ function tokenizeDialogo(text, miNombre) {
 export function parseMessage(text, miNombre = '') {
   if (!text) return []
 
+  // Eliminar comillas redundantes — la burbuja ya indica diálogo, no hace falta "..."
+  // Soporta: comillas rectas " , tipográficas « »  y angulares << >>
+  text = text.replace(/«|»|<<|>>/g, '').replace(/"/g, '')
+
   const blocks = []
   // Detecta *acción* (asterisco simple) pero NO **negrita** (doble asterisco)
   // Usamos un lookahead/lookbehind para que ** no coincida
