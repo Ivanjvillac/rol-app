@@ -1688,40 +1688,115 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   )}
                 </div>
               )}
-              {e.tipo === 'dialogo' && (
-                <div className={`entrada-dialogo${e.tono && e.tono !== 'normal' ? ` entrada-tono-${e.tono}` : ''}`}>
-                  {e.personaje?.avatar_url ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" /> : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>}
-                  <div className="entrada-burbuja">
-                    <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
-                    {e.contenido && <p>{renderMensaje(e.contenido, miNombrePerfil)}</p>}
-                    {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => window.open(e.imagen_url, '_blank')} />}
-                    <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
-                    {e.user_id === userId && (
-                      <div className="entrada-acciones">
-                        {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
-                        <button onClick={() => setConfirmDeleteEntrada(e)}>🗑️</button>
+              {(e.tipo === 'dialogo' || e.tipo === 'accion') && (() => {
+                const chunks = e.contenido ? parseMessage(e.contenido, miNombrePerfil) : []
+                const tieneDialogo = chunks.some(c => c.type === 'dialogo')
+                const tieneAccion = chunks.some(c => c.type === 'accion')
+                const esHibrido = tieneDialogo && tieneAccion
+
+                if (esHibrido) {
+                  return (
+                    <div className={`entrada-dialogo${e.tono && e.tono !== 'normal' ? ` entrada-tono-${e.tono}` : ''}`}>
+                      {e.personaje?.avatar_url ? (
+                        <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" />
+                      ) : (
+                        <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>
+                      )}
+                      <div className="entrada-hibrida-contenido" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', width: '100%', alignItems: 'flex-start' }}>
+                        <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
+                        
+                        {chunks.map((chunk, ci) => {
+                          const inner = chunk.segments.map((seg, si) => (
+                            <span key={si} className={seg.classes.join(' ') || undefined}>{seg.text}</span>
+                          ))
+                          
+                          if (chunk.type === 'dialogo') {
+                            return (
+                              <div key={ci} className="entrada-burbuja" style={{ marginTop: '0.1rem', marginBottom: '0.1rem', minWidth: 'auto', display: 'inline-block' }}>
+                                <p style={{ display: 'inline', margin: 0 }}>{inner}</p>
+                              </div>
+                            )
+                          } else {
+                            return (
+                              <div key={ci} className="entrada-accion-texto" style={{ paddingLeft: '0.2rem', marginTop: '0.1rem', marginBottom: '0.1rem' }}>
+                                <p className="msg-accion" style={{ margin: 0 }}>{inner}</p>
+                              </div>
+                            )
+                          }
+                        })}
+                        
+                        {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '240px', borderRadius: '8px', marginTop: '0.4rem', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
+                        
+                        <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
+                        
+                        {e.user_id === userId && (
+                          <div className="entrada-acciones">
+                            {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
+                            <button onClick={() => setConfirmDeleteEntrada(e)}>🗑️</button>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </div>
-              )}
-              {e.tipo === 'accion' && (
-                <div className={`entrada-accion${e.tono && e.tono !== 'normal' ? ` entrada-tono-${e.tono}` : ''}`}>
-                  {e.personaje?.avatar_url ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" /> : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>}
-                  <div className="entrada-accion-texto">
-                    <span style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
-                    {e.contenido && <p>{renderMensaje(e.contenido, miNombrePerfil)}</p>}
-                    {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '220px', borderRadius: '8px', marginTop: '0.4rem', display: 'block', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
-                    <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
-                    {e.user_id === userId && (
-                      <div className="entrada-acciones">
-                        {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
-                        <button onClick={() => setConfirmDeleteEntrada(e)}>🗑️</button>
+                    </div>
+                  )
+                }
+
+                if (tieneDialogo) {
+                  return (
+                    <div className={`entrada-dialogo${e.tono && e.tono !== 'normal' ? ` entrada-tono-${e.tono}` : ''}`}>
+                      {e.personaje?.avatar_url ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" /> : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>}
+                      <div className="entrada-burbuja">
+                        <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
+                        {e.contenido && (
+                          <p>
+                            {chunks.map((chunk, ci) => {
+                              const inner = chunk.segments.map((seg, si) => (
+                                <span key={si} className={seg.classes.join(' ') || undefined}>{seg.text}</span>
+                              ))
+                              return <span key={ci} className="msg-dialogo">{inner}</span>
+                            })}
+                          </p>
+                        )}
+                        {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => window.open(e.imagen_url, '_blank')} />}
+                        <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
+                        {e.user_id === userId && (
+                          <div className="entrada-acciones">
+                            {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
+                            <button onClick={() => setConfirmDeleteEntrada(e)}>🗑️</button>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
+                  )
+                }
+
+                // Por defecto, 100% Acción
+                return (
+                  <div className={`entrada-accion${e.tono && e.tono !== 'normal' ? ` entrada-tono-${e.tono}` : ''}`}>
+                    {e.personaje?.avatar_url ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" /> : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>}
+                    <div className="entrada-accion-texto">
+                      <span style={{ color: e.personaje?.color }} className="entrada-nombre">{e.personaje?.nombre}</span>
+                      {e.contenido && (
+                        <p className="msg-accion" style={{ margin: 0, marginTop: '0.2rem' }}>
+                          {chunks.map((chunk, ci) => {
+                            const inner = chunk.segments.map((seg, si) => (
+                              <span key={si} className={seg.classes.join(' ') || undefined}>{seg.text}</span>
+                            ))
+                            return <span key={ci}>{inner}</span>
+                          })}
+                        </p>
+                      )}
+                      {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '220px', borderRadius: '8px', marginTop: '0.4rem', display: 'block', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
+                      <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
+                      {e.user_id === userId && (
+                        <div className="entrada-acciones">
+                          {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
+                          <button onClick={() => setConfirmDeleteEntrada(e)}>🗑️</button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )
+              })()}
               {e.tipo === 'dado' && (
                 <div className="entrada-dado">
                   <span className="entrada-dado-icono">🎲</span>

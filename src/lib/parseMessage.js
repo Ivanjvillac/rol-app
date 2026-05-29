@@ -100,8 +100,8 @@ export function parseMessage(text, miNombre = '') {
   if (!text) return []
 
   const chunks = []
-  // Detectar fragmentos de diálogo: "texto entre comillas"
-  const dialogoRe = /"([^"]*)"/g
+  // Detectar fragmentos de diálogo: texto entre <<...>> o «...»
+  const dialogoRe = /(?:<<|«)([\s\S]*?)(?:>>|»)/g
   let lastIndex = 0
   let m
 
@@ -113,7 +113,7 @@ export function parseMessage(text, miNombre = '') {
         chunks.push({ type: 'accion', raw: actionText })
       }
     }
-    // Diálogo
+    // Diálogo (m[1] tiene el texto interno, sin los delimitadores)
     chunks.push({ type: 'dialogo', raw: m[1] })
     lastIndex = m.index + m[0].length
   }
