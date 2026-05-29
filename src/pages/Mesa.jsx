@@ -1745,23 +1745,24 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   )
                 }
 
-                // Tipo acción (narrativa sin burbuja)
+                // Tipo acción — estilo narrativo centrado (como descripciones de novela)
                 return (
                   <div className={containerClass}>
-                    {avatar}
                     <div className="entrada-accion-texto">
-                      <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
-                      {e.contenido && (
-                        <p className="msg-accion" style={{ margin: 0, marginTop: '0.25rem' }}>
-                          {chunks.map((chunk, ci) => {
-                            const inner = chunk.segments.map((seg, si) => (
-                              <span key={si} className={seg.classes.join(' ') || undefined}>{seg.text}</span>
-                            ))
-                            return <span key={ci}>{inner}</span>
-                          })}
-                        </p>
-                      )}
-                      {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '220px', borderRadius: '8px', marginTop: '0.4rem', display: 'block', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
+                      <p className="msg-accion" style={{ margin: 0 }}>
+                        {e.personaje?.nombre && (
+                          <span className="entrada-nombre" style={{ color: e.personaje?.color }}>
+                            {e.personaje.nombre}{' '}
+                          </span>
+                        )}
+                        {chunks.map((chunk, ci) => {
+                          const inner = chunk.segments.map((seg, si) => (
+                            <span key={si} className={seg.classes.join(' ') || undefined}>{seg.text}</span>
+                          ))
+                          return <span key={ci}>{inner}</span>
+                        })}
+                      </p>
+                      {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '220px', borderRadius: '8px', marginTop: '0.4rem', display: 'block', cursor: 'pointer', margin: '0.4rem auto 0' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
                       {hora}
                       {acciones}
                     </div>
