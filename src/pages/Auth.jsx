@@ -33,17 +33,20 @@ export default function Auth() {
     }
   }, [])
 
+  const emailValido = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim())
+
   const handleSubmit = async () => {
-    if (!email || !password) return
+    if (!email.trim() || !password) return
+    if (!emailValido(email)) { setError('Introduce un email válido (ej: ivan.1@gmail.com).'); return }
     setCargando(true)
     setError(null)
     setMensaje(null)
 
     if (modo === 'login') {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
       if (error) setError('Email o contraseña incorrectos.')
     } else {
-      const { error } = await supabase.auth.signUp({ email, password })
+      const { error } = await supabase.auth.signUp({ email: email.trim(), password })
       if (error) setError('Error al crear la cuenta. Prueba con otro email.')
       else setMensaje('¡Cuenta creada! Revisa tu email para confirmarla y luego inicia sesión.')
     }
@@ -133,7 +136,7 @@ export default function Auth() {
 
         <div className="form-group">
           <label>Email</label>
-          <input type="email" placeholder="tu@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={handleKey} />
+          <input type="text" inputMode="email" autoComplete="email" placeholder="tu@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={handleKey} />
         </div>
 
         <div className="form-group">

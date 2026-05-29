@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { compressImage } from '../lib/compressImage'
 
 export default function SelectorImagenSticker({ userId, onEnviarImagen, onEnviarSticker, onCerrar }) {
   const [tab, setTab] = useState('imagen')
@@ -25,31 +26,14 @@ export default function SelectorImagenSticker({ userId, onEnviarImagen, onEnviar
     setPacks(p || [])
   }
 
-  const comprimirImagen = (file, maxWidth = 800, calidad = 0.75) => {
-    return new Promise((resolve) => {
-      const img = new Image()
-      const url = URL.createObjectURL(file)
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        let w = img.width, h = img.height
-        if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth }
-        canvas.width = w; canvas.height = h
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
-        canvas.toBlob(blob => resolve(blob), 'image/jpeg', calidad)
-        URL.revokeObjectURL(url)
-      }
-      img.src = url
-    })
-  }
-
   const handleImagen = async (e) => {
     const file = e.target.files[0]
     if (!file) return
     if (file.size > 10 * 1024 * 1024) { alert('La imagen no puede superar 10MB'); return }
     setSubiendo(true)
-    const blob = await comprimirImagen(file, 1200, 0.8)
+    const compressed = await compressImage(file, 'chat')
     const path = `${userId}/${Date.now()}.jpg`
-    const { error } = await supabase.storage.from('imagenes-chat').upload(path, blob)
+    const { error } = await supabase.storage.from('imagenes-chat').upload(path, compressed)
     if (!error) {
       const { data } = supabase.storage.from('imagenes-chat').getPublicUrl(path)
       onEnviarImagen(data.publicUrl)
@@ -62,9 +46,9 @@ export default function SelectorImagenSticker({ userId, onEnviarImagen, onEnviar
     const file = e.target.files[0]
     if (!file) return
     setSubiendo(true)
-    const blob = await comprimirImagen(file, 300, 0.85)
+    const compressed = await compressImage(file, 'chat')
     const path = `${userId}/${Date.now()}.jpg`
-    const { error } = await supabase.storage.from('stickers').upload(path, blob)
+    const { error } = await supabase.storage.from('stickers').upload(path, compressed)
     if (!error) {
       const { data } = supabase.storage.from('stickers').getPublicUrl(path)
       await supabase.from('stickers').insert({

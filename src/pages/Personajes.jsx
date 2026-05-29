@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import PanelJuramentos from '../components/PanelJuramentos'
+import { compressImage } from '../lib/compressImage'
 
 const COLORES = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#1abc9c', '#3498db', '#9b59b6', '#e91e63']
 const ROLES = ['Guerrero', 'Mago', 'Pícaro', 'Clérigo', 'Explorador', 'Bardo', 'Narrador', 'Otro']
@@ -98,21 +99,6 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
   const [relacionPersonajeId, setRelacionPersonajeId] = useState('')
   const galeriaInputRef = useRef(null)
 
-  const comprimirImagen = (file, maxWidth = 800, calidad = 0.8) => new Promise((resolve) => {
-    const img = new Image()
-    const url = URL.createObjectURL(file)
-    img.onload = () => {
-      const canvas = document.createElement('canvas')
-      let w = img.width, h = img.height
-      if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth }
-      canvas.width = w; canvas.height = h
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h)
-      canvas.toBlob(blob => resolve(blob), 'image/jpeg', calidad)
-      URL.revokeObjectURL(url)
-    }
-    img.src = url
-  })
-
   useEffect(() => {
     const cargar = async () => {
       const [notasRes, perfilRes, galeriaRes, historialRes, relacionesRes] = await Promise.all([
@@ -133,9 +119,9 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
 
   const subirImagenGaleria = async (file) => {
     setSubiendoImagen(true)
-    const blob = await comprimirImagen(file)
+    const compressed = await compressImage(file, 'npc')
     const path = `${personaje.id}/${Date.now()}.jpg`
-    const { error } = await supabase.storage.from('personaje-imagenes').upload(path, blob, { contentType: 'image/jpeg' })
+    const { error } = await supabase.storage.from('personaje-imagenes').upload(path, compressed, { contentType: 'image/jpeg' })
     if (!error) {
       const { data: urlData } = supabase.storage.from('personaje-imagenes').getPublicUrl(path)
       const { data: img } = await supabase.from('personaje_imagenes').insert({ personaje_id: personaje.id, url: urlData.publicUrl }).select().single()
@@ -404,23 +390,6 @@ export default function Personajes({ navigate, selectedUniverso }) {
     setAvatarPreview(URL.createObjectURL(file))
   }
 
-  const comprimirImagen = (file, maxWidth = 400, calidad = 0.82) => {
-    return new Promise((resolve) => {
-      const img = new Image()
-      const url = URL.createObjectURL(file)
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        let w = img.width, h = img.height
-        if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth }
-        canvas.width = w; canvas.height = h
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
-        canvas.toBlob(blob => resolve(blob), 'image/jpeg', calidad)
-        URL.revokeObjectURL(url)
-      }
-      img.src = url
-    })
-  }
-
   const subirAvatar = async (personajeId) => {
     if (!avatarFile) return form.avatar_url || null
 
@@ -435,9 +404,9 @@ export default function Personajes({ navigate, selectedUniverso }) {
       }
     }
 
-    const blob = await comprimirImagen(avatarFile)
+    const compressed = await compressImage(avatarFile, 'avatar')
     const path = `${personajeId}.jpg`
-    const { error } = await supabase.storage.from('avatares').upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
+    const { error } = await supabase.storage.from('avatares').upload(path, compressed, { upsert: true, contentType: 'image/jpeg' })
     if (error) return form.avatar_url || null
     const { data } = supabase.storage.from('avatares').getPublicUrl(path)
     return data.publicUrl

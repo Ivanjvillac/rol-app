@@ -1,30 +1,22 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import SelectorImagenSticker from '../components/SelectorImagenSticker'
 import FichaPersonaje from '../components/FichaPersonaje'
 import { jsPDF } from 'jspdf'
-const renderTexto = (texto, miNombre) => {
+import { parseMessage } from '../lib/parseMessage'
+
+const renderMensaje = (texto, miNombre) => {
   if (!texto) return null
-  // Split por formato Y por menciones @Nombre
-  const partes = texto.split(/(\*\*[^*]+\*\*|__[^_]+__|_[^_]+_|\*[^*]+\*|@[\w][\w\s]*)/g)
-  return partes.map((parte, i) => {
-    if (parte.startsWith('**') && parte.endsWith('**'))
-      return <strong key={i}>{parte.slice(2, -2)}</strong>
-    if (parte.startsWith('__') && parte.endsWith('__'))
-      return <u key={i}>{parte.slice(2, -2)}</u>
-    if ((parte.startsWith('_') && parte.endsWith('_')) || (parte.startsWith('*') && parte.endsWith('*')))
-      return <em key={i}>{parte.slice(1, -1)}</em>
-    if (parte.startsWith('@')) {
-      const nombre = parte.slice(1)
-      const esMio = miNombre && nombre.toLowerCase().includes(miNombre.toLowerCase())
-      return (
-        <span key={i} className={`mencion${esMio ? ' mencion-mia' : ''}`}>
-          {parte}
-        </span>
-      )
+  const parsed = parseMessage(texto, miNombre)
+  return parsed.map((chunk, ci) => {
+    const inner = chunk.segments.map((seg, si) => (
+      <span key={si} className={seg.classes.join(' ') || undefined}>{seg.text}</span>
+    ))
+    if (chunk.type === 'dialogo') {
+      return <span key={ci} className="msg-dialogo">«{inner}»</span>
     }
-    return parte
+    return <span key={ci} className="msg-accion">{inner}</span>
   })
 }
 
@@ -181,10 +173,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [texto, setTexto] = useState('')
   const [modoEntrada, setModoEntrada] = useState('dialogo')
   const [tono, setTono] = useState('normal')
-  const [emocionInterna, setEmocionInterna] = useState(null)
-  const [showEmocionInput, setShowEmocionInput] = useState(false)
-  const [nuevaEmocion, setNuevaEmocion] = useState('')
-  const [emocionesPersonalizadas, setEmocionesPersonalizadas] = useState([])
   const [comandoSugerido, setComandoSugerido] = useState(null)
   const [showInvitar, setShowInvitar] = useState(false)
   const [showChat, setShowChat] = useState(false)
@@ -224,7 +212,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [showStats, setShowStats] = useState(false)
   const [showDados, setShowDados] = useState(false)
   const [youtubeUrl, setYoutubeUrl] = useState('')
-  const [youtubeEmbed, setYoutubeEmbed] = useState(null)
+  const [musicaUrl, setMusicaUrl] = useState(null)           // URL raw persistida
+  const [musicaIniciadaEn, setMusicaIniciadaEn] = useState(null) // timestamp ms
   const [reacciones, setReacciones] = useState({})
   const [showReacciones, setShowReacciones] = useState(null)
   const [notifsSesion, setNotifsSesion] = useState({})
@@ -241,11 +230,19 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [cargandoMas, setCargandoMas] = useState(false) // { entrada_id: true/false } estado local
   const [nivelTension, setNivelTension] = useState(1)
   const historialRef = useRef(null)
+  const endRef = useRef(null)               // div centinela al final del historial
+  const isAtBottomRef = useRef(true)        // actualizado en onScroll, siempre fresco
   const inputRef = useRef(null)
   const timeoutEscribiendoRef = useRef(null)
   const canalEscribiendoRef = useRef(null)
   const canalPresenciaRef = useRef(null)
+  const canalMusicaRef = useRef(null)
+  const playerRef = useRef(null)          // YT.Player instance
+  const syncIntervalRef = useRef(null)    // Intervalo de sync periódico
+  const esDuenoRef = useRef(false)        // Ref de esDueno para closures estáticas
+  const musicaIniciadaEnRef = useRef(null) // Ref espejo de musicaIniciadaEn para el useEffect del player
   const debounceRef = useRef(null)
+  const fijadosRef = useRef(null)
 
   const [sesionesConMiembros, setSesionesConMiembros] = useState([])
   const [seccionSesiones, setSeccionSesiones] = useState(true)
@@ -314,9 +311,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
   useEffect(() => {
     if (!sesionActiva) return
-    // Cargar nivel_tension inicial de la sesión
-    supabase.from('sesiones').select('nivel_tension').eq('id', sesionActiva.id).single()
-      .then(({ data }) => { if (data?.nivel_tension) setNivelTension(data.nivel_tension) })
+    // Cargar nivel_tension y url_musica iniciales de la sesión
+    supabase.from('sesiones').select('nivel_tension, url_musica').eq('id', sesionActiva.id).single()
+      .then(({ data }) => {
+        if (data?.nivel_tension) setNivelTension(data.nivel_tension)
+        setMusicaUrl(data?.url_musica || null)
+      })
     cargarSesion(sesionActiva.id)
     const unsub = suscribirMesa(selectedUniverso.id, sesionActiva.id, () => {})
     return unsub
@@ -327,7 +327,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
     document.documentElement.style.setProperty('--nivel-tension', nivelTension)
   }, [nivelTension])
 
-  // Suscripción Realtime a UPDATE en sesiones para nivel_tension
+  // Suscripción Realtime a UPDATE en sesiones (nivel_tension Y url_musica)
   useEffect(() => {
     if (!sesionActiva?.id) return
     const canal = supabase
@@ -340,17 +340,14 @@ export default function Mesa({ navigate, selectedUniverso }) {
       }, (payload) => {
         const nt = payload.new?.nivel_tension
         if (nt !== undefined) setNivelTension(nt)
+        // Sincronizar música entre clientes
+        if ('url_musica' in payload.new) setMusicaUrl(payload.new.url_musica || null)
       })
       .subscribe()
     return () => supabase.removeChannel(canal)
   }, [sesionActiva?.id])
 
-  // Cargar emociones personalizadas del usuario
-  useEffect(() => {
-    if (!userId) return
-    supabase.from('emociones_personalizadas').select('nombre').eq('user_id', userId).order('created_at')
-      .then(({ data }) => setEmocionesPersonalizadas((data || []).map(e => e.nombre)))
-  }, [userId])
+  // (emociones personalizadas eliminadas — reemplazadas por el parser inline)
   useEffect(() => {
     if (!canalPresenciaRef.current || !canalPresenciaRef.current._nombre) return
     canalPresenciaRef.current.track({
@@ -438,18 +435,200 @@ export default function Mesa({ navigate, selectedUniverso }) {
     }
   }, [selectedUniverso?.id, sesionActiva?.id, userId])
 
+  // Canal Broadcast para sincronizar música en tiempo real
   useEffect(() => {
-    if (historialRef.current) historialRef.current.scrollTop = historialRef.current.scrollHeight
-  }, [sesionActiva])
+    if (!sesionActiva?.id) return
+    const canal = supabase
+      .channel(`musica-${sesionActiva.id}`)
+      // --- Cambio de canción (dueño la cambia o la quita) ---
+      .on('broadcast', { event: 'musica_cambio' }, ({ payload }) => {
+        if (!payload.url) {
+          setMusicaUrl(null)
+          setMusicaIniciadaEn(null)
+          musicaIniciadaEnRef.current = null
+          return
+        }
+        const ts = payload.startedAt || Date.now()
+        setMusicaUrl(payload.url)
+        setMusicaIniciadaEn(ts)
+        musicaIniciadaEnRef.current = ts
+      })
+      // --- Sync de posición/estado del reproductor (solo para no-dueños) ---
+      .on('broadcast', { event: 'musica_sync' }, ({ payload }) => {
+        if (esDuenoRef.current) return // El dueño es la fuente de verdad
+        if (!playerRef.current) return
+        try {
+          const { state, currentTime, timestamp } = payload
+          const latency = Math.max(0, (Date.now() - timestamp) / 1000)
+          const targetTime = Math.max(0, currentTime + latency)
+          playerRef.current.seekTo(targetTime, true)
+          if (state === 'playing') playerRef.current.playVideo()
+          else if (state === 'paused') playerRef.current.pauseVideo()
+        } catch (e) {}
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          const { data } = await supabase
+            .from('sesiones')
+            .select('url_musica, musica_iniciada_en')
+            .eq('id', sesionActiva.id)
+            .single()
+          if (data?.url_musica) {
+            const ts = data.musica_iniciada_en
+              ? new Date(data.musica_iniciada_en).getTime()
+              : Date.now()
+            setMusicaUrl(data.url_musica)
+            setMusicaIniciadaEn(ts)
+            musicaIniciadaEnRef.current = ts
+          }
+        }
+      })
+    canalMusicaRef.current = canal
+    return () => {
+      supabase.removeChannel(canal)
+      canalMusicaRef.current = null
+    }
+  }, [sesionActiva?.id])
+
+  // Mantener esDuenoRef sincronizado
+  useEffect(() => { esDuenoRef.current = esDueno }, [esDueno])
+
+  // Extraer videoId y listId de una URL de YouTube
+  const extractYTIds = (url) => {
+    if (!url) return { videoId: null, listId: null }
+    try {
+      const rawUrl = url.startsWith('http') ? url : `https://${url}`
+      const u = new URL(rawUrl)
+      const host = u.hostname.replace('www.', '')
+      let videoId = null, listId = null
+      if (host === 'youtube.com' || host === 'music.youtube.com') {
+        videoId = u.searchParams.get('v')
+        listId = u.searchParams.get('list')
+        if (!videoId && u.pathname.startsWith('/shorts/')) videoId = u.pathname.split('/shorts/')[1]?.split('?')[0] || null
+        if (!videoId && u.pathname.startsWith('/embed/')) { videoId = u.pathname.split('/embed/')[1]?.split('?')[0] || null; if (!listId) listId = u.searchParams.get('list') }
+        if (!listId && u.pathname.startsWith('/playlist')) listId = u.searchParams.get('list')
+      }
+      if (host === 'youtu.be') { videoId = u.pathname.slice(1).split('?')[0] || null; listId = u.searchParams.get('list') }
+      return { videoId, listId }
+    } catch { return { videoId: null, listId: null } }
+  }
+
+  // Inicializar / destruir el reproductor YT cuando cambia la canción
+  useEffect(() => {
+    // Limpiar reproductor e intervalo anteriores
+    clearInterval(syncIntervalRef.current)
+    if (playerRef.current) {
+      try { playerRef.current.destroy() } catch (e) {}
+      playerRef.current = null
+    }
+    if (!musicaUrl) return
+
+    const { videoId, listId } = extractYTIds(musicaUrl)
+    if (!videoId && !listId) return
+
+    const offsetSegs = musicaIniciadaEnRef.current
+      ? Math.max(0, Math.floor((Date.now() - musicaIniciadaEnRef.current) / 1000))
+      : 0
+
+    const doInit = () => {
+      const container = document.getElementById('yt-music-player')
+      if (!container || playerRef.current) return
+      playerRef.current = new window.YT.Player('yt-music-player', {
+        height: '52',
+        width: '100%',
+        videoId: videoId || undefined,
+        playerVars: {
+          autoplay: 1,
+          loop: listId ? 0 : 1,
+          ...(listId ? { listType: 'playlist', list: listId } : { playlist: videoId }),
+          start: offsetSegs,
+        },
+        events: {
+          onReady: (e) => {
+            if (offsetSegs > 5) e.target.seekTo(offsetSegs, true)
+          },
+          onStateChange: (e) => {
+            if (!esDuenoRef.current) return // Solo el dueño emite sync
+            const YTState = window.YT?.PlayerState
+            if (!YTState) return
+            if (e.data !== YTState.PLAYING && e.data !== YTState.PAUSED) return
+            const ct = e.target.getCurrentTime?.() ?? 0
+            canalMusicaRef.current?.send({
+              type: 'broadcast', event: 'musica_sync',
+              payload: { state: e.data === YTState.PLAYING ? 'playing' : 'paused', currentTime: ct, timestamp: Date.now() }
+            })
+          }
+        }
+      })
+      // Dueño: sync periódico cada 10s para corregir deriva
+      if (esDuenoRef.current) {
+        syncIntervalRef.current = setInterval(() => {
+          if (!playerRef.current || !canalMusicaRef.current) return
+          try {
+            const state = playerRef.current.getPlayerState()
+            const ct = playerRef.current.getCurrentTime()
+            const YTState = window.YT?.PlayerState
+            canalMusicaRef.current.send({
+              type: 'broadcast', event: 'musica_sync',
+              payload: { state: state === YTState?.PLAYING ? 'playing' : 'paused', currentTime: ct, timestamp: Date.now() }
+            })
+          } catch (e) {}
+        }, 10000)
+      }
+    }
+
+    if (window.YT?.Player) {
+      setTimeout(doInit, 80)
+    } else {
+      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+        const tag = document.createElement('script')
+        tag.src = 'https://www.youtube.com/iframe_api'
+        document.head.appendChild(tag)
+      }
+      const prev = window.onYouTubeIframeAPIReady
+      window.onYouTubeIframeAPIReady = () => { if (typeof prev === 'function') prev(); setTimeout(doInit, 80) }
+    }
+
+    return () => {
+      clearInterval(syncIntervalRef.current)
+      if (playerRef.current) { try { playerRef.current.destroy() } catch (e) {} playerRef.current = null }
+    }
+  }, [musicaUrl])
+
+  // ── AUTO-SCROLL ──
+  // Al cambiar de sesión: siempre ir al final usando useLayoutEffect
+  // (garantiza que el DOM ya pintó antes de scrollear)
+  useLayoutEffect(() => {
+    if (!sesionActiva || !endRef.current) return
+    endRef.current.scrollIntoView({ behavior: 'instant' })
+    isAtBottomRef.current = true
+  }, [sesionActiva?.id])
+
+  // Cuando llegan nuevos mensajes: solo scrollear si el usuario ya está abajo
+  useLayoutEffect(() => {
+    if (!sesionActiva || !endRef.current) return
+    if (isAtBottomRef.current) {
+      endRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [sesion.length])
+
+  const isAtBottom = () => {
+    if (!historialRef.current) return true
+    const { scrollTop, scrollHeight, clientHeight } = historialRef.current
+    return scrollHeight - scrollTop - clientHeight < 120
+  }
 
   const handleScroll = () => {
     if (!historialRef.current) return
     const { scrollTop, scrollHeight, clientHeight } = historialRef.current
-    setMostrarIrAbajo(scrollHeight - scrollTop - clientHeight > 200)
+    const distancia = scrollHeight - scrollTop - clientHeight
+    isAtBottomRef.current = distancia < 120   // actualizar ref en tiempo real
+    setMostrarIrAbajo(distancia > 200)
   }
 
   const irAbajo = () => {
-    if (historialRef.current) historialRef.current.scrollTop = historialRef.current.scrollHeight
+    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+    isAtBottomRef.current = true
   }
 
   const emitirEscribiendo = async (activo) => {
@@ -512,11 +691,29 @@ export default function Mesa({ navigate, selectedUniverso }) {
     const t = texto.trim()
     if (!t) return
     let entrada = null
-    if (t.startsWith('/')) { entrada = procesarComando(t); if (!entrada) return }
-    else if (modoEntrada === 'narrador' || !personajeActivo) entrada = { tipo: 'narrador', contenido: t, personaje: null }
+    if (t.startsWith('/')) {
+      // Intentar parsear como comando (/narrador, /me, /accion, /personaje...)
+      entrada = procesarComando(t)
+      // Si no es un comando reconocido (ej: shortcodes /s/ /g/ /p/), tratar como mensaje normal
+      if (!entrada) {
+        if (modoEntrada === 'narrador' || !personajeActivo) entrada = { tipo: 'narrador', contenido: t, personaje: null }
+        else entrada = { tipo: modoEntrada, contenido: t, personaje: personajeActivo }
+      }
+    } else if (modoEntrada === 'narrador' || !personajeActivo) entrada = { tipo: 'narrador', contenido: t, personaje: null }
     else entrada = { tipo: modoEntrada, contenido: t, personaje: personajeActivo }
     entrada.tono = tono
-    entrada.emocion_interna = emocionInterna || null
+    // Auto-formato diálogo: si el modo es diálogo y el texto no tiene comillas propias,
+    // envolverlo automáticamente para que el parser lo trate como fragmento de diálogo.
+    // Si el usuario ya escribió comillas (formato manual) o usa shortcodes puros (/s/…/s/), no tocar.
+    if (
+      entrada.tipo === 'dialogo' &&
+      !entrada.contenido.includes('"') &&
+      !entrada.contenido.trim().startsWith('/s/') &&
+      !entrada.contenido.trim().startsWith('/g/') &&
+      !entrada.contenido.trim().startsWith('/p/')
+    ) {
+      entrada.contenido = `"${entrada.contenido}"`
+    }
     if (respondiendo) { entrada.responder_a_id = respondiendo.id; }
     // Detectar menciones @Nombre y guardarlas
     const mencionados = [...t.matchAll(/@(\w[\w\s]*?)(?=\s|$|[.,!?])/g)].map(m => m[1].trim())
@@ -546,7 +743,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
       sesion_id: sesionId || null,
       tono: entrada.tono || 'normal',
       responder_a_id: entrada.responder_a_id || null,
-      emocion_interna: entrada.emocion_interna || null,
     }).select().single()
     return { data }
   }
@@ -557,10 +753,14 @@ export default function Mesa({ navigate, selectedUniverso }) {
     await addEntrada(selectedUniverso.id, { tipo, contenido: '', imagen_url: url, personaje: personajeActivo }, sesionActiva.id)
   }
 
+  // Detectar si es dispositivo táctil/móvil
+  const esTactil = () => window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0
+
   const handleKeyDown = (e) => {
     if (e.key === 'Escape') { setRespondiendo(null); setMencionSugerencias([]) }
     if (mencionSugerencias.length > 0 && e.key === 'Enter') { e.preventDefault(); insertarMencion(mencionSugerencias[0].nombre); return }
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() }
+    // En móvil/táctil, Enter siempre inserta salto de línea
+    if (e.key === 'Enter' && !e.shiftKey && !esTactil()) { e.preventDefault(); enviar() }
   }
 
   const insertarFormato = (tipo) => {
@@ -570,9 +770,14 @@ export default function Mesa({ navigate, selectedUniverso }) {
     const end = ta.selectionEnd
     const seleccion = texto.slice(start, end)
     let antes, despues
-    if (tipo === 'negrita') { antes = '**'; despues = '**' }
-    else if (tipo === 'cursiva') { antes = '*'; despues = '*' }
-    else if (tipo === 'subrayado') { antes = '__'; despues = '__' }
+    if (tipo === 'negrita')    { antes = '**'; despues = '**' }
+    else if (tipo === 'cursiva')    { antes = '*';  despues = '*'  }
+    else if (tipo === 'subrayado')  { antes = '__'; despues = '__' }
+    else if (tipo === 'dialogo')    { antes = '"';  despues = '"'  }
+    else if (tipo === 'susurro')    { antes = '/s/'; despues = '/s/' }
+    else if (tipo === 'grito')      { antes = '/g/'; despues = '/g/' }
+    else if (tipo === 'pensamiento'){ antes = '/p/'; despues = '/p/' }
+    else return
     const nuevoTexto = texto.slice(0, start) + antes + seleccion + despues + texto.slice(end)
     setTexto(nuevoTexto)
     setTimeout(() => {
@@ -778,6 +983,20 @@ export default function Mesa({ navigate, selectedUniverso }) {
     }
   }
 
+  // Log de sistema cuando el máster edita stats de un personaje
+  const handleStatEdit = async (nombrePersonaje, nombreStat, valorAntes, valorDespues) => {
+    if (!sesionActiva) return
+    const contenido = `⚔️ El Máster ha modificado [${nombrePersonaje}]: ${nombreStat} ${valorAntes} → ${valorDespues}`
+    await supabase.from('entradas').insert({
+      universo_id: selectedUniverso.id,
+      user_id: userId,
+      tipo: 'narrador',
+      contenido,
+      sesion_id: sesionActiva.id,
+      tono: 'normal',
+    })
+  }
+
   const abrirInvitar = async () => {
     setShowInvitar(true)
     setMsgInvitar(null)
@@ -853,22 +1072,41 @@ export default function Mesa({ navigate, selectedUniverso }) {
     setEnviando(false)
   }
 
-  const cargarYoutube = () => {
+  // Validar URL de YouTube (para el alert) — reutiliza extractYTIds
+  const buildEmbedUrl = (url) => {
+    const { videoId, listId } = extractYTIds(url)
+    if (listId && videoId) return `https://www.youtube.com/embed/${videoId}?list=${listId}&autoplay=1`
+    if (listId) return `https://www.youtube.com/embed/videoseries?list=${listId}&autoplay=1`
+    if (videoId) return `https://www.youtube.com/embed/${videoId}?autoplay=1`
+    return null
+  }
+
+  const cargarYoutube = async () => {
     const url = youtubeUrl.trim()
     if (!url) return
-    let videoId = null
-    let listId = null
-    try {
-      const u = new URL(url)
-      if (u.hostname.includes('youtube.com')) { videoId = u.searchParams.get('v'); listId = u.searchParams.get('list') }
-      if (u.hostname === 'youtu.be') { videoId = u.pathname.slice(1); listId = u.searchParams.get('list') }
-      if (!videoId && u.searchParams.get('list')) listId = u.searchParams.get('list')
-    } catch {}
-    let embedUrl = null
-    if (listId && videoId) embedUrl = `https://www.youtube.com/embed/${videoId}?list=${listId}&autoplay=1&loop=1`
-    else if (listId) embedUrl = `https://www.youtube.com/embed/videoseries?list=${listId}&autoplay=1&loop=1`
-    else if (videoId) embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&loop=1&playlist=${videoId}`
-    if (embedUrl) { setYoutubeEmbed(embedUrl); setShowMusica(false) }
+    if (!sesionActiva) { alert('⚠️ Selecciona una sesión primero antes de cargar música.'); return }
+    const { videoId, listId } = extractYTIds(url)
+    if (!videoId && !listId) { alert('⚠️ No se reconoce la URL. Asegúrate de que es un enlace de YouTube (youtube.com o youtu.be).'); return }
+    const startedAt = Date.now()
+    setMusicaUrl(url)
+    setMusicaIniciadaEn(startedAt)
+    musicaIniciadaEnRef.current = startedAt
+    setYoutubeUrl('')
+    setShowMusica(false)
+    canalMusicaRef.current?.send({ type: 'broadcast', event: 'musica_cambio', payload: { url, startedAt } })
+    const ahora = new Date(startedAt).toISOString()
+    const { error } = await supabase.from('sesiones').update({ url_musica: url, musica_iniciada_en: ahora }).eq('id', sesionActiva.id)
+    if (error) console.warn('[Música] Error al guardar en Supabase:', error.message)
+  }
+
+  const quitarMusica = async () => {
+    if (!sesionActiva) return
+    setMusicaUrl(null)
+    setMusicaIniciadaEn(null)
+    musicaIniciadaEnRef.current = null
+    canalMusicaRef.current?.send({ type: 'broadcast', event: 'musica_cambio', payload: { url: null, startedAt: null } })
+    const { error } = await supabase.from('sesiones').update({ url_musica: null, musica_iniciada_en: null }).eq('id', sesionActiva.id)
+    if (error) console.warn('[Música] Error al quitar música en Supabase:', error.message)
   }
 
   const handleCrearSesion = async () => {
@@ -976,8 +1214,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
   }
 
   // ── FIJAR ENTRADAS (estado local, sin depender del store del contexto) ──
-  const cargarFijadas = async () => {
-    const ids = sesionCompleta.map(e => e.id)
+  const cargarFijadas = async (entradas) => {
+    const ids = (entradas || []).map(e => e.id)
     if (ids.length === 0) return
     const { data } = await supabase.from('entradas').select('id, fijada').in('id', ids)
     const mapa = {}
@@ -1093,9 +1331,21 @@ export default function Mesa({ navigate, selectedUniverso }) {
   useEffect(() => {
     if (!sesionActiva?.id) return
     setNotifsSesion(prev => { const n = { ...prev }; delete n[sesionActiva.id]; return n })
-    // Pequeño delay para que sesionCompleta esté poblada
-    setTimeout(() => { cargarReacciones(); cargarFijadas() }, 500)
+    // Cargar reacciones con el pequeño delay habitual
+    setTimeout(() => cargarReacciones(), 400)
+    // Cargar fijadas directamente con los datos ya disponibles en `sesion`
+    // (sesion se carga sincrónicamente antes de que este effect corra por segunda vez)
+    if (sesion.length > 0) {
+      cargarFijadas(sesion)
+    }
   }, [sesionActiva?.id])
+
+  // Cargar fijadas también cuando sesion se llena por primera vez (carga inicial tras F5)
+  useEffect(() => {
+    if (sesion.length > 0 && Object.keys(fijadas).length === 0) {
+      cargarFijadas(sesion)
+    }
+  }, [sesion.length])
 
   return (
     <div className="mesa">
@@ -1312,12 +1562,15 @@ export default function Mesa({ navigate, selectedUniverso }) {
               {notifsMenciones > 0 && <span style={{ background: '#e74c3c', color: 'white', borderRadius: '999px', fontSize: '0.65rem', padding: '0.1rem 0.4rem', fontWeight: 700, marginLeft: '0.2rem' }}>{notifsMenciones}</span>}
             </button>
             {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirInvitar}>✉️ Invitar jugador</button>}
-            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMusica(true)}>🎵 Música</button>
-            {youtubeEmbed && (
-              <div style={{ marginTop: '0.6rem', borderRadius: 'var(--radius)', overflow: 'hidden', position: 'relative' }}>
-                <iframe src={youtubeEmbed} width="100%" height="52" frameBorder="0" allow="autoplay; encrypted-media" style={{ display: 'block' }} />
-                <button onClick={() => { setYoutubeEmbed(null); setYoutubeUrl('') }}
-                  style={{ position: 'absolute', top: '2px', right: '2px', background: 'rgba(0,0,0,0.6)', border: 'none', color: 'white', borderRadius: '3px', padding: '1px 5px', fontSize: '0.7rem', cursor: 'pointer', lineHeight: 1.4 }}>✕</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMusica(true)}>🎵 Música{musicaUrl ? ' ▶' : ''}</button>
+            {musicaUrl && (
+              <div style={{ marginTop: '0.6rem', borderRadius: 'var(--radius)', overflow: 'hidden', position: 'relative', background: '#000' }}>
+                {/* El div#yt-music-player es convertido en iframe por el YT IFrame API */}
+                <div id="yt-music-player" style={{ width: '100%', height: '52px' }} />
+                {esDueno && (
+                  <button onClick={quitarMusica}
+                    style={{ position: 'absolute', top: '2px', right: '2px', background: 'rgba(0,0,0,0.7)', border: 'none', color: 'white', borderRadius: '3px', padding: '1px 5px', fontSize: '0.7rem', cursor: 'pointer', lineHeight: 1.4 }}>✕</button>
+                )}
               </div>
             )}
           </>)}
@@ -1366,6 +1619,17 @@ export default function Mesa({ navigate, selectedUniverso }) {
               {busqueda && <button onClick={() => setBusqueda('')}>✕</button>}
             </div>
           )}
+          {sesionActiva && entradasFijadas.length > 0 && (
+            <button
+              id="btn-fijadas-header"
+              title="Ir a mensajes fijados"
+              onClick={() => fijadosRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: '1rem', padding: '0.2rem 0.4rem', position: 'relative' }}
+            >
+              📌
+              <span style={{ position: 'absolute', top: '-2px', right: '-2px', background: 'var(--accent)', color: '#000', borderRadius: '999px', fontSize: '0.55rem', padding: '0 3px', fontWeight: 700, lineHeight: '1.4' }}>{entradasFijadas.length}</span>
+            </button>
+          )}
           <button title={modoCompleto ? 'Salir de pantalla completa' : 'Pantalla completa'}
             onClick={() => setModoCompleto(p => !p)}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: '1rem', padding: '0.2rem 0.4rem' }}>
@@ -1385,7 +1649,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
           {/* Panel de entradas fijadas */}
           {entradasFijadas.length > 0 && !busqueda && (
-            <div style={{ background: 'rgba(180,140,60,0.08)', border: '1px solid rgba(180,140,60,0.2)', borderRadius: 'var(--radius)', margin: '0.5rem 0 1rem', padding: '0.6rem 1rem' }}>
+            <div ref={fijadosRef} style={{ background: 'rgba(180,140,60,0.08)', border: '1px solid rgba(180,140,60,0.2)', borderRadius: 'var(--radius)', margin: '0.5rem 0 1rem', padding: '0.6rem 1rem' }}>
               <p style={{ fontSize: '0.72rem', color: 'var(--accent)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>📌 Fijadas</p>
               {entradasFijadas.map(e => (
                 <div key={e.id} style={{ fontSize: '0.85rem', color: 'var(--text2)', padding: '0.25rem 0', borderBottom: '1px solid rgba(180,140,60,0.1)', cursor: 'pointer' }}
@@ -1413,10 +1677,9 @@ export default function Mesa({ navigate, selectedUniverso }) {
               {e.tipo === 'narrador' && (
                 <div className="entrada-narrador">
                   <span className="entrada-label">📖 Narrador</span>
-                  {e.contenido && <p className={e.tono && e.tono !== 'normal' ? `entrada-tono-${e.tono}` : ''}>{renderTexto(e.contenido, miNombrePerfil)}</p>}
+                  {e.contenido && <p className={e.tono && e.tono !== 'normal' ? `entrada-tono-${e.tono}` : ''}>{renderMensaje(e.contenido, miNombrePerfil)}</p>}
                   {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '240px', borderRadius: '8px', marginTop: '0.4rem', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
                   <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
-                  {e.emocion_interna && <span className="emocion-badge">{e.emocion_interna}</span>}
                   {e.user_id === userId && (
                     <div className="entrada-acciones">
                       {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
@@ -1430,10 +1693,9 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   {e.personaje?.avatar_url ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" /> : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>}
                   <div className="entrada-burbuja">
                     <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
-                    {e.contenido && <p className={e.tono && e.tono !== 'normal' ? `entrada-tono-${e.tono}` : ''}>"{renderTexto(e.contenido, miNombrePerfil)}"</p>}
+                    {e.contenido && <p>{renderMensaje(e.contenido, miNombrePerfil)}</p>}
                     {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => window.open(e.imagen_url, '_blank')} />}
                     <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
-                    {e.emocion_interna && <span className="emocion-badge">{e.emocion_interna}</span>}
                     {e.user_id === userId && (
                       <div className="entrada-acciones">
                         {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
@@ -1448,10 +1710,9 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   {e.personaje?.avatar_url ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" /> : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>}
                   <div className="entrada-accion-texto">
                     <span style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
-                    {e.contenido && <em className={e.tono && e.tono !== 'normal' ? `entrada-tono-${e.tono}` : ''}> {renderTexto(e.contenido, miNombrePerfil)}</em>}
+                    {e.contenido && <p>{renderMensaje(e.contenido, miNombrePerfil)}</p>}
                     {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '220px', borderRadius: '8px', marginTop: '0.4rem', display: 'block', cursor: 'pointer' }} onClick={() => window.open(e.imagen_url, '_blank')} />}
                     <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
-                    {e.emocion_interna && <span className="emocion-badge">{e.emocion_interna}</span>}
                     {e.user_id === userId && (
                       <div className="entrada-acciones">
                         {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
@@ -1514,6 +1775,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
               )}
             </div>
           ))}
+          {/* Div centinela: marca el final del historial para scrollIntoView */}
+          <div ref={endRef} style={{ height: 0 }} />
         </div>
 
         {comandoSugerido && (
@@ -1570,73 +1833,27 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <button type="button" className="formato-btn" onClick={() => insertarFormato('cursiva')} title="Cursiva"><em>I</em></button>
             <button type="button" className="formato-btn" onClick={() => insertarFormato('subrayado')} title="Subrayado"><u>S</u></button>
             <div className="tono-separador" />
-            {[{id:'normal',icono:'💬',label:'Normal'},{id:'susurro',icono:'🤫',label:'Susurro'},{id:'pensamiento',icono:'💭',label:'Pensamiento'},{id:'grito',icono:'📢',label:'Grito'}].map(t => (
-              <button key={t.id} type="button"
-                className={`tono-btn tono-btn-${t.id}${tono === t.id ? ' activo' : ''}`}
-                onClick={() => setTono(t.id)}
-                title={t.label}
-              >{t.icono}</button>
-            ))}
-          </div>
-          {/* Selector de Emoción Interna */}
-          <div className="emocion-bar">
-            <select
-              className="emocion-select"
-              value={emocionInterna || ''}
-              onChange={async e => {
-                const val = e.target.value
-                if (val === '__personalizada__') {
-                  setShowEmocionInput(true)
-                } else {
-                  setEmocionInterna(val || null)
-                }
-              }}
-              title="Estado interno (opcional)"
-            >
-              <option value="">💭 Estado interno...</option>
-              {['Inseguridad', 'Culpa', 'Miedo al abandono', 'Vulnerabilidad', 'Orgullo', 'Ira contenida', 'Vergüenza', 'Esperanza', 'Soledad', 'Alivio'].map(em => (
-                <option key={em} value={em}>{em}</option>
-              ))}
-              {emocionesPersonalizadas.map(em => (
-                <option key={`custom-${em}`} value={em}>{em} ✦</option>
-              ))}
-              <option value="__personalizada__">＋ Añadir personalizada...</option>
-            </select>
-            {emocionInterna && (
-              <button className="emocion-clear" onClick={() => setEmocionInterna(null)} title="Quitar emoción">✕</button>
+            <button type="button" className="formato-btn formato-btn-dialogo" onClick={() => insertarFormato('dialogo')} title='Diálogo — envuelve el texto seleccionado en comillas «»'>💬 Diálogo</button>
+            <div className="tono-separador" />
+            <button type="button" className="formato-btn formato-btn-atajo" onClick={() => insertarFormato('susurro')} title="Susurro — /s/ texto /s/">🤫</button>
+            <button type="button" className="formato-btn formato-btn-atajo" onClick={() => insertarFormato('grito')} title="Grito — /g/ texto /g/">📢</button>
+            <button type="button" className="formato-btn formato-btn-atajo" onClick={() => insertarFormato('pensamiento')} title="Pensamiento — /p/ texto /p/">💭</button>
+            {/* Rayo de acción — justo al lado del megáfono */}
+            {personajeActivo && (
+              <>
+                <div className="tono-separador" />
+                <button
+                  id="btn-modo-accion"
+                  type="button"
+                  className={`tono-btn${modoEntrada === 'accion' ? ' activo' : ''}`}
+                  onClick={() => setModoEntrada(modoEntrada === 'accion' ? 'dialogo' : 'accion')}
+                  title={modoEntrada === 'accion' ? 'Modo: Acción (click para Diálogo)' : 'Cambiar a Acción'}
+                  style={{ fontSize: '1rem' }}
+                >⚡</button>
+              </>
             )}
           </div>
-          {showEmocionInput && (
-            <div className="emocion-custom-row">
-              <input
-                autoFocus
-                placeholder="Nombre de la emoción..."
-                value={nuevaEmocion}
-                onChange={e => setNuevaEmocion(e.target.value)}
-                onKeyDown={async e => {
-                  if (e.key === 'Enter' && nuevaEmocion.trim()) {
-                    const nombre = nuevaEmocion.trim()
-                    await supabase.from('emociones_personalizadas').insert({ user_id: userId, nombre })
-                    setEmocionesPersonalizadas(prev => [...prev, nombre])
-                    setEmocionInterna(nombre)
-                    setNuevaEmocion('')
-                    setShowEmocionInput(false)
-                  }
-                  if (e.key === 'Escape') { setShowEmocionInput(false); setNuevaEmocion('') }
-                }}
-              />
-              <button className="btn-primary btn-sm" onClick={async () => {
-                if (!nuevaEmocion.trim()) return
-                const nombre = nuevaEmocion.trim()
-                await supabase.from('emociones_personalizadas').insert({ user_id: userId, nombre })
-                setEmocionesPersonalizadas(prev => [...prev, nombre])
-                setEmocionInterna(nombre)
-                setNuevaEmocion('')
-                setShowEmocionInput(false)
-              }}>✓</button>
-              <button className="btn-ghost btn-sm" onClick={() => { setShowEmocionInput(false); setNuevaEmocion('') }}>✕</button>
-            </div>
-          )}
+
           <div className="input-row" style={{ position: 'relative' }}>
             {showSelector && <SelectorImagenSticker userId={userId} onEnviarImagen={enviarImagen} onEnviarSticker={enviarImagen} onCerrar={() => setShowSelector(false)} />}
             <button className="btn-adjunto" onClick={() => setShowSelector(!showSelector)} disabled={!sesionActiva}>📎</button>
@@ -2041,38 +2258,66 @@ export default function Mesa({ navigate, selectedUniverso }) {
         </div>
       )}
 
-      {fichaPersonaje && <FichaPersonaje personaje={fichaPersonaje} userId={userId} onCerrar={() => setFichaPersonaje(null)} />}
+      {fichaPersonaje && <FichaPersonaje
+        personaje={fichaPersonaje}
+        userId={userId}
+        onCerrar={() => setFichaPersonaje(null)}
+        esDueno={esDueno}
+        onStatEdit={handleStatEdit}
+      />}
       {showChat && <ChatPrivado universo={selectedUniverso} personajes={personajes} userId={userId} onCerrar={() => setShowChat(false)} />}
 
       {showMusica && (
         <div className="modal-overlay" onClick={() => setShowMusica(false)}>
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
             <h3>🎵 Música de fondo</h3>
-            <p style={{ color: 'var(--text2)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-              Pega una URL de YouTube (vídeo, playlist o mix).
-            </p>
-            <div className="form-group">
-              <label>URL de YouTube</label>
-              <input
-                placeholder="https://www.youtube.com/watch?v=... o youtu.be/..."
-                value={youtubeUrl}
-                onChange={e => setYoutubeUrl(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && cargarYoutube()}
-                autoFocus
-              />
-            </div>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text3)', marginBottom: '1rem', fontStyle: 'italic' }}>
-              Busca "fantasy ambient music", "RPG battle music" o "D&D tavern music" en YouTube.
-            </p>
-            {youtubeEmbed && (
-              <button className="btn-danger btn-sm" style={{ marginBottom: '0.5rem' }} onClick={() => { setYoutubeEmbed(null); setYoutubeUrl(''); setShowMusica(false) }}>
-                Quitar música
-              </button>
+
+            {/* Estado actual de la música */}
+            {musicaUrl && (
+              <div style={{ background: 'rgba(180,140,60,0.08)', border: '1px solid rgba(180,140,60,0.2)', borderRadius: 'var(--radius)', padding: '0.6rem 0.8rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '1.1rem' }}>▶️</span>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text2)', wordBreak: 'break-all' }}>{musicaUrl.length > 50 ? musicaUrl.slice(0, 50) + '…' : musicaUrl}</span>
+              </div>
             )}
-            <div className="modal-actions">
-              <button className="btn-ghost" onClick={() => setShowMusica(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={cargarYoutube} disabled={!youtubeUrl.trim()}>Cargar</button>
-            </div>
+
+            {/* Control de cambio — solo para el dueño del universo */}
+            {esDueno ? (
+              <>
+                <p style={{ color: 'var(--text2)', fontSize: '0.9rem', marginBottom: '1rem' }}>
+                  Pega una URL de YouTube (vídeo, playlist o mix).
+                </p>
+                <div className="form-group">
+                  <label>URL de YouTube</label>
+                  <input
+                    placeholder="https://www.youtube.com/watch?v=... o youtu.be/..."
+                    value={youtubeUrl}
+                    onChange={e => setYoutubeUrl(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && cargarYoutube()}
+                    autoFocus
+                  />
+                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text3)', marginBottom: '1rem', fontStyle: 'italic' }}>
+                  Busca "fantasy ambient music", "RPG battle music" o "D&D tavern music" en YouTube.
+                </p>
+                {musicaUrl && (
+                  <button className="btn-danger btn-sm" style={{ marginBottom: '0.5rem' }} onClick={() => { quitarMusica(); setShowMusica(false) }}>
+                    Quitar música
+                  </button>
+                )}
+                <div className="modal-actions">
+                  <button className="btn-ghost" onClick={() => setShowMusica(false)}>Cancelar</button>
+                  <button className="btn-primary" onClick={cargarYoutube} disabled={!youtubeUrl.trim()}>Cargar</button>
+                </div>
+              </>
+            ) : (
+              <>
+                {!musicaUrl && <p style={{ color: 'var(--text3)', fontStyle: 'italic', fontSize: '0.9rem' }}>El narrador no ha puesto música todavía.</p>}
+                {musicaUrl && <p style={{ color: 'var(--text2)', fontSize: '0.9rem' }}>La música suena en la barra lateral. El narrador controla la reproducción.</p>}
+                <div className="modal-actions">
+                  <button className="btn-ghost" onClick={() => setShowMusica(false)}>Cerrar</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

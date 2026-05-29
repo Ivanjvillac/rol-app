@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import PanelJuramentos from './PanelJuramentos'
 
-export default function FichaPersonaje({ personaje, userId, onCerrar }) {
+export default function FichaPersonaje({ personaje, userId, onCerrar, esDueno = false, onStatEdit }) {
   const [atributos, setAtributos] = useState([])
   const [nuevoNombre, setNuevoNombre] = useState('')
   const [nuevoValor, setNuevoValor] = useState('')
@@ -11,6 +11,7 @@ export default function FichaPersonaje({ personaje, userId, onCerrar }) {
   const [pestana, setPestana] = useState('ficha')
 
   const esMio = personaje.user_id === userId
+  const puedeEditar = esMio || esDueno  // el dueño del universo puede editar cualquier ficha
 
   useEffect(() => {
     cargarAtributos()
@@ -47,9 +48,14 @@ export default function FichaPersonaje({ personaje, userId, onCerrar }) {
   }
 
   const actualizarAtributo = async (id, valor) => {
+    const atributoAnterior = atributos.find(a => a.id === id)
     await supabase.from('atributos').update({ valor }).eq('id', id)
     setAtributos(prev => prev.map(a => a.id === id ? { ...a, valor } : a))
     setEditando(null)
+    // Si lo editó el dueño (no el propietario del personaje), notificar para el log del chat
+    if (esDueno && !esMio && onStatEdit) {
+      onStatEdit(personaje.nombre, atributoAnterior?.nombre || 'stat', atributoAnterior?.valor, valor)
+    }
   }
 
   const eliminarAtributo = async (id) => {
@@ -110,20 +116,21 @@ export default function FichaPersonaje({ personaje, userId, onCerrar }) {
                     ) : (
                       <span
                         className="ficha-atributo-valor"
-                        onClick={() => esMio && setEditando(a.id)}
-                        style={{ cursor: esMio ? 'pointer' : 'default' }}
+                        onClick={() => puedeEditar && setEditando(a.id)}
+                        style={{ cursor: puedeEditar ? 'pointer' : 'default' }}
+                        title={esDueno && !esMio ? 'Máster: haz clic para editar' : undefined}
                       >
                         {a.valor}
                       </span>
                     )}
-                    {esMio && (
+                    {puedeEditar && (
                       <button className="ficha-delete-btn" onClick={() => eliminarAtributo(a.id)}>✕</button>
                     )}
                   </div>
                 ))}
               </div>
 
-              {esMio && (
+              {puedeEditar && (
                 <div className="ficha-nuevo">
                   <input
                     placeholder="Atributo"
@@ -143,10 +150,13 @@ export default function FichaPersonaje({ personaje, userId, onCerrar }) {
                 </div>
               )}
 
-              {esMio && atributos.length > 0 && (
+              {puedeEditar && atributos.length > 0 && (
                 <p style={{ fontSize: '0.75rem', color: 'var(--text3)', marginTop: '0.5rem', fontStyle: 'italic' }}>
-                  Haz clic en un valor para editarlo
+                  {esDueno && !esMio ? '⚔️ Máster: haz clic en un valor para editarlo' : 'Haz clic en un valor para editarlo'}
                 </p>
+              )}
+              {atributos.length === 0 && !puedeEditar && (
+                <p style={{ color: 'var(--text3)', fontStyle: 'italic', textAlign: 'center', padding: '1rem' }}>Sin atributos.</p>
               )}
             </>
           ))}

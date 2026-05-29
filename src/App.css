@@ -2572,31 +2572,104 @@ input, textarea, select {
   border-color: hsl(260, 45%, 50%);
 }
 
-/* ── Badge de emoción en los mensajes del historial ── */
-.emocion-badge {
-  display: inline-block;
-  margin-top: 0.3rem;
-  padding: 0.1rem 0.55rem;
-  border-radius: 999px;
-  font-size: 0.68rem;
-  font-family: 'Crimson Pro', Georgia, serif;
-  font-style: italic;
-  letter-spacing: 0.02em;
-  color: hsl(260, 50%, 72%);
-  background: hsla(260, 40%, 55%, 0.1);
-  border: 1px solid hsla(260, 40%, 55%, 0.25);
-  opacity: 0.78;
-  /* Se muestra como bloque para no romper el flujo del texto */
-  display: block;
-  width: fit-content;
-  transition: opacity 0.2s;
-  user-select: none;
+
+/* ===== PARSER DE MENSAJES HÍBRIDO ===== */
+
+/* Fragmento de diálogo (entre "comillas") — aparece dentro de la burbuja con estilo conversacional */
+.msg-dialogo {
+  font-style: normal;
+  color: var(--text1);
+  /* Las comillas tipográficas ya las añade renderMensaje con « » */
 }
 
-/* Al pasar el cursor se intensifica ligeramente */
-.entrada-burbuja:hover .emocion-badge,
-.entrada-narrador:hover .emocion-badge,
-.entrada-accion-texto:hover .emocion-badge {
+/* Fragmento de acción (texto libre) — narrativo/itálico */
+.msg-accion {
+  font-style: italic;
+  color: var(--text2);
+  opacity: 0.9;
+}
+
+/* Dentro de la burbuja de diálogo, las acciones intermedias se muestran en un tono más apagado */
+.entrada-burbuja .msg-accion {
+  opacity: 0.75;
+  font-size: 0.92em;
+}
+
+/* Burbuja de diálogo con parser: el párrafo no fuerza comillas propias */
+.entrada-burbuja p {
+  display: inline;
+  flex-wrap: wrap;
+  gap: 0.15em;
+  line-height: 1.6;
+}
+
+/* ── Atajos inline de tono ── */
+
+.text-whisper {
+  font-size: 0.87em;
+  opacity: 0.72;
+  letter-spacing: 0.04em;
+  filter: blur(0.3px);
+  transition: filter 0.2s;
+}
+.text-whisper:hover {
+  filter: none;
+  opacity: 0.95;
+}
+
+.text-shout {
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: hsl(15, 80%, 65%);
+}
+
+.text-thought {
+  font-style: italic;
+  opacity: 0.78;
+  color: hsl(220, 60%, 70%);
+  font-size: 0.94em;
+}
+
+/* ── Markdown inline ── */
+.text-bold   { font-weight: 700; }
+.text-italic { font-style: italic; }
+.text-underline { text-decoration: underline; }
+
+/* ── Menciones con el nuevo parser ── */
+.text-mention {
+  color: hsl(40, 80%, 68%);
+  font-weight: 600;
+  padding: 0 0.1em;
+  border-radius: 3px;
+  background: hsla(40, 80%, 50%, 0.08);
+}
+.text-mention-own {
+  background: hsla(40, 80%, 50%, 0.18);
+  color: hsl(40, 90%, 72%);
+  box-shadow: 0 0 0 1px hsla(40, 80%, 50%, 0.3);
+}
+
+/* ── Botones del parser en la barra de formato ── */
+.formato-btn-dialogo {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.55rem;
+  gap: 0.25rem;
+  color: hsl(40, 80%, 68%);
+  border-color: hsla(40, 80%, 50%, 0.25);
+  background: hsla(40, 80%, 50%, 0.06);
+}
+.formato-btn-dialogo:hover {
+  background: hsla(40, 80%, 50%, 0.15);
+  color: hsl(40, 90%, 75%);
+}
+
+.formato-btn-atajo {
+  font-size: 0.85rem;
+  padding: 0.15rem 0.3rem;
+  opacity: 0.8;
+}
+.formato-btn-atajo:hover {
   opacity: 1;
 }
 

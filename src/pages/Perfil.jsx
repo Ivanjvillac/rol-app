@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { compressImage } from '../lib/compressImage'
 
 export default function Perfil({ userId, userEmail }) {
   const [nombre, setNombre] = useState('')
@@ -40,30 +41,13 @@ const [msgPassword, setMsgPassword] = useState(null)
     setAvatarPreview(URL.createObjectURL(file))
   }
 
-  const comprimirImagen = (file, maxWidth = 400, calidad = 0.82) => {
-    return new Promise((resolve) => {
-      const img = new Image()
-      const url = URL.createObjectURL(file)
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        let w = img.width, h = img.height
-        if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth }
-        canvas.width = w; canvas.height = h
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
-        canvas.toBlob(blob => resolve(blob), 'image/jpeg', calidad)
-        URL.revokeObjectURL(url)
-      }
-      img.src = url
-    })
-  }
-
   const subirAvatar = async () => {
     if (!avatarFile) return avatarUrl
-    const blob = await comprimirImagen(avatarFile)
+    const compressed = await compressImage(avatarFile, 'avatar')
     const path = `${userId}.jpg`
     const { error } = await supabase.storage
       .from('perfiles')
-      .upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
+      .upload(path, compressed, { upsert: true, contentType: 'image/jpeg' })
     if (error) return avatarUrl
     const { data } = supabase.storage.from('perfiles').getPublicUrl(path)
     return data.publicUrl
