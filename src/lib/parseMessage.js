@@ -96,7 +96,7 @@ function tokenizeInline(text, miNombre) {
 
 // ─── Parser principal ─────────────────────────────────────────────────────────
 
-export function parseMessage(text, miNombre = '') {
+export function parseMessage(text, miNombre = '', tipoPorDefecto = 'accion') {
   if (!text) return []
 
   const chunks = []
@@ -126,9 +126,9 @@ export function parseMessage(text, miNombre = '') {
     }
   }
 
-  // Si no había ningún diálogo, todo es acción
+  // Si no había ningún diálogo, todo es del tipo por defecto
   if (chunks.length === 0) {
-    chunks.push({ type: 'accion', raw: text })
+    chunks.push({ type: tipoPorDefecto, raw: text })
   }
 
   // Tokenizar inline cada chunk

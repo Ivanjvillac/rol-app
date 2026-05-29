@@ -1689,7 +1689,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                 </div>
               )}
               {(e.tipo === 'dialogo' || e.tipo === 'accion') && (() => {
-                const chunks = e.contenido ? parseMessage(e.contenido, miNombrePerfil) : []
+                const chunks = e.contenido ? parseMessage(e.contenido, miNombrePerfil, e.tipo) : []
                 const tieneDialogo = chunks.some(c => c.type === 'dialogo')
                 const tieneAccion = chunks.some(c => c.type === 'accion')
                 const esHibrido = tieneDialogo && tieneAccion
