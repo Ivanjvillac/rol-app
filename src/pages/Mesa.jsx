@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import SelectorImagenSticker from '../components/SelectorImagenSticker'
 import FichaPersonaje from '../components/FichaPersonaje'
+import PanelInvestigacion from '../components/PanelInvestigacion'
 import { jsPDF } from 'jspdf'
 import { parseMessage } from '../lib/parseMessage'
 
@@ -214,6 +215,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [otrosEscribiendo, setOtrosEscribiendo] = useState([])
   const [mostrarIrAbajo, setMostrarIrAbajo] = useState(false)
   const [showMusica, setShowMusica] = useState(false)
+  const [showInvestigacion, setShowInvestigacion] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [showDados, setShowDados] = useState(false)
   const [youtubeUrl, setYoutubeUrl] = useState('')
@@ -1668,6 +1670,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
             </button>
             {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirInvitar}>✉️ Invitar jugador</button>}
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMusica(true)}>🎵 Música{musicaUrl ? ' ▶' : ''}</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowInvestigacion(true)} disabled={!selectedUniverso}>🔍 Investigación</button>
             {musicaUrl && (
               <div style={{ marginTop: '0.6rem', borderRadius: 'var(--radius)', overflow: 'hidden', position: 'relative', background: '#000' }}>
                 {/* El div#yt-music-player es convertido en iframe por el YT IFrame API */}
@@ -2433,6 +2436,17 @@ export default function Mesa({ navigate, selectedUniverso }) {
         onStatEdit={handleStatEdit}
       />}
       {showChat && <ChatPrivado universo={selectedUniverso} personajes={personajes} userId={userId} onCerrar={() => setShowChat(false)} />}
+
+      {showInvestigacion && selectedUniverso && (
+        <PanelInvestigacion
+          universoId={selectedUniverso.id}
+          sesionId={sesionActiva?.id}
+          userId={userId}
+          esDueno={esDueno}
+          miembrosUniverso={miembrosUniverso}
+          onCerrar={() => setShowInvestigacion(false)}
+        />
+      )}
 
       {showMusica && (
         <div className="modal-overlay" onClick={() => setShowMusica(false)}>
