@@ -3,13 +3,13 @@ import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import SelectorImagenSticker from '../components/SelectorImagenSticker'
 import FichaPersonaje from '../components/FichaPersonaje'
+import { jsPDF } from 'jspdf'
+import { parseMessage } from '../lib/parseMessage'
 
 const abrirUrlSegura = (url) => {
   if (!url || !url.startsWith('https://')) return
   window.open(url, '_blank', 'noopener,noreferrer')
 }
-import { jsPDF } from 'jspdf'
-import { parseMessage } from '../lib/parseMessage'
 
 const renderMensaje = (texto, miNombre) => {
   if (!texto) return null
