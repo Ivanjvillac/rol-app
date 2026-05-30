@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { compressImage } from '../lib/compressImage'
+import { useImageUpload } from '../hooks/useImageUpload'
 
 export default function Perfil({ userId, userEmail }) {
   const [nombre, setNombre] = useState('')
@@ -11,6 +11,7 @@ export default function Perfil({ userId, userEmail }) {
   const [guardado, setGuardado] = useState(false)
   const [cargando, setCargando] = useState(true)
   const fileInputRef = useRef(null)
+  const { upload: uploadAvatar } = useImageUpload('perfiles', { compressionType: 'avatar' })
 const [passwordActual, setPasswordActual] = useState('')
 const [passwordNueva, setPasswordNueva] = useState('')
 const [guardandoPassword, setGuardandoPassword] = useState(false)
@@ -43,14 +44,8 @@ const [msgPassword, setMsgPassword] = useState(null)
 
   const subirAvatar = async () => {
     if (!avatarFile) return avatarUrl
-    const compressed = await compressImage(avatarFile, 'avatar')
-    const path = `${userId}.jpg`
-    const { error } = await supabase.storage
-      .from('perfiles')
-      .upload(path, compressed, { upsert: true, contentType: 'image/jpeg' })
-    if (error) return avatarUrl
-    const { data } = supabase.storage.from('perfiles').getPublicUrl(path)
-    return data.publicUrl
+    const { url } = await uploadAvatar(avatarFile, `${userId}.jpg`)
+    return url || avatarUrl
   }
 
   const handleGuardar = async () => {

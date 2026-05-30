@@ -247,10 +247,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [fijadas, setFijadas] = useState({})
   const [respondiendo, setRespondiendo] = useState(null) // entrada a la que se responde
   const [mencionSugerencias, setMencionSugerencias] = useState([])
-  const [pagina, setPagina] = useState(1)
-  const PAGINA_SIZE = 50
-  const [hayMasEntradas, setHayMasEntradas] = useState(false)
-  const [cargandoMas, setCargandoMas] = useState(false) // { entrada_id: true/false } estado local
   const [nivelTension, setNivelTension] = useState(1)
   const historialRef = useRef(null)
   const endRef = useRef(null)               // div centinela al final del historial

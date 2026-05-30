@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import PanelJuramentos from '../components/PanelJuramentos'
-import { compressImage } from '../lib/compressImage'
+import { useImageUpload } from '../hooks/useImageUpload'
 
 const COLORES = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#1abc9c', '#3498db', '#9b59b6', '#e91e63']
 const ROLES = ['Guerrero', 'Mago', 'Pícaro', 'Clérigo', 'Explorador', 'Bardo', 'Narrador', 'Otro']
@@ -355,6 +355,7 @@ export default function Personajes({ navigate, selectedUniverso }) {
   const [avatarPreview, setAvatarPreview] = useState(null)
   const [avatarFile, setAvatarFile] = useState(null)
   const fileInputRef = useRef(null)
+  const { upload: uploadAvatar } = useImageUpload('avatares', { compressionType: 'avatar' })
   const [form, setForm] = useState({
     nombre: '', rol: 'Guerrero', descripcion: '',
     color: COLORES[0], universoId: selectedUniverso?.id || '',
@@ -392,24 +393,8 @@ export default function Personajes({ navigate, selectedUniverso }) {
 
   const subirAvatar = async (personajeId) => {
     if (!avatarFile) return form.avatar_url || null
-
-    if (form.avatar_url) {
-      const oldPath = form.avatar_url.split('/avatares/')[1]
-      if (oldPath && !oldPath.endsWith('.jpg')) {
-        try {
-          await supabase.storage.from('avatares').remove([oldPath])
-        } catch (e) {
-          console.error("Error eliminando avatar anterior:", e)
-        }
-      }
-    }
-
-    const compressed = await compressImage(avatarFile, 'avatar')
-    const path = `${personajeId}.jpg`
-    const { error } = await supabase.storage.from('avatares').upload(path, compressed, { upsert: true, contentType: 'image/jpeg' })
-    if (error) return form.avatar_url || null
-    const { data } = supabase.storage.from('avatares').getPublicUrl(path)
-    return data.publicUrl
+    const { url } = await uploadAvatar(avatarFile, `${personajeId}.jpg`)
+    return url || form.avatar_url || null
   }
 
   const handleSubmit = async () => {
