@@ -10,14 +10,7 @@ export function useMesaTimer(selectedUniverso) {
   const [showTimerConfig, setShowTimerConfig] = useState(false)
   const timerIntervalRef = useRef(null)
 
-  // Carga estado inicial desde el universo
-  useEffect(() => {
-    if (!selectedUniverso) return
-    setTimerFin(selectedUniverso.timer_fin ? new Date(selectedUniverso.timer_fin) : null)
-    setTimerLabel(selectedUniverso.timer_label || '')
-  }, [selectedUniverso?.id])
-
-  // Suscripción realtime a cambios en el universo
+  // Suscripción realtime + carga inicial desde DB al conectarse
   useEffect(() => {
     if (!selectedUniverso?.id) return
     const ch = supabase
@@ -29,7 +22,19 @@ export function useMesaTimer(selectedUniverso) {
         setTimerFin(payload.new.timer_fin ? new Date(payload.new.timer_fin) : null)
         setTimerLabel(payload.new.timer_label || '')
       })
-      .subscribe()
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          const { data } = await supabase
+            .from('universos')
+            .select('timer_fin, timer_label')
+            .eq('id', selectedUniverso.id)
+            .single()
+          if (data) {
+            setTimerFin(data.timer_fin ? new Date(data.timer_fin) : null)
+            setTimerLabel(data.timer_label || '')
+          }
+        }
+      })
     return () => supabase.removeChannel(ch)
   }, [selectedUniverso?.id])
 
