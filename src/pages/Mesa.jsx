@@ -4,6 +4,9 @@ import { supabase } from '../lib/supabase'
 import SelectorImagenSticker from '../components/SelectorImagenSticker'
 import FichaPersonaje from '../components/FichaPersonaje'
 import PanelInvestigacion from '../components/PanelInvestigacion'
+import PanelGaleria from '../components/PanelGaleria'
+import PanelMisiones from '../components/PanelMisiones'
+import PanelDadoEvento from '../components/PanelDadoEvento'
 import { jsPDF } from 'jspdf'
 import { parseMessage } from '../lib/parseMessage'
 
@@ -216,8 +219,18 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [mostrarIrAbajo, setMostrarIrAbajo] = useState(false)
   const [showMusica, setShowMusica] = useState(false)
   const [showInvestigacion, setShowInvestigacion] = useState(false)
+  const [showGaleria, setShowGaleria] = useState(false)
+  const [showMisiones, setShowMisiones] = useState(false)
+  const [showDadoEvento, setShowDadoEvento] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [showDados, setShowDados] = useState(false)
+  // Temporizador
+  const [timerFin, setTimerFin] = useState(null)
+  const [timerLabel, setTimerLabel] = useState('')
+  const [timerDisplay, setTimerDisplay] = useState('')
+  const [showTimerConfig, setShowTimerConfig] = useState(false)
+  const [timerMinutos, setTimerMinutos] = useState('5')
+  const [timerSegundos, setTimerSegundos] = useState('0')
   const [youtubeUrl, setYoutubeUrl] = useState('')
   const [musicaUrl, setMusicaUrl] = useState(null)           // URL raw persistida
   const [musicaIniciadaEn, setMusicaIniciadaEn] = useState(null) // timestamp ms
@@ -601,6 +614,41 @@ export default function Mesa({ navigate, selectedUniverso }) {
   // Mantener esDuenoRef sincronizado
   useEffect(() => { esDuenoRef.current = esDueno }, [esDueno])
 
+  // Temporizador: cargar estado inicial
+  useEffect(() => {
+    if (!selectedUniverso) return
+    setTimerFin(selectedUniverso.timer_fin ? new Date(selectedUniverso.timer_fin) : null)
+    setTimerLabel(selectedUniverso.timer_label || '')
+  }, [selectedUniverso?.id])
+
+  // Temporizador: suscribir a cambios en universos
+  useEffect(() => {
+    if (!selectedUniverso) return
+    const ch = supabase
+      .channel(`timer-universo-${selectedUniverso.id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'universos', filter: `id=eq.${selectedUniverso.id}` }, (payload) => {
+        setTimerFin(payload.new.timer_fin ? new Date(payload.new.timer_fin) : null)
+        setTimerLabel(payload.new.timer_label || '')
+      })
+      .subscribe()
+    return () => supabase.removeChannel(ch)
+  }, [selectedUniverso?.id])
+
+  // Temporizador: intervalo de cuenta atrás
+  useEffect(() => {
+    if (!timerFin) { setTimerDisplay(''); return }
+    const tick = () => {
+      const diff = new Date(timerFin) - Date.now()
+      if (diff <= 0) { setTimerDisplay('⏰ ¡Tiempo!'); return }
+      const m = Math.floor(diff / 60000)
+      const s = Math.floor((diff % 60000) / 1000)
+      setTimerDisplay(`${m}:${s.toString().padStart(2, '0')}`)
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [timerFin])
+
   // Extraer videoId y listId de una URL de YouTube
   const extractYTIds = (url) => {
     if (!url) return { videoId: null, listId: null }
@@ -901,6 +949,20 @@ export default function Mesa({ navigate, selectedUniverso }) {
   }
 
   const formatHora = (ts) => { const d = new Date(ts); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` }
+
+  const iniciarTimer = async () => {
+    const m = parseInt(timerMinutos) || 0
+    const s = parseInt(timerSegundos) || 0
+    const ms = (m * 60 + s) * 1000
+    if (ms <= 0) return
+    const fin = new Date(Date.now() + ms).toISOString()
+    await supabase.from('universos').update({ timer_fin: fin, timer_label: timerLabel || 'Tiempo restante' }).eq('id', selectedUniverso.id)
+    setShowTimerConfig(false)
+  }
+
+  const detenerTimer = async () => {
+    await supabase.from('universos').update({ timer_fin: null, timer_label: null }).eq('id', selectedUniverso.id)
+  }
 
   const exportarSesion = () => {
     if (!sesionActiva) return
@@ -1671,6 +1733,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
             {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirInvitar}>✉️ Invitar jugador</button>}
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMusica(true)}>🎵 Música{musicaUrl ? ' ▶' : ''}</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowInvestigacion(true)} disabled={!selectedUniverso}>🔍 Investigación</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMisiones(true)} disabled={!selectedUniverso}>📋 Misiones</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowGaleria(true)} disabled={!selectedUniverso}>🖼️ Galería</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowDadoEvento(true)} disabled={!selectedUniverso}>🎲 Dado de evento</button>
+            {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowTimerConfig(true)} disabled={!selectedUniverso}>⏱️ Temporizador{timerDisplay ? ` · ${timerDisplay}` : ''}</button>}
             {musicaUrl && (
               <div style={{ marginTop: '0.6rem', borderRadius: 'var(--radius)', overflow: 'hidden', position: 'relative', background: '#000' }}>
                 {/* El div#yt-music-player es convertido en iframe por el YT IFrame API */}
@@ -1721,6 +1787,11 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <h3>{selectedUniverso.nombre}</h3>
             {sesionActiva && <small style={{ color: 'var(--text3)', fontSize: '0.75rem' }}># {sesionActiva.nombre}</small>}
           </div>
+          {timerDisplay && (
+            <div className={`timer-badge${timerDisplay.includes('¡Tiempo') ? ' tiempo' : ''}`} onClick={() => esDueno && setShowTimerConfig(true)} title={timerLabel}>
+              ⏱️ {timerDisplay}
+            </div>
+          )}
           {sesionActiva && (
             <div className="buscador-historial">
               <input placeholder="🔍 Buscar..." value={busqueda} onChange={e => setBusqueda(e.target.value)} />
@@ -2446,6 +2517,54 @@ export default function Mesa({ navigate, selectedUniverso }) {
           miembrosUniverso={miembrosUniverso}
           onCerrar={() => setShowInvestigacion(false)}
         />
+      )}
+
+      {showGaleria && selectedUniverso && (
+        <PanelGaleria universoId={selectedUniverso.id} onCerrar={() => setShowGaleria(false)} />
+      )}
+
+      {showMisiones && selectedUniverso && (
+        <PanelMisiones universoId={selectedUniverso.id} userId={userId} esDueno={esDueno} onCerrar={() => setShowMisiones(false)} />
+      )}
+
+      {showDadoEvento && selectedUniverso && (
+        <PanelDadoEvento
+          universoId={selectedUniverso.id}
+          userId={userId}
+          esDueno={esDueno}
+          onPublicarResultado={(texto) => { addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: texto }, sesionActiva?.id); setShowDadoEvento(false) }}
+          onCerrar={() => setShowDadoEvento(false)}
+        />
+      )}
+
+      {showTimerConfig && esDueno && selectedUniverso && (
+        <div className="modal-overlay" onClick={() => setShowTimerConfig(false)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <h3>⏱️ Temporizador</h3>
+            <div className="form-group">
+              <label>Etiqueta (opcional)</label>
+              <input placeholder="Ej: Decide ya, Turno de combate..." value={timerLabel} onChange={e => setTimerLabel(e.target.value)} />
+            </div>
+            <div style={{ display: 'flex', gap: '0.8rem', marginBottom: '1rem' }}>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label>Minutos</label>
+                <input type="number" min="0" max="99" value={timerMinutos} onChange={e => setTimerMinutos(e.target.value)} />
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label>Segundos</label>
+                <input type="number" min="0" max="59" value={timerSegundos} onChange={e => setTimerSegundos(e.target.value)} />
+              </div>
+            </div>
+            {timerDisplay && (
+              <div className="timer-badge" style={{ marginBottom: '1rem', justifyContent: 'center', display: 'flex' }}>⏱️ {timerDisplay}</div>
+            )}
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setShowTimerConfig(false)}>Cerrar</button>
+              {timerFin && <button className="btn-ghost" style={{ color: 'var(--danger)' }} onClick={detenerTimer}>Detener</button>}
+              <button className="btn-primary" onClick={iniciarTimer}>Iniciar</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showMusica && (

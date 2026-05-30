@@ -3399,3 +3399,216 @@ input, textarea, select {
   .inv-sala-acciones { display: none; }
   .inv-pistas { flex: 1; min-height: 0; }
 }
+
+/* ===== GALERÍA ===== */
+.modal-galeria { max-width: 860px; width: 95vw; max-height: 85vh; display: flex; flex-direction: column; }
+.galeria-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.5rem;
+  padding: 0.8rem;
+  overflow-y: auto;
+  flex: 1;
+}
+.galeria-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  transition: transform 0.15s;
+}
+.galeria-item:hover { transform: scale(1.03); }
+.galeria-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.galeria-label {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.7rem;
+  font-family: 'Cinzel', serif;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  background: linear-gradient(transparent, rgba(0,0,0,0.6));
+}
+.galeria-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0,0,0,0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.galeria-lightbox img { max-width: 90vw; max-height: 88vh; border-radius: 8px; object-fit: contain; }
+.galeria-lightbox-cerrar {
+  position: absolute;
+  top: 1rem; right: 1rem;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: #fff;
+  font-size: 1.4rem;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.galeria-lightbox-info {
+  position: absolute;
+  bottom: 1.5rem;
+  color: rgba(255,255,255,0.7);
+  font-family: 'Cinzel', serif;
+  font-size: 0.85rem;
+}
+
+/* ===== MISIONES ===== */
+.modal-misiones { max-width: 500px; width: 95vw; }
+.misiones-body { padding: 0.5rem 0; max-height: 65vh; overflow-y: auto; }
+.mision-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  transition: background 0.12s;
+}
+.mision-item:hover { background: var(--bg3); }
+.mision-item.completada { opacity: 0.55; }
+.mision-check {
+  flex-shrink: 0;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: none;
+  color: var(--accent);
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+  margin-top: 0.1rem;
+}
+.mision-check:disabled { cursor: default; }
+.mision-check.done { background: var(--accent); color: #1a1200; border-color: var(--accent); }
+.mision-texto { flex: 1; }
+.mision-titulo { font-size: 0.92rem; color: var(--text); line-height: 1.3; }
+.mision-item.completada .mision-titulo { text-decoration: line-through; }
+.mision-desc { font-size: 0.8rem; color: var(--text3); margin-top: 0.2rem; line-height: 1.3; }
+.mision-acciones { display: flex; gap: 0.3rem; flex-shrink: 0; }
+.misiones-separador {
+  padding: 0.5rem 1rem;
+  font-size: 0.7rem;
+  font-family: 'Cinzel', serif;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text3);
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+}
+.mision-form {
+  padding: 0.8rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-top: 1px solid var(--border);
+  background: var(--bg3);
+}
+
+/* ===== DADO DE EVENTO ===== */
+.modal-dado { max-width: 520px; width: 95vw; max-height: 85vh; display: flex; flex-direction: column; }
+.dado-body { flex: 1; overflow-y: auto; padding: 0.8rem 1rem; display: flex; flex-direction: column; gap: 1rem; }
+.dado-tablas { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.dado-tab {
+  padding: 0.3rem 0.8rem;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  color: var(--text2);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.dado-tab:hover { background: var(--bg); color: var(--text); }
+.dado-tab.activa { background: color-mix(in srgb, var(--accent) 15%, transparent); border-color: var(--accent); color: var(--accent); }
+.dado-tab-nueva {
+  padding: 0.3rem 0.7rem;
+  border-radius: 20px;
+  border: 1px dashed var(--border);
+  background: none;
+  color: var(--text3);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.dado-tab-nueva:hover { color: var(--accent); border-color: var(--accent); }
+
+.dado-lanzar-zona {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 1rem;
+  background: var(--bg3);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+.dado-resultado {
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Cinzel', serif;
+  font-size: 1.1rem;
+  color: var(--text3);
+  text-align: center;
+  padding: 0.5rem 1rem;
+  transition: color 0.1s;
+}
+.dado-resultado.tiene-resultado { color: var(--text); font-size: 1.15rem; }
+.dado-resultado.rodando { color: var(--accent); animation: dado-spin 0.1s linear infinite; }
+@keyframes dado-spin { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+.dado-resultado-final { animation: dado-pop 0.4s ease; }
+@keyframes dado-pop { 0% { transform: scale(1.3); color: var(--accent); } 100% { transform: scale(1); } }
+.dado-btn-lanzar { font-size: 1rem; padding: 0.6rem 2rem; }
+
+.dado-opciones { display: flex; flex-direction: column; gap: 0.3rem; }
+.dado-opcion-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.6rem;
+  background: var(--bg3);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--text2);
+}
+
+/* ===== TEMPORIZADOR BADGE ===== */
+.timer-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.7rem;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 20px;
+  font-family: 'Cinzel', serif;
+  font-size: 0.82rem;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+  letter-spacing: 0.03em;
+  transition: background 0.15s;
+}
+.timer-badge.tiempo {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  color: var(--danger);
+  animation: timer-pulse 0.6s ease infinite;
+}
+@keyframes timer-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+@media (max-width: 768px) {
+  .galeria-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+  .timer-badge { font-size: 0.75rem; padding: 0.2rem 0.5rem; }
+}
