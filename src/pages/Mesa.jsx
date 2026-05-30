@@ -210,6 +210,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [usuariosUniverso, setUsuariosUniverso] = useState([])
   const [padreSesion, setPadreSesion] = useState(null)
   const [busqueda, setBusqueda] = useState('')
+  const [busquedaFiltro, setBusquedaFiltro] = useState('')
+  const busquedaDebounceRef = useRef(null)
   const [busquedaGlobal, setBusquedaGlobal] = useState('')
   const [resultadosGlobales, setResultadosGlobales] = useState([])
   const [buscandoGlobal, setBuscandoGlobal] = useState(false)
@@ -266,13 +268,13 @@ export default function Mesa({ navigate, selectedUniverso }) {
   )
 
   const sesion = useMemo(() => {
-    const q = busqueda.trim().toLowerCase()
+    const q = busquedaFiltro.trim().toLowerCase()
     if (!q) return sesionCompleta
     return sesionCompleta.filter(e =>
       e.contenido?.toLowerCase().includes(q) ||
       e.personaje_nombre?.toLowerCase().includes(q)
     )
-  }, [sesionCompleta, busqueda])
+  }, [sesionCompleta, busquedaFiltro])
 
   const esDueno = useMemo(() =>
     selectedUniverso ? esPropietario(selectedUniverso.id) : false,
@@ -1619,8 +1621,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
           )}
           {sesionActiva && (
             <div className="buscador-historial">
-              <input placeholder="🔍 Buscar..." value={busqueda} onChange={e => setBusqueda(e.target.value)} />
-              {busqueda && <button onClick={() => setBusqueda('')}>✕</button>}
+              <input placeholder="🔍 Buscar..." value={busqueda} onChange={e => {
+                setBusqueda(e.target.value)
+                clearTimeout(busquedaDebounceRef.current)
+                busquedaDebounceRef.current = setTimeout(() => setBusquedaFiltro(e.target.value), 250)
+              }} />
+              {busqueda && <button onClick={() => { setBusqueda(''); setBusquedaFiltro('') }}>✕</button>}
             </div>
           )}
           {sesionActiva && entradasFijadas.length > 0 && (
