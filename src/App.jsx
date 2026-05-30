@@ -59,6 +59,30 @@ function AppInner({ page, navigate, selectedUniverso, setSelectedUniverso, cerra
       {page === 'personajes' && <Personajes navigate={navigate} selectedUniverso={selectedUniverso} />}
       {page === 'mesa' && <Mesa navigate={navigate} selectedUniverso={selectedUniverso} />}
       {page === 'perfil' && <Perfil userId={userId} userEmail={userEmail} />}
+
+      {/* Barra de navegación inferior — solo móvil */}
+      <nav className="bottom-nav">
+        <button onClick={() => navigate('home')} className={page === 'home' ? 'active' : ''}>
+          <span className="bottom-nav-icon">🏠</span>
+          <span className="bottom-nav-label">Inicio</span>
+        </button>
+        <button onClick={() => navigate('universos')} className={page === 'universos' ? 'active' : ''}>
+          <span className="bottom-nav-icon">🌍</span>
+          <span className="bottom-nav-label">Universos</span>
+        </button>
+        <button onClick={() => navigate('mesa')} className={page === 'mesa' ? 'active' : ''}>
+          <span className="bottom-nav-icon">⚔️</span>
+          <span className="bottom-nav-label">Mesa</span>
+        </button>
+        <button onClick={() => navigate('personajes')} className={page === 'personajes' ? 'active' : ''}>
+          <span className="bottom-nav-icon">👥</span>
+          <span className="bottom-nav-label">Personajes</span>
+        </button>
+        <button onClick={() => navigate('perfil')} className={page === 'perfil' ? 'active' : ''}>
+          <span className="bottom-nav-icon">👤</span>
+          <span className="bottom-nav-label">Perfil</span>
+        </button>
+      </nav>
     </div>
   )
 }
