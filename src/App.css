@@ -3612,3 +3612,20 @@ input, textarea, select {
   .galeria-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
   .timer-badge { font-size: 0.75rem; padding: 0.2rem 0.5rem; }
 }
+
+/* ===== FICHA COMPARTIDA BANNER ===== */
+.ficha-compartida-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.5rem 1rem;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-bottom: none;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  font-family: 'Cinzel', serif;
+  font-size: 0.82rem;
+  color: var(--accent);
+  letter-spacing: 0.03em;
+}
