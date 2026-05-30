@@ -4,6 +4,9 @@ import { supabase } from '../lib/supabase'
 import SelectorImagenSticker from '../components/SelectorImagenSticker'
 import FichaPersonaje from '../components/FichaPersonaje'
 import PanelInvestigacion from '../components/PanelInvestigacion'
+import PanelGaleria from '../components/PanelGaleria'
+import PanelMisiones from '../components/PanelMisiones'
+import PanelDadoEvento from '../components/PanelDadoEvento'
 import { jsPDF } from 'jspdf'
 import { parseMessage } from '../lib/parseMessage'
 
@@ -216,8 +219,21 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [mostrarIrAbajo, setMostrarIrAbajo] = useState(false)
   const [showMusica, setShowMusica] = useState(false)
   const [showInvestigacion, setShowInvestigacion] = useState(false)
+  const [showGaleria, setShowGaleria] = useState(false)
+  const [showMisiones, setShowMisiones] = useState(false)
+  const [showDadoEvento, setShowDadoEvento] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [showDados, setShowDados] = useState(false)
+  // Temporizador
+  const [timerFin, setTimerFin] = useState(null)
+  const [timerLabel, setTimerLabel] = useState('')
+  const [timerDisplay, setTimerDisplay] = useState('')
+  const [showTimerConfig, setShowTimerConfig] = useState(false)
+  const [timerMinutos, setTimerMinutos] = useState('5')
+  const [timerSegundos, setTimerSegundos] = useState('0')
+  const [fichaCompartida, setFichaCompartida] = useState(null)
+  const [showResumen, setShowResumen] = useState(false)
+  const [resumenTexto, setResumenTexto] = useState('')
   const [youtubeUrl, setYoutubeUrl] = useState('')
   const [musicaUrl, setMusicaUrl] = useState(null)           // URL raw persistida
   const [musicaIniciadaEn, setMusicaIniciadaEn] = useState(null) // timestamp ms
@@ -245,7 +261,9 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const esDuenoRef = useRef(false)        // Ref de esDueno para closures estáticas
   const musicaIniciadaEnRef = useRef(null) // Ref espejo de musicaIniciadaEn para el useEffect del player
   const debounceRef = useRef(null)
+  const timerIntervalRef = useRef(null)
   const fijadosRef = useRef(null)
+  const canalFichaRef = useRef(null)
 
   const [sesionesConMiembros, setSesionesConMiembros] = useState([])
   const [kickedFrom, setKickedFrom] = useState(null) // nombre de la sala de la que fuiste expulsado
@@ -469,10 +487,14 @@ export default function Mesa({ navigate, selectedUniverso }) {
         const m = payload.new
         if (m.destinatario_user_id === userId) {
           const remitente = personajes.find(p => p.id === m.remitente_id)
-          const notif = { id: m.id, texto: `${remitente?.nombre || 'Alguien'} te ha enviado un mensaje privado`, color: remitente?.color || 'var(--accent)' }
+          const remNombre = remitente?.nombre || 'Alguien'
+          const notif = { id: m.id, texto: `${remNombre} te ha enviado un mensaje privado`, color: remitente?.color || 'var(--accent)' }
           const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3')
           audio.volume = 0.3
           audio.play().catch(() => {})
+          if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+            new Notification(`🔒 Mensaje de ${remNombre}`, { body: m.contenido?.slice(0, 80) || 'Mensaje privado', icon: '/favicon.ico', silent: false })
+          }
           setNotificaciones(prev => [...prev, notif])
           setTieneNoLeidos(true)
           setTimeout(() => setNotificaciones(prev => prev.filter(n => n.id !== notif.id)), 5000)
@@ -596,6 +618,75 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
   // Mantener esDuenoRef sincronizado
   useEffect(() => { esDuenoRef.current = esDueno }, [esDueno])
+
+  // Temporizador: cargar estado inicial
+  useEffect(() => {
+    if (!selectedUniverso) return
+    setTimerFin(selectedUniverso.timer_fin ? new Date(selectedUniverso.timer_fin) : null)
+    setTimerLabel(selectedUniverso.timer_label || '')
+  }, [selectedUniverso?.id])
+
+  // Temporizador: suscribir a cambios en universos
+  useEffect(() => {
+    if (!selectedUniverso) return
+    const ch = supabase
+      .channel(`timer-universo-${selectedUniverso.id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'universos', filter: `id=eq.${selectedUniverso.id}` }, (payload) => {
+        setTimerFin(payload.new.timer_fin ? new Date(payload.new.timer_fin) : null)
+        setTimerLabel(payload.new.timer_label || '')
+      })
+      .subscribe()
+    return () => supabase.removeChannel(ch)
+  }, [selectedUniverso?.id])
+
+  // Temporizador: intervalo de cuenta atrás
+  useEffect(() => {
+    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
+    if (!timerFin) { setTimerDisplay(''); return }
+    const fin = new Date(timerFin).getTime()
+    const tick = () => {
+      const diff = fin - Date.now()
+      if (diff <= 0) {
+        setTimerDisplay('⏰ ¡Tiempo!')
+        if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
+        setTimeout(() => {
+          setTimerDisplay('')
+          setTimerFin(null)
+        }, 5000)
+        return
+      }
+      const m = Math.floor(diff / 60000)
+      const s = Math.floor((diff % 60000) / 1000)
+      setTimerDisplay(`${m}:${s.toString().padStart(2, '0')}`)
+    }
+    tick()
+    timerIntervalRef.current = setInterval(tick, 1000)
+    return () => { if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null } }
+  }, [timerFin])
+
+  // Canal broadcast para fichas compartidas
+  useEffect(() => {
+    if (!selectedUniverso?.id) return
+    const canal = supabase
+      .channel(`ficha-${selectedUniverso.id}`)
+      .on('broadcast', { event: 'mostrar_ficha' }, ({ payload }) => {
+        if (payload.personaje) setFichaCompartida(payload.personaje)
+      })
+      .on('broadcast', { event: 'cerrar_ficha' }, () => {
+        setFichaCompartida(null)
+      })
+      .subscribe()
+    canalFichaRef.current = canal
+    return () => { supabase.removeChannel(canal); canalFichaRef.current = null }
+  }, [selectedUniverso?.id])
+
+  // Solicitar permiso para notificaciones del navegador al entrar a Mesa
+  useEffect(() => {
+    if (!userId) return
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
+  }, [userId])
 
   // Extraer videoId y listId de una URL de YouTube
   const extractYTIds = (url) => {
@@ -897,6 +988,77 @@ export default function Mesa({ navigate, selectedUniverso }) {
   }
 
   const formatHora = (ts) => { const d = new Date(ts); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` }
+
+  const iniciarTimer = async () => {
+    const m = parseInt(timerMinutos) || 0
+    const s = parseInt(timerSegundos) || 0
+    const ms = (m * 60 + s) * 1000
+    if (ms <= 0) return
+    const fin = new Date(Date.now() + ms).toISOString()
+    const label = timerLabel || 'Tiempo restante'
+    await supabase.from('universos').update({ timer_fin: fin, timer_label: label }).eq('id', selectedUniverso.id)
+    setTimerFin(new Date(fin))
+    setTimerLabel(label)
+    setShowTimerConfig(false)
+  }
+
+  const detenerTimer = async () => {
+    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
+    setTimerFin(null)
+    setTimerLabel('')
+    setTimerDisplay('')
+    setShowTimerConfig(false)
+    await supabase.from('universos').update({ timer_fin: null, timer_label: null }).eq('id', selectedUniverso.id)
+  }
+
+  const compartirFicha = (personaje) => {
+    canalFichaRef.current?.send({ type: 'broadcast', event: 'mostrar_ficha', payload: { personaje } })
+    setFichaPersonaje(personaje) // también la abre localmente para el narrador
+  }
+
+  const cerrarFichaCompartida = () => {
+    canalFichaRef.current?.send({ type: 'broadcast', event: 'cerrar_ficha', payload: {} })
+    setFichaCompartida(null)
+  }
+
+  const abrirResumen = () => {
+    const entradas = sesionCompleta.filter(e => e.tipo !== 'dado')
+    if (entradas.length === 0) { setResumenTexto('La sesión está vacía.'); setShowResumen(true); return }
+
+    const escenas = []
+    let escenaActual = null
+
+    for (const e of entradas) {
+      if (e.tipo === 'narrador') {
+        if (escenaActual) escenas.push(escenaActual)
+        escenaActual = { titulo: (e.contenido || 'Escena').slice(0, 120), participantes: new Set(), palabrasClave: [] }
+      } else if (escenaActual) {
+        if (e.personaje_nombre) escenaActual.participantes.add(e.personaje_nombre)
+        if (e.tipo === 'accion' && e.contenido) escenaActual.palabrasClave.push(e.contenido.slice(0, 60))
+      }
+    }
+    if (escenaActual) escenas.push(escenaActual)
+
+    let texto = `📜 ${sesionActiva?.nombre || 'Resumen de sesión'}\n${'─'.repeat(40)}\n\n`
+
+    if (escenas.length === 0) {
+      const hablantes = [...new Set(entradas.filter(e => e.personaje_nombre).map(e => e.personaje_nombre))]
+      texto += `Participantes: ${hablantes.join(', ') || '—'}\n${entradas.length} entradas en total.\n`
+    } else {
+      escenas.forEach((esc, i) => {
+        texto += `🎬 Escena ${i + 1}: ${esc.titulo}${esc.titulo.length >= 120 ? '…' : ''}\n`
+        if (esc.participantes.size > 0) texto += `  Participantes: ${[...esc.participantes].join(', ')}\n`
+        if (esc.palabrasClave.length > 0) texto += `  Acciones: ${esc.palabrasClave.slice(0, 2).join(' / ')}\n`
+        texto += '\n'
+      })
+    }
+
+    const palabrasTotales = entradas.reduce((acc, e) => acc + (e.contenido?.split(/\s+/).filter(Boolean).length || 0), 0)
+    texto += `─\n${escenas.length} escenas · ${entradas.length} entradas · ~${palabrasTotales} palabras`
+
+    setResumenTexto(texto)
+    setShowResumen(true)
+  }
 
   const exportarSesion = () => {
     if (!sesionActiva) return
@@ -1385,6 +1547,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
         const notif = { id: Date.now(), texto: '📣 Te han mencionado', entradaId }
         setNotificaciones(prev => [...prev, notif])
         setTimeout(() => setNotificaciones(prev => prev.filter(n => n.id !== notif.id)), 4000)
+        // Notificación del navegador
+        if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+          new Notification('📣 Te han mencionado en la mesa', { body: 'Alguien te ha mencionado con @tu_nombre', icon: '/favicon.ico', silent: false })
+        }
       })
       .subscribe()
     return () => supabase.removeChannel(canal)
@@ -1547,6 +1713,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                     <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) }}>
                       {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
                       <div style={{ flex: 1 }}><span>{p.nombre}</span><small>🤖 {p.rol}</small></div>
+                      {esDueno && <button className="ficha-btn" title="Mostrar ficha a todos" onClick={e => { e.stopPropagation(); compartirFicha(p) }}>👁</button>}
                       <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
                     </div>
                   ))}
@@ -1667,6 +1834,11 @@ export default function Mesa({ navigate, selectedUniverso }) {
             {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirInvitar}>✉️ Invitar jugador</button>}
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMusica(true)}>🎵 Música{musicaUrl ? ' ▶' : ''}</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowInvestigacion(true)} disabled={!selectedUniverso}>🔍 Investigación</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMisiones(true)} disabled={!selectedUniverso}>📋 Misiones</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowGaleria(true)} disabled={!selectedUniverso}>🖼️ Galería</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowDadoEvento(true)} disabled={!selectedUniverso}>🎲 Dado de evento</button>
+            {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirResumen} disabled={!sesionActiva}>📜 Resumen de sesión</button>}
+            {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowTimerConfig(true)} disabled={!selectedUniverso}>⏱️ Temporizador{timerDisplay ? ` · ${timerDisplay}` : ''}</button>}
             {musicaUrl && (
               <div style={{ marginTop: '0.6rem', borderRadius: 'var(--radius)', overflow: 'hidden', position: 'relative', background: '#000' }}>
                 {/* El div#yt-music-player es convertido en iframe por el YT IFrame API */}
@@ -1717,6 +1889,11 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <h3>{selectedUniverso.nombre}</h3>
             {sesionActiva && <small style={{ color: 'var(--text3)', fontSize: '0.75rem' }}># {sesionActiva.nombre}</small>}
           </div>
+          {timerDisplay && (
+            <div className={`timer-badge${timerDisplay.includes('¡Tiempo') ? ' tiempo' : ''}`} onClick={() => esDueno && setShowTimerConfig(true)} title={timerLabel}>
+              ⏱️ {timerDisplay}
+            </div>
+          )}
           {sesionActiva && (
             <div className="buscador-historial">
               <input placeholder="🔍 Buscar..." value={busqueda} onChange={e => setBusqueda(e.target.value)} />
@@ -2431,6 +2608,27 @@ export default function Mesa({ navigate, selectedUniverso }) {
         esDueno={esDueno}
         onStatEdit={handleStatEdit}
       />}
+
+      {fichaCompartida && (
+        <div className="modal-overlay" onClick={() => setFichaCompartida(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ position: 'relative' }}>
+            <div className="ficha-compartida-banner">
+              <span>👁 El narrador muestra esta ficha</span>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {esDueno && <button className="btn-sm danger" onClick={cerrarFichaCompartida}>✕ Cerrar para todos</button>}
+                <button className="btn-sm" onClick={() => setFichaCompartida(null)}>✕ Cerrar</button>
+              </div>
+            </div>
+            <FichaPersonaje
+              personaje={fichaCompartida}
+              userId={userId}
+              onCerrar={() => setFichaCompartida(null)}
+              esDueno={false}
+              onStatEdit={() => {}}
+            />
+          </div>
+        </div>
+      )}
       {showChat && <ChatPrivado universo={selectedUniverso} personajes={personajes} userId={userId} onCerrar={() => setShowChat(false)} />}
 
       {showInvestigacion && selectedUniverso && (
@@ -2442,6 +2640,78 @@ export default function Mesa({ navigate, selectedUniverso }) {
           miembrosUniverso={miembrosUniverso}
           onCerrar={() => setShowInvestigacion(false)}
         />
+      )}
+
+      {showGaleria && selectedUniverso && (
+        <PanelGaleria universoId={selectedUniverso.id} onCerrar={() => setShowGaleria(false)} />
+      )}
+
+      {showMisiones && selectedUniverso && (
+        <PanelMisiones universoId={selectedUniverso.id} userId={userId} esDueno={esDueno} onCerrar={() => setShowMisiones(false)} />
+      )}
+
+      {showDadoEvento && selectedUniverso && (
+        <PanelDadoEvento
+          universoId={selectedUniverso.id}
+          userId={userId}
+          esDueno={esDueno}
+          onPublicarResultado={(texto) => { addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: texto }, sesionActiva?.id); setShowDadoEvento(false) }}
+          onCerrar={() => setShowDadoEvento(false)}
+        />
+      )}
+
+      {showTimerConfig && esDueno && selectedUniverso && (
+        <div className="modal-overlay" onClick={() => setShowTimerConfig(false)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <h3>⏱️ Temporizador</h3>
+            <div className="form-group">
+              <label>Etiqueta (opcional)</label>
+              <input placeholder="Ej: Decide ya, Turno de combate..." value={timerLabel} onChange={e => setTimerLabel(e.target.value)} />
+            </div>
+            <div style={{ display: 'flex', gap: '0.8rem', marginBottom: '1rem' }}>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label>Minutos</label>
+                <input type="number" min="0" max="99" value={timerMinutos} onChange={e => setTimerMinutos(e.target.value)} />
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label>Segundos</label>
+                <input type="number" min="0" max="59" value={timerSegundos} onChange={e => setTimerSegundos(e.target.value)} />
+              </div>
+            </div>
+            {timerDisplay && (
+              <div className="timer-badge" style={{ marginBottom: '1rem', justifyContent: 'center', display: 'flex' }}>⏱️ {timerDisplay}</div>
+            )}
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setShowTimerConfig(false)}>Cerrar</button>
+              {timerFin && <button className="btn-ghost" style={{ color: 'var(--danger)' }} onClick={detenerTimer}>Detener</button>}
+              <button className="btn-primary" onClick={iniciarTimer}>Iniciar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showResumen && (
+        <div className="modal-overlay" onClick={() => setShowResumen(false)}>
+          <div className="modal" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>📜 Resumen de sesión</h3>
+              <button onClick={() => setShowResumen(false)}>✕</button>
+            </div>
+            <pre style={{ fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: '0.88rem', color: 'var(--text2)', background: 'var(--bg3)', padding: '1rem', borderRadius: 'var(--radius)', maxHeight: '400px', overflowY: 'auto', lineHeight: 1.7, margin: '0 0 1rem' }}>
+              {resumenTexto}
+            </pre>
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setShowResumen(false)}>Cerrar</button>
+              <button className="btn-ghost" onClick={() => { navigator.clipboard?.writeText(resumenTexto).catch(() => {}) }}>📋 Copiar</button>
+              {sesionActiva && (
+                <button className="btn-primary" onClick={() => {
+                  addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: resumenTexto }, sesionActiva.id)
+                  setShowResumen(false)
+                }}>📢 Publicar en mesa</button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {showMusica && (

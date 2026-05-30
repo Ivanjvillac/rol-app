@@ -19,6 +19,10 @@ export default function Admin() {
   const [cambiandoPassword, setCambiandoPassword] = useState(null)
   const [nuevaPassword, setNuevaPassword] = useState('')
   const [msgPassword, setMsgPassword] = useState(null)
+  const [showImportarBackup, setShowImportarBackup] = useState(false)
+  const [backupData, setBackupData] = useState(null)
+  const [importandoBackup, setImportandoBackup] = useState(false)
+  const [msgImportarBackup, setMsgImportarBackup] = useState(null)
 
   useEffect(() => { cargarTodo() }, [])
 
@@ -171,6 +175,93 @@ export default function Admin() {
     URL.revokeObjectURL(a.href)
   }
 
+  const leerArchivoBackup = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const json = JSON.parse(ev.target.result)
+        if (!json.universo) { setMsgImportarBackup({ tipo: 'error', texto: 'Archivo inválido: falta el campo "universo".' }); return }
+        setBackupData(json)
+        setMsgImportarBackup(null)
+      } catch {
+        setMsgImportarBackup({ tipo: 'error', texto: 'El archivo no es un JSON válido.' })
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  const ejecutarImportacion = async () => {
+    if (!backupData?.universo) return
+    setImportandoBackup(true)
+    setMsgImportarBackup(null)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('No autenticado')
+
+      const { universo, personajes = [], sesiones = [], entradas = [] } = backupData
+
+      // Crear universo con nuevo ID
+      const { data: nuevoUniverso, error: errUniv } = await supabase
+        .from('universos')
+        .insert({ nombre: `${universo.nombre} (importado)`, ambientacion: universo.ambientacion, color: universo.color, user_id: user.id, descripcion: universo.descripcion || null })
+        .select().single()
+      if (errUniv) throw new Error(`Error al crear universo: ${errUniv.message}`)
+
+      // Crear personajes con nuevo universo_id
+      const mapaPersonajes = {}
+      if (personajes.length > 0) {
+        for (const p of personajes) {
+          const { data: np } = await supabase.from('personajes')
+            .insert({ nombre: p.nombre, rol: p.rol || null, color: p.color || '#b48c3c', iniciales: p.iniciales || p.nombre?.slice(0,2).toUpperCase(), es_npc: p.es_npc || false, universo_id: nuevoUniverso.id, user_id: user.id, avatar_url: p.avatar_url || null })
+            .select().single()
+          if (np) mapaPersonajes[p.id] = np.id
+        }
+      }
+
+      // Crear sesiones con nuevo universo_id
+      const mapaSesiones = {}
+      if (sesiones.length > 0) {
+        for (const s of sesiones) {
+          const { data: ns } = await supabase.from('sesiones')
+            .insert({ nombre: s.nombre, universo_id: nuevoUniverso.id, user_id: user.id, es_privada: false })
+            .select().single()
+          if (ns) mapaSesiones[s.id] = ns.id
+        }
+      }
+
+      // Crear entradas con nuevos sesion_id / universo_id
+      if (entradas.length > 0) {
+        const entradasNuevas = entradas.map(e => ({
+          tipo: e.tipo || 'narrador',
+          contenido: e.contenido || '',
+          imagen_url: e.imagen_url || null,
+          personaje_nombre: e.personaje_nombre || null,
+          personaje_color: e.personaje_color || null,
+          personaje_iniciales: e.personaje_iniciales || null,
+          personaje_avatar_url: e.personaje_avatar_url || null,
+          universo_id: nuevoUniverso.id,
+          sesion_id: mapaSesiones[e.sesion_id] || null,
+          user_id: user.id,
+          tono: e.tono || 'normal',
+        }))
+        // Insertar en lotes de 100
+        for (let i = 0; i < entradasNuevas.length; i += 100) {
+          await supabase.from('entradas').insert(entradasNuevas.slice(i, i + 100))
+        }
+      }
+
+      setMsgImportarBackup({ tipo: 'ok', texto: `✓ Importado: "${nuevoUniverso.nombre}" · ${personajes.length} personajes · ${sesiones.length} sesiones · ${entradas.length} entradas.` })
+      setBackupData(null)
+      await cargarTodo()
+    } catch (err) {
+      setMsgImportarBackup({ tipo: 'error', texto: `Error: ${err.message}` })
+    }
+    setImportandoBackup(false)
+  }
+
   const [transfiriendoUniverso, setTransfiriendoUniverso] = useState(null)
   const [nuevoOwnerEmail, setNuevoOwnerEmail] = useState('')
   const [msgTransferUniverso, setMsgTransferUniverso] = useState(null)
@@ -198,6 +289,7 @@ export default function Admin() {
         <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn-ghost" onClick={() => setShowImportador(true)}>📥 Importar Discord</button>
           <button className="btn-ghost" onClick={exportarBackup}>💾 Exportar backup</button>
+          <button className="btn-ghost" onClick={() => { setShowImportarBackup(true); setBackupData(null); setMsgImportarBackup(null) }}>📤 Importar backup</button>
           <span className="card-badge" style={{ fontSize: '0.8rem', padding: '0.3rem 0.8rem' }}>⚡ Superadmin</span>
         </div>
       </div>
@@ -491,6 +583,50 @@ export default function Admin() {
       )}
 
       {showImportador && <ImportadorDiscord onCerrar={() => setShowImportador(false)} />}
+
+      {showImportarBackup && (
+        <div className="modal-overlay" onClick={() => { if (!importandoBackup) setShowImportarBackup(false) }}>
+          <div className="modal" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+            <h3>📤 Importar backup de universo</h3>
+            <p style={{ color: 'var(--text2)', fontSize: '0.9rem', margin: '0.8rem 0 1.2rem' }}>
+              Importa un archivo de backup generado con "💾 Backup" desde el panel de universos.<br/>
+              Se creará un universo nuevo con todos sus personajes, sesiones y entradas.
+            </p>
+
+            {!backupData ? (
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'inline-block', padding: '0.5rem 1rem', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text)' }}>
+                  📁 Seleccionar archivo JSON
+                  <input type="file" accept=".json" style={{ display: 'none' }} onChange={leerArchivoBackup} />
+                </label>
+              </div>
+            ) : (
+              <div style={{ background: 'rgba(46,204,113,0.08)', border: '1px solid rgba(46,204,113,0.2)', borderRadius: 'var(--radius)', padding: '1rem', marginBottom: '1rem' }}>
+                <p style={{ fontFamily: 'Cinzel, serif', color: 'var(--accent)', fontWeight: 700, marginBottom: '0.5rem' }}>✓ Archivo cargado</p>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text2)', marginBottom: '0.25rem' }}>Universo: <strong>{backupData.universo?.nombre}</strong></p>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text3)' }}>
+                  {backupData.personajes?.length || 0} personajes · {backupData.sesiones?.length || 0} sesiones · {backupData.entradas?.length || 0} entradas
+                </p>
+              </div>
+            )}
+
+            {msgImportarBackup && (
+              <div className={msgImportarBackup.tipo === 'ok' ? 'auth-mensaje' : 'auth-error'} style={{ marginBottom: '1rem' }}>
+                {msgImportarBackup.texto}
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setShowImportarBackup(false)} disabled={importandoBackup}>Cancelar</button>
+              {backupData && (
+                <button className="btn-primary" onClick={ejecutarImportacion} disabled={importandoBackup}>
+                  {importandoBackup ? 'Importando...' : '📤 Importar universo'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

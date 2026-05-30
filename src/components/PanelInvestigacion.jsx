@@ -7,6 +7,7 @@ export default function PanelInvestigacion({ universoId, sesionId, userId, esDue
   const [pistas, setPistas] = useState({}) // salaId -> []
   const [salaActiva, setSalaActiva] = useState(null)
   const [notas, setNotas] = useState('')
+  const [notasGuardadas, setNotasGuardadas] = useState(false)
   const [cargando, setCargando] = useState(true)
 
   // Formularios narrador
@@ -251,6 +252,7 @@ export default function PanelInvestigacion({ universoId, sesionId, userId, esDue
 
   const handleNotas = (val) => {
     setNotas(val)
+    setNotasGuardadas(false)
     if (notasDebounce.current) clearTimeout(notasDebounce.current)
     notasDebounce.current = setTimeout(async () => {
       await supabase.from('inv_notas').upsert({
@@ -258,6 +260,8 @@ export default function PanelInvestigacion({ universoId, sesionId, userId, esDue
         user_id: userId,
         contenido: val
       }, { onConflict: 'investigacion_id,user_id' })
+      setNotasGuardadas(true)
+      setTimeout(() => setNotasGuardadas(false), 2000)
     }, 800)
   }
 
@@ -422,10 +426,13 @@ export default function PanelInvestigacion({ universoId, sesionId, userId, esDue
 
               {/* Notas privadas */}
               <div className="inv-notas">
-                <div className="inv-notas-label">📝 Mis notas privadas</div>
+                <div className="inv-notas-label">
+                  📝 Mis notas privadas
+                  {notasGuardadas && <span className="inv-notas-guardadas">✓ guardado</span>}
+                </div>
                 <textarea
                   className="inv-notas-textarea"
-                  placeholder="Escribe aquí tus apuntes, sospechas o deducciones... Solo tú puedes verlos."
+                  placeholder="Escribe aquí tus apuntes, sospechas o deducciones... Solo tú puedes verlos. Se guardan automáticamente."
                   value={notas}
                   onChange={e => handleNotas(e.target.value)}
                   rows={4}
