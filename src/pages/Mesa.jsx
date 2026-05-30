@@ -645,6 +645,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
       if (diff <= 0) {
         setTimerDisplay('⏰ ¡Tiempo!')
         if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
+        setTimeout(() => {
+          setTimerDisplay('')
+          setTimerFin(null)
+        }, 5000)
         return
       }
       const m = Math.floor(diff / 60000)
