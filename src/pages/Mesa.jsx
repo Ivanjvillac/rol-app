@@ -956,12 +956,18 @@ export default function Mesa({ navigate, selectedUniverso }) {
     const ms = (m * 60 + s) * 1000
     if (ms <= 0) return
     const fin = new Date(Date.now() + ms).toISOString()
-    await supabase.from('universos').update({ timer_fin: fin, timer_label: timerLabel || 'Tiempo restante' }).eq('id', selectedUniverso.id)
+    const label = timerLabel || 'Tiempo restante'
+    await supabase.from('universos').update({ timer_fin: fin, timer_label: label }).eq('id', selectedUniverso.id)
+    setTimerFin(new Date(fin))
+    setTimerLabel(label)
     setShowTimerConfig(false)
   }
 
   const detenerTimer = async () => {
     await supabase.from('universos').update({ timer_fin: null, timer_label: null }).eq('id', selectedUniverso.id)
+    setTimerFin(null)
+    setTimerLabel('')
+    setTimerDisplay('')
   }
 
   const exportarSesion = () => {
