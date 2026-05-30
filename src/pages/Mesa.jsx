@@ -9,6 +9,9 @@ import PanelMisiones from '../components/PanelMisiones'
 import PanelDadoEvento from '../components/PanelDadoEvento'
 import { jsPDF } from 'jspdf'
 import { parseMessage } from '../lib/parseMessage'
+import { useMesaTimer } from '../features/mesa/hooks/useMesaTimer'
+import { useMesaPresence } from '../features/mesa/hooks/useMesaPresence'
+import { useMesaMusic } from '../features/mesa/hooks/useMesaMusic'
 
 const abrirUrlSegura = (url) => {
   if (!url || !url.startsWith('https://')) return
@@ -214,29 +217,16 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [editandoEntrada, setEditandoEntrada] = useState(null)
   const [confirmDeleteEntrada, setConfirmDeleteEntrada] = useState(null)
   const [fichaPersonaje, setFichaPersonaje] = useState(null)
-  const [usuariosConectados, setUsuariosConectados] = useState([])
-  const [otrosEscribiendo, setOtrosEscribiendo] = useState([])
   const [mostrarIrAbajo, setMostrarIrAbajo] = useState(false)
-  const [showMusica, setShowMusica] = useState(false)
   const [showInvestigacion, setShowInvestigacion] = useState(false)
   const [showGaleria, setShowGaleria] = useState(false)
   const [showMisiones, setShowMisiones] = useState(false)
   const [showDadoEvento, setShowDadoEvento] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [showDados, setShowDados] = useState(false)
-  // Temporizador
-  const [timerFin, setTimerFin] = useState(null)
-  const [timerLabel, setTimerLabel] = useState('')
-  const [timerDisplay, setTimerDisplay] = useState('')
-  const [showTimerConfig, setShowTimerConfig] = useState(false)
-  const [timerMinutos, setTimerMinutos] = useState('5')
-  const [timerSegundos, setTimerSegundos] = useState('0')
   const [fichaCompartida, setFichaCompartida] = useState(null)
   const [showResumen, setShowResumen] = useState(false)
   const [resumenTexto, setResumenTexto] = useState('')
-  const [youtubeUrl, setYoutubeUrl] = useState('')
-  const [musicaUrl, setMusicaUrl] = useState(null)           // URL raw persistida
-  const [musicaIniciadaEn, setMusicaIniciadaEn] = useState(null) // timestamp ms
   const [reacciones, setReacciones] = useState({})
   const [showReacciones, setShowReacciones] = useState(null)
   const [notifsSesion, setNotifsSesion] = useState({})
@@ -253,15 +243,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const isAtBottomRef = useRef(true)        // actualizado en onScroll, siempre fresco
   const inputRef = useRef(null)
   const timeoutEscribiendoRef = useRef(null)
-  const canalEscribiendoRef = useRef(null)
-  const canalPresenciaRef = useRef(null)
-  const canalMusicaRef = useRef(null)
-  const playerRef = useRef(null)          // YT.Player instance
-  const syncIntervalRef = useRef(null)    // Intervalo de sync periódico
-  const esDuenoRef = useRef(false)        // Ref de esDueno para closures estáticas
-  const musicaIniciadaEnRef = useRef(null) // Ref espejo de musicaIniciadaEn para el useEffect del player
   const debounceRef = useRef(null)
-  const timerIntervalRef = useRef(null)
   const fijadosRef = useRef(null)
   const canalFichaRef = useRef(null)
 
@@ -286,6 +268,25 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const sesiones = sesionesConMiembros.filter(s =>
     !s.es_privada || s.user_id === userId || (s.miembros || []).includes(userId)
   )
+
+  const {
+    timerFin, timerLabel, setTimerLabel, timerDisplay,
+    timerMinutos, setTimerMinutos, timerSegundos, setTimerSegundos,
+    showTimerConfig, setShowTimerConfig,
+    iniciarTimer, detenerTimer,
+  } = useMesaTimer(selectedUniverso)
+
+  const {
+    usuariosConectados, otrosEscribiendo, emitirEscribiendo,
+    canalPresenciaRef, canalEscribiendoRef,
+  } = useMesaPresence(selectedUniverso, userId, sesionActiva, personajeActivo)
+
+  const {
+    musicaUrl, showMusica, setShowMusica,
+    youtubeUrl, setYoutubeUrl,
+    cargarYoutube, quitarMusica,
+    canalMusicaRef, playerRef,
+  } = useMesaMusic(sesionActiva, esDueno)
 
   useEffect(() => {
     if (!userId) return
@@ -433,12 +434,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
   useEffect(() => {
     if (!sesionActiva) return
-    // Cargar nivel_tension y url_musica iniciales de la sesión
-    supabase.from('sesiones').select('nivel_tension, url_musica').eq('id', sesionActiva.id).single()
-      .then(({ data }) => {
-        if (data?.nivel_tension) setNivelTension(data.nivel_tension)
-        setMusicaUrl(data?.url_musica || null)
-      })
+    supabase.from('sesiones').select('nivel_tension').eq('id', sesionActiva.id).single()
+      .then(({ data }) => { if (data?.nivel_tension) setNivelTension(data.nivel_tension) })
     cargarSesion(sesionActiva.id)
     const unsub = suscribirMesa(selectedUniverso.id, sesionActiva.id, () => {})
     return unsub
@@ -449,7 +446,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
     document.documentElement.style.setProperty('--nivel-tension', nivelTension)
   }, [nivelTension])
 
-  // Suscripción Realtime a UPDATE en sesiones (nivel_tension Y url_musica)
+  // Suscripción Realtime a UPDATE en sesiones (nivel_tension)
   useEffect(() => {
     if (!sesionActiva?.id) return
     const canal = supabase
@@ -462,22 +459,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
       }, (payload) => {
         const nt = payload.new?.nivel_tension
         if (nt !== undefined) setNivelTension(nt)
-        // Sincronizar música entre clientes
-        if ('url_musica' in payload.new) setMusicaUrl(payload.new.url_musica || null)
       })
       .subscribe()
     return () => supabase.removeChannel(canal)
   }, [sesionActiva?.id])
-
-  // (emociones personalizadas eliminadas — reemplazadas por el parser inline)
-  useEffect(() => {
-    if (!canalPresenciaRef.current || !canalPresenciaRef.current._nombre) return
-    canalPresenciaRef.current.track({
-      user_id: userId,
-      nombre: canalPresenciaRef.current._nombre,
-      personaje: personajeActivo ? { nombre: personajeActivo.nombre, color: personajeActivo.color, iniciales: personajeActivo.iniciales, avatar_url: personajeActivo.avatar_url } : null,
-    })
-  }, [personajeActivo?.id])
 
   useEffect(() => {
     if (!selectedUniverso || !userId) return
@@ -503,167 +488,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
     return () => supabase.removeChannel(channel)
   }, [selectedUniverso?.id, userId])
 
-  useEffect(() => {
-    if (!selectedUniverso || !userId) return
-    const canal = supabase.channel(`presencia-${selectedUniverso.id}`, {
-      config: { presence: { key: userId } }
-    })
-    canal
-      .on('presence', { event: 'sync' }, () => {
-        const estado = canal.presenceState()
-        // Cada key del estado es un userId, su valor es un array de tracks
-        // Tomamos solo el último track de cada usuario para evitar duplicados
-        const conectados = Object.values(estado).map(tracks => {
-          const ultimo = tracks[tracks.length - 1]
-          return {
-            userId: ultimo.user_id,
-            nombre: ultimo.nombre || ultimo.user_id?.slice(0, 8),
-            personaje: ultimo.personaje || null,
-          }
-        })
-        setUsuariosConectados(conectados)
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          const perfil = await supabase.from('perfiles').select('nombre').eq('id', userId).single()
-          const nombrePerfil = perfil.data?.nombre || 'Jugador'
-          canalPresenciaRef.current = canal
-          canalPresenciaRef.current._nombre = nombrePerfil
-          await canal.track({
-            user_id: userId,
-            nombre: nombrePerfil,
-            personaje: personajeActivo ? { nombre: personajeActivo.nombre, color: personajeActivo.color, iniciales: personajeActivo.iniciales, avatar_url: personajeActivo.avatar_url } : null,
-          })
-        }
-      })
-    return () => {
-      supabase.removeChannel(canal)
-      canalPresenciaRef.current = null
-    }
-  }, [selectedUniverso?.id, userId])
-
-  useEffect(() => {
-    if (!selectedUniverso || !userId || !sesionActiva) return
-    const canal = supabase.channel(`escribiendo-${selectedUniverso.id}-${sesionActiva.id}`)
-      .on('broadcast', { event: 'escribiendo' }, ({ payload }) => {
-        if (payload.userId === userId) return
-        setOtrosEscribiendo(prev => {
-          const sin = prev.filter(x => x.userId !== payload.userId)
-          if (payload.activo) return [...sin, { userId: payload.userId, nombre: payload.nombre }]
-          return sin
-        })
-      })
-      .subscribe()
-    canalEscribiendoRef.current = canal
-    return () => {
-      supabase.removeChannel(canal)
-      canalEscribiendoRef.current = null
-    }
-  }, [selectedUniverso?.id, sesionActiva?.id, userId])
-
-  // Canal Broadcast para sincronizar música en tiempo real
-  useEffect(() => {
-    if (!sesionActiva?.id) return
-    const canal = supabase
-      .channel(`musica-${sesionActiva.id}`)
-      // --- Cambio de canción (dueño la cambia o la quita) ---
-      .on('broadcast', { event: 'musica_cambio' }, ({ payload }) => {
-        if (!payload.url) {
-          setMusicaUrl(null)
-          setMusicaIniciadaEn(null)
-          musicaIniciadaEnRef.current = null
-          return
-        }
-        const ts = payload.startedAt || Date.now()
-        setMusicaUrl(payload.url)
-        setMusicaIniciadaEn(ts)
-        musicaIniciadaEnRef.current = ts
-      })
-      // --- Sync de posición/estado del reproductor (solo para no-dueños) ---
-      .on('broadcast', { event: 'musica_sync' }, ({ payload }) => {
-        if (esDuenoRef.current) return // El dueño es la fuente de verdad
-        if (!playerRef.current) return
-        try {
-          const { state, currentTime, timestamp } = payload
-          const latency = Math.max(0, (Date.now() - timestamp) / 1000)
-          const targetTime = Math.max(0, currentTime + latency)
-          playerRef.current.seekTo(targetTime, true)
-          if (state === 'playing') playerRef.current.playVideo()
-          else if (state === 'paused') playerRef.current.pauseVideo()
-        } catch (e) {}
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          const { data } = await supabase
-            .from('sesiones')
-            .select('url_musica, musica_iniciada_en')
-            .eq('id', sesionActiva.id)
-            .single()
-          if (data?.url_musica) {
-            const ts = data.musica_iniciada_en
-              ? new Date(data.musica_iniciada_en).getTime()
-              : Date.now()
-            setMusicaUrl(data.url_musica)
-            setMusicaIniciadaEn(ts)
-            musicaIniciadaEnRef.current = ts
-          }
-        }
-      })
-    canalMusicaRef.current = canal
-    return () => {
-      supabase.removeChannel(canal)
-      canalMusicaRef.current = null
-    }
-  }, [sesionActiva?.id])
-
-  // Mantener esDuenoRef sincronizado
-  useEffect(() => { esDuenoRef.current = esDueno }, [esDueno])
-
-  // Temporizador: cargar estado inicial
-  useEffect(() => {
-    if (!selectedUniverso) return
-    setTimerFin(selectedUniverso.timer_fin ? new Date(selectedUniverso.timer_fin) : null)
-    setTimerLabel(selectedUniverso.timer_label || '')
-  }, [selectedUniverso?.id])
-
-  // Temporizador: suscribir a cambios en universos
-  useEffect(() => {
-    if (!selectedUniverso) return
-    const ch = supabase
-      .channel(`timer-universo-${selectedUniverso.id}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'universos', filter: `id=eq.${selectedUniverso.id}` }, (payload) => {
-        setTimerFin(payload.new.timer_fin ? new Date(payload.new.timer_fin) : null)
-        setTimerLabel(payload.new.timer_label || '')
-      })
-      .subscribe()
-    return () => supabase.removeChannel(ch)
-  }, [selectedUniverso?.id])
-
-  // Temporizador: intervalo de cuenta atrás
-  useEffect(() => {
-    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
-    if (!timerFin) { setTimerDisplay(''); return }
-    const fin = new Date(timerFin).getTime()
-    const tick = () => {
-      const diff = fin - Date.now()
-      if (diff <= 0) {
-        setTimerDisplay('⏰ ¡Tiempo!')
-        if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
-        setTimeout(() => {
-          setTimerDisplay('')
-          setTimerFin(null)
-        }, 5000)
-        return
-      }
-      const m = Math.floor(diff / 60000)
-      const s = Math.floor((diff % 60000) / 1000)
-      setTimerDisplay(`${m}:${s.toString().padStart(2, '0')}`)
-    }
-    tick()
-    timerIntervalRef.current = setInterval(tick, 1000)
-    return () => { if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null } }
-  }, [timerFin])
-
   // Canal broadcast para fichas compartidas
   useEffect(() => {
     if (!selectedUniverso?.id) return
@@ -687,108 +511,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
       Notification.requestPermission()
     }
   }, [userId])
-
-  // Extraer videoId y listId de una URL de YouTube
-  const extractYTIds = (url) => {
-    if (!url) return { videoId: null, listId: null }
-    try {
-      const rawUrl = url.startsWith('http') ? url : `https://${url}`
-      const u = new URL(rawUrl)
-      const host = u.hostname.replace('www.', '')
-      let videoId = null, listId = null
-      if (host === 'youtube.com' || host === 'music.youtube.com') {
-        videoId = u.searchParams.get('v')
-        listId = u.searchParams.get('list')
-        if (!videoId && u.pathname.startsWith('/shorts/')) videoId = u.pathname.split('/shorts/')[1]?.split('?')[0] || null
-        if (!videoId && u.pathname.startsWith('/embed/')) { videoId = u.pathname.split('/embed/')[1]?.split('?')[0] || null; if (!listId) listId = u.searchParams.get('list') }
-        if (!listId && u.pathname.startsWith('/playlist')) listId = u.searchParams.get('list')
-      }
-      if (host === 'youtu.be') { videoId = u.pathname.slice(1).split('?')[0] || null; listId = u.searchParams.get('list') }
-      return { videoId, listId }
-    } catch { return { videoId: null, listId: null } }
-  }
-
-  // Inicializar / destruir el reproductor YT cuando cambia la canción
-  useEffect(() => {
-    // Limpiar reproductor e intervalo anteriores
-    clearInterval(syncIntervalRef.current)
-    if (playerRef.current) {
-      try { playerRef.current.destroy() } catch (e) {}
-      playerRef.current = null
-    }
-    if (!musicaUrl) return
-
-    const { videoId, listId } = extractYTIds(musicaUrl)
-    if (!videoId && !listId) return
-
-    const offsetSegs = musicaIniciadaEnRef.current
-      ? Math.max(0, Math.floor((Date.now() - musicaIniciadaEnRef.current) / 1000))
-      : 0
-
-    const doInit = () => {
-      const container = document.getElementById('yt-music-player')
-      if (!container || playerRef.current) return
-      playerRef.current = new window.YT.Player('yt-music-player', {
-        height: '52',
-        width: '100%',
-        videoId: videoId || undefined,
-        playerVars: {
-          autoplay: 1,
-          loop: listId ? 0 : 1,
-          ...(listId ? { listType: 'playlist', list: listId } : { playlist: videoId }),
-          start: offsetSegs,
-        },
-        events: {
-          onReady: (e) => {
-            if (offsetSegs > 5) e.target.seekTo(offsetSegs, true)
-          },
-          onStateChange: (e) => {
-            if (!esDuenoRef.current) return // Solo el dueño emite sync
-            const YTState = window.YT?.PlayerState
-            if (!YTState) return
-            if (e.data !== YTState.PLAYING && e.data !== YTState.PAUSED) return
-            const ct = e.target.getCurrentTime?.() ?? 0
-            canalMusicaRef.current?.send({
-              type: 'broadcast', event: 'musica_sync',
-              payload: { state: e.data === YTState.PLAYING ? 'playing' : 'paused', currentTime: ct, timestamp: Date.now() }
-            })
-          }
-        }
-      })
-      // Dueño: sync periódico cada 10s para corregir deriva
-      if (esDuenoRef.current) {
-        syncIntervalRef.current = setInterval(() => {
-          if (!playerRef.current || !canalMusicaRef.current) return
-          try {
-            const state = playerRef.current.getPlayerState()
-            const ct = playerRef.current.getCurrentTime()
-            const YTState = window.YT?.PlayerState
-            canalMusicaRef.current.send({
-              type: 'broadcast', event: 'musica_sync',
-              payload: { state: state === YTState?.PLAYING ? 'playing' : 'paused', currentTime: ct, timestamp: Date.now() }
-            })
-          } catch (e) {}
-        }, 10000)
-      }
-    }
-
-    if (window.YT?.Player) {
-      setTimeout(doInit, 80)
-    } else {
-      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
-        const tag = document.createElement('script')
-        tag.src = 'https://www.youtube.com/iframe_api'
-        document.head.appendChild(tag)
-      }
-      const prev = window.onYouTubeIframeAPIReady
-      window.onYouTubeIframeAPIReady = () => { if (typeof prev === 'function') prev(); setTimeout(doInit, 80) }
-    }
-
-    return () => {
-      clearInterval(syncIntervalRef.current)
-      if (playerRef.current) { try { playerRef.current.destroy() } catch (e) {} playerRef.current = null }
-    }
-  }, [musicaUrl])
 
   // ── AUTO-SCROLL ──
   // Al cambiar de sesión: siempre ir al final usando useLayoutEffect
@@ -824,16 +546,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const irAbajo = () => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
     isAtBottomRef.current = true
-  }
-
-  const emitirEscribiendo = async (activo) => {
-    if (!selectedUniverso || !canalEscribiendoRef.current) return
-    const perfil = await supabase.from('perfiles').select('nombre').eq('id', userId).single()
-    canalEscribiendoRef.current.send({
-      type: 'broadcast',
-      event: 'escribiendo',
-      payload: { userId, nombre: perfil.data?.nombre || 'Alguien', activo }
-    })
   }
 
   if (!selectedUniverso) {
@@ -988,28 +700,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
   }
 
   const formatHora = (ts) => { const d = new Date(ts); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` }
-
-  const iniciarTimer = async () => {
-    const m = parseInt(timerMinutos) || 0
-    const s = parseInt(timerSegundos) || 0
-    const ms = (m * 60 + s) * 1000
-    if (ms <= 0) return
-    const fin = new Date(Date.now() + ms).toISOString()
-    const label = timerLabel || 'Tiempo restante'
-    await supabase.from('universos').update({ timer_fin: fin, timer_label: label }).eq('id', selectedUniverso.id)
-    setTimerFin(new Date(fin))
-    setTimerLabel(label)
-    setShowTimerConfig(false)
-  }
-
-  const detenerTimer = async () => {
-    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
-    setTimerFin(null)
-    setTimerLabel('')
-    setTimerDisplay('')
-    setShowTimerConfig(false)
-    await supabase.from('universos').update({ timer_fin: null, timer_label: null }).eq('id', selectedUniverso.id)
-  }
 
   const compartirFicha = (personaje) => {
     canalFichaRef.current?.send({ type: 'broadcast', event: 'mostrar_ficha', payload: { personaje } })
@@ -1335,43 +1025,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
       setInvitaciones(invs)
     }
     setEnviando(false)
-  }
-
-  // Validar URL de YouTube (para el alert) — reutiliza extractYTIds
-  const buildEmbedUrl = (url) => {
-    const { videoId, listId } = extractYTIds(url)
-    if (listId && videoId) return `https://www.youtube.com/embed/${videoId}?list=${listId}&autoplay=1`
-    if (listId) return `https://www.youtube.com/embed/videoseries?list=${listId}&autoplay=1`
-    if (videoId) return `https://www.youtube.com/embed/${videoId}?autoplay=1`
-    return null
-  }
-
-  const cargarYoutube = async () => {
-    const url = youtubeUrl.trim()
-    if (!url) return
-    if (!sesionActiva) { alert('⚠️ Selecciona una sesión primero antes de cargar música.'); return }
-    const { videoId, listId } = extractYTIds(url)
-    if (!videoId && !listId) { alert('⚠️ No se reconoce la URL. Asegúrate de que es un enlace de YouTube (youtube.com o youtu.be).'); return }
-    const startedAt = Date.now()
-    setMusicaUrl(url)
-    setMusicaIniciadaEn(startedAt)
-    musicaIniciadaEnRef.current = startedAt
-    setYoutubeUrl('')
-    setShowMusica(false)
-    canalMusicaRef.current?.send({ type: 'broadcast', event: 'musica_cambio', payload: { url, startedAt } })
-    const ahora = new Date(startedAt).toISOString()
-    const { error } = await supabase.from('sesiones').update({ url_musica: url, musica_iniciada_en: ahora }).eq('id', sesionActiva.id)
-    if (error) console.warn('[Música] Error al guardar en Supabase:', error.message)
-  }
-
-  const quitarMusica = async () => {
-    if (!sesionActiva) return
-    setMusicaUrl(null)
-    setMusicaIniciadaEn(null)
-    musicaIniciadaEnRef.current = null
-    canalMusicaRef.current?.send({ type: 'broadcast', event: 'musica_cambio', payload: { url: null, startedAt: null } })
-    const { error } = await supabase.from('sesiones').update({ url_musica: null, musica_iniciada_en: null }).eq('id', sesionActiva.id)
-    if (error) console.warn('[Música] Error al quitar música en Supabase:', error.message)
   }
 
   const handleCrearSesion = async () => {
@@ -2739,7 +2392,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                     placeholder="https://www.youtube.com/watch?v=... o youtu.be/..."
                     value={youtubeUrl}
                     onChange={e => setYoutubeUrl(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && cargarYoutube()}
+                    onKeyDown={e => e.key === 'Enter' && cargarYoutube(youtubeUrl)}
                     autoFocus
                   />
                 </div>
@@ -2753,7 +2406,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                 )}
                 <div className="modal-actions">
                   <button className="btn-ghost" onClick={() => setShowMusica(false)}>Cancelar</button>
-                  <button className="btn-primary" onClick={cargarYoutube} disabled={!youtubeUrl.trim()}>Cargar</button>
+                  <button className="btn-primary" onClick={() => cargarYoutube(youtubeUrl)} disabled={!youtubeUrl.trim()}>Cargar</button>
                 </div>
               </>
             ) : (
