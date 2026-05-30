@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import SelectorImagenSticker from '../components/SelectorImagenSticker'
@@ -255,18 +255,35 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [seccionOpciones, setSeccionOpciones] = useState(false)
   const [seccionAyuda, setSeccionAyuda] = useState(false)
 
-  const personajesTodos = selectedUniverso ? getPersonajesDeUniverso(selectedUniverso.id) : []
-  const personajes = personajesTodos.filter(p => !p.oculto || p.user_id === userId)
-  const sesionCompleta = sesionActiva ? getSesion(sesionActiva.id) : []
-  const sesion = busqueda.trim()
-    ? sesionCompleta.filter(e =>
-        e.contenido?.toLowerCase().includes(busqueda.toLowerCase()) ||
-        e.personaje_nombre?.toLowerCase().includes(busqueda.toLowerCase())
-      )
-    : sesionCompleta
-  const esDueno = selectedUniverso ? esPropietario(selectedUniverso.id) : false
-  const sesiones = sesionesConMiembros.filter(s =>
-    !s.es_privada || s.user_id === userId || (s.miembros || []).includes(userId)
+  const personajes = useMemo(() => {
+    const todos = selectedUniverso ? getPersonajesDeUniverso(selectedUniverso.id) : []
+    return todos.filter(p => !p.oculto || p.user_id === userId)
+  }, [selectedUniverso?.id, getPersonajesDeUniverso, userId])
+
+  const sesionCompleta = useMemo(() =>
+    sesionActiva ? getSesion(sesionActiva.id) : [],
+    [sesionActiva?.id, getSesion]
+  )
+
+  const sesion = useMemo(() => {
+    const q = busqueda.trim().toLowerCase()
+    if (!q) return sesionCompleta
+    return sesionCompleta.filter(e =>
+      e.contenido?.toLowerCase().includes(q) ||
+      e.personaje_nombre?.toLowerCase().includes(q)
+    )
+  }, [sesionCompleta, busqueda])
+
+  const esDueno = useMemo(() =>
+    selectedUniverso ? esPropietario(selectedUniverso.id) : false,
+    [selectedUniverso?.id, esPropietario]
+  )
+
+  const sesiones = useMemo(() =>
+    sesionesConMiembros.filter(s =>
+      !s.es_privada || s.user_id === userId || (s.miembros || []).includes(userId)
+    ),
+    [sesionesConMiembros, userId]
   )
 
   const {
@@ -287,6 +304,61 @@ export default function Mesa({ navigate, selectedUniverso }) {
     cargarYoutube, quitarMusica,
     canalMusicaRef, playerRef,
   } = useMesaMusic(sesionActiva, esDueno)
+
+  // O(1) lookup for reply-to previews (replaces O(n²) .find() inside render loop)
+  const entradaMap = useMemo(() =>
+    new Map(sesionCompleta.map(e => [e.id, e])),
+    [sesionCompleta]
+  )
+
+  const entradasFijadas = useMemo(() =>
+    sesionCompleta.filter(e => fijadas[e.id]),
+    [sesionCompleta, fijadas]
+  )
+
+  const tiradas = useMemo(() =>
+    sesionCompleta.filter(e => e.tipo === 'dado'),
+    [sesionCompleta]
+  )
+
+  // Precompute children map so sidebar avoids O(n²) nested filter
+  const sesionesHijas = useMemo(() => {
+    const map = new Map()
+    sesiones.forEach(s => {
+      if (s.padre_id) {
+        if (!map.has(s.padre_id)) map.set(s.padre_id, [])
+        map.get(s.padre_id).push(s)
+      }
+    })
+    return map
+  }, [sesiones])
+
+  // Stats modal computation — runs once per sesionCompleta change, not on every re-render
+  const statsData = useMemo(() => {
+    const entradas = sesionCompleta
+    let narrador = 0, dialogo = 0, accion = 0, dado = 0, palabras = 0
+    const porPersonaje = {}
+    for (const e of entradas) {
+      if (e.tipo === 'narrador') narrador++
+      else if (e.tipo === 'dialogo') dialogo++
+      else if (e.tipo === 'accion') accion++
+      else if (e.tipo === 'dado') dado++
+      const wc = e.contenido?.split(/\s+/).filter(Boolean).length || 0
+      palabras += wc
+      if (e.personaje_nombre) {
+        const k = e.personaje_nombre
+        if (!porPersonaje[k]) porPersonaje[k] = { nombre: k, color: e.personaje_color, count: 0, palabras: 0 }
+        porPersonaje[k].count++
+        porPersonaje[k].palabras += wc
+      }
+    }
+    return {
+      total: entradas.length,
+      palabras,
+      porTipo: { narrador, dialogo, accion, dado },
+      rankPersonajes: Object.values(porPersonaje).sort((a, b) => b.count - a.count),
+    }
+  }, [sesionCompleta])
 
   useEffect(() => {
     if (!userId) return
@@ -1124,12 +1196,15 @@ export default function Mesa({ navigate, selectedUniverso }) {
     setShowReacciones(null)
   }
 
-  const agruparReacciones = (entradaId) => {
-    const rs = reacciones[entradaId] || []
-    const grupos = {}
-    rs.forEach(r => { if (!grupos[r.emoji]) grupos[r.emoji] = []; grupos[r.emoji].push(r.user_id) })
-    return Object.entries(grupos).map(([emoji, uids]) => ({ emoji, count: uids.length, mia: uids.includes(userId) }))
-  }
+  const agruparReacciones = useMemo(() => {
+    const result = {}
+    for (const [entradaId, rs] of Object.entries(reacciones)) {
+      const grupos = {}
+      rs.forEach(r => { if (!grupos[r.emoji]) grupos[r.emoji] = []; grupos[r.emoji].push(r.user_id) })
+      result[entradaId] = Object.entries(grupos).map(([emoji, uids]) => ({ emoji, count: uids.length, mia: uids.includes(userId) }))
+    }
+    return result
+  }, [reacciones, userId])
 
   // ── FIJAR ENTRADAS (estado local, sin depender del store del contexto) ──
   const cargarFijadas = async (entradas) => {
@@ -1146,11 +1221,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
     await supabase.from('entradas').update({ fijada: nuevoValor }).eq('id', entrada.id)
     setFijadas(prev => ({ ...prev, [entrada.id]: nuevoValor }))
   }
-
-  const entradasFijadas = sesionCompleta.filter(e => fijadas[e.id])
-
-  // ── HISTORIAL DE DADOS ──
-  const tiradas = sesionCompleta.filter(e => e.tipo === 'dado')
 
   // ── BUSCADOR GLOBAL ──
   const buscarGlobal = async () => {
@@ -1296,7 +1366,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                       <button className="sesion-delete" onClick={e => { e.stopPropagation(); setConfirmDeleteSesion(s) }}>✕</button>
                     </div>
                   </div>
-                  {sesiones.filter(sub => sub.padre_id === s.id).map(sub => (
+                  {(sesionesHijas.get(s.id) || []).map(sub => (
                     <div key={sub.id} className={`sesion-item sesion-sub ${sesionActiva?.id === sub.id ? 'activa' : ''}`} onClick={() => { setSesionActiva(sub); setSidebarAbierto(false) }}>
                       <span style={{ flex: 1 }}>↳ {sub.es_privada ? '🔒' : '#'} {sub.nombre}</span>
                       {notifsSesion[sub.id] > 0 && <span style={{ background: 'var(--accent)', color: '#000', borderRadius: '999px', fontSize: '0.65rem', padding: '0.1rem 0.4rem', fontWeight: 700, marginRight: '0.2rem' }}>{notifsSesion[sub.id]}</span>}
@@ -1598,7 +1668,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
           {sesion.map(e => (
             <div key={e.id} id={`entrada-${e.id}`} className={`entrada entrada-${e.tipo}${fijadas[e.id] ? ' entrada-fijada' : ''}`}>
               {e.responder_a_id && (() => {
-                const ref = sesionCompleta.find(x => x.id === e.responder_a_id)
+                const ref = entradaMap.get(e.responder_a_id)
                 if (!ref) return null
                 return (
                   <div style={{ margin: '0.3rem 0.8rem 0', padding: '0.3rem 0.6rem', background: 'rgba(180,140,60,0.08)', borderLeft: '3px solid var(--accent)', borderRadius: '0 4px 4px 0', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--text3)' }}
@@ -1752,9 +1822,9 @@ export default function Mesa({ navigate, selectedUniverso }) {
               {e.tipo !== 'dado' && (
                 <>
                   {/* Pills de reacciones existentes — siempre visibles */}
-                  {agruparReacciones(e.id).length > 0 && (
+                  {(agruparReacciones[e.id] || []).length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', padding: '0.1rem 0.8rem 0.3rem' }}>
-                      {agruparReacciones(e.id).map(({ emoji, count, mia }) => (
+                      {(agruparReacciones[e.id] || []).map(({ emoji, count, mia }) => (
                         <button key={emoji} onClick={() => toggleReaccion(e.id, emoji)}
                           style={{ background: mia ? 'rgba(180,140,60,0.15)' : 'var(--bg3)', border: `1px solid ${mia ? 'var(--accent)' : 'var(--border)'}`, borderRadius: '999px', padding: '0.1rem 0.5rem', fontSize: '0.82rem', cursor: 'pointer', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
                           {emoji} <span style={{ fontSize: '0.75rem', color: mia ? 'var(--accent)' : 'var(--text3)' }}>{count}</span>
@@ -2047,77 +2117,59 @@ export default function Mesa({ navigate, selectedUniverso }) {
         </div>
       )}
 
-      {showStats && sesionActiva && (() => {
-        const entradas = sesionCompleta
-        const porTipo = {
-          narrador: entradas.filter(e => e.tipo === 'narrador'),
-          dialogo: entradas.filter(e => e.tipo === 'dialogo'),
-          accion: entradas.filter(e => e.tipo === 'accion'),
-          dado: entradas.filter(e => e.tipo === 'dado'),
-        }
-        const palabras = entradas.reduce((acc, e) => acc + (e.contenido?.split(/\s+/).filter(Boolean).length || 0), 0)
-        const porPersonaje = {}
-        entradas.filter(e => e.personaje_nombre).forEach(e => {
-          const k = e.personaje_nombre
-          if (!porPersonaje[k]) porPersonaje[k] = { nombre: k, color: e.personaje_color, count: 0, palabras: 0 }
-          porPersonaje[k].count++
-          porPersonaje[k].palabras += e.contenido?.split(/\s+/).filter(Boolean).length || 0
-        })
-        const rankPersonajes = Object.values(porPersonaje).sort((a, b) => b.count - a.count)
-        return (
-          <div className="modal-overlay" onClick={() => setShowStats(false)}>
-            <div className="modal" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
-              <h3>📊 Estadísticas — {sesionActiva.nombre}</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem', margin: '1.2rem 0' }}>
-                {[
-                  { label: 'Entradas', valor: entradas.length, icono: '📝' },
-                  { label: 'Palabras', valor: palabras, icono: '✍️' },
-                  { label: 'Dados', valor: porTipo.dado.length, icono: '🎲' },
-                ].map(({ label, valor, icono }) => (
-                  <div key={label} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.8rem', textAlign: 'center' }}>
-                    <div style={{ fontSize: '1.4rem' }}>{icono}</div>
-                    <div style={{ fontFamily: 'Cinzel, serif', fontSize: '1.3rem', color: 'var(--accent)', fontWeight: 700 }}>{valor}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ marginBottom: '1.2rem' }}>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.6rem' }}>Por tipo</p>
-                {[
-                  { label: 'Narrador', count: porTipo.narrador.length, icono: '📖', color: 'var(--narrador)' },
-                  { label: 'Diálogo', count: porTipo.dialogo.length, icono: '💬', color: 'var(--accent)' },
-                  { label: 'Acción', count: porTipo.accion.length, icono: '⚡', color: '#e67e22' },
-                ].map(({ label, count, icono, color }) => (
-                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.4rem' }}>
-                    <span style={{ width: '70px', fontSize: '0.82rem', color: 'var(--text2)' }}>{icono} {label}</span>
-                    <div style={{ flex: 1, height: '6px', background: 'var(--bg3)', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ width: entradas.length ? `${(count / entradas.length) * 100}%` : '0%', height: '100%', background: color, borderRadius: '3px', transition: 'width 0.4s' }} />
-                    </div>
-                    <span style={{ fontSize: '0.82rem', color: 'var(--text2)', minWidth: '28px', textAlign: 'right' }}>{count}</span>
-                  </div>
-                ))}
-              </div>
-              {rankPersonajes.length > 0 && (
-                <div>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.6rem' }}>Participación por personaje</p>
-                  {rankPersonajes.map((p, i) => (
-                    <div key={p.nombre} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text3)', minWidth: '14px' }}>#{i + 1}</span>
-                      <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: p.color, flexShrink: 0 }} />
-                      <span style={{ flex: 1, fontSize: '0.85rem', color: p.color, fontFamily: 'Cinzel, serif' }}>{p.nombre}</span>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>{p.palabras} pal.</span>
-                      <span style={{ fontSize: '0.82rem', color: 'var(--text2)', minWidth: '36px', textAlign: 'right' }}>{p.count} entr.</span>
-                    </div>
-                  ))}
+      {showStats && sesionActiva && statsData && (
+        <div className="modal-overlay" onClick={() => setShowStats(false)}>
+          <div className="modal" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
+            <h3>📊 Estadísticas — {sesionActiva.nombre}</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem', margin: '1.2rem 0' }}>
+              {[
+                { label: 'Entradas', valor: statsData.total, icono: '📝' },
+                { label: 'Palabras', valor: statsData.palabras, icono: '✍️' },
+                { label: 'Dados', valor: statsData.porTipo.dado, icono: '🎲' },
+              ].map(({ label, valor, icono }) => (
+                <div key={label} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.8rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.4rem' }}>{icono}</div>
+                  <div style={{ fontFamily: 'Cinzel, serif', fontSize: '1.3rem', color: 'var(--accent)', fontWeight: 700 }}>{valor}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
                 </div>
-              )}
-              <div className="modal-actions" style={{ marginTop: '1.5rem' }}>
-                <button className="btn-primary" onClick={() => setShowStats(false)}>Cerrar</button>
+              ))}
+            </div>
+            <div style={{ marginBottom: '1.2rem' }}>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.6rem' }}>Por tipo</p>
+              {[
+                { label: 'Narrador', count: statsData.porTipo.narrador, icono: '📖', color: 'var(--narrador)' },
+                { label: 'Diálogo', count: statsData.porTipo.dialogo, icono: '💬', color: 'var(--accent)' },
+                { label: 'Acción', count: statsData.porTipo.accion, icono: '⚡', color: '#e67e22' },
+              ].map(({ label, count, icono, color }) => (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.4rem' }}>
+                  <span style={{ width: '70px', fontSize: '0.82rem', color: 'var(--text2)' }}>{icono} {label}</span>
+                  <div style={{ flex: 1, height: '6px', background: 'var(--bg3)', borderRadius: '3px', overflow: 'hidden' }}>
+                    <div style={{ width: statsData.total ? `${(count / statsData.total) * 100}%` : '0%', height: '100%', background: color, borderRadius: '3px', transition: 'width 0.4s' }} />
+                  </div>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text2)', minWidth: '28px', textAlign: 'right' }}>{count}</span>
+                </div>
+              ))}
+            </div>
+            {statsData.rankPersonajes.length > 0 && (
+              <div>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.6rem' }}>Participación por personaje</p>
+                {statsData.rankPersonajes.map((p, i) => (
+                  <div key={p.nombre} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text3)', minWidth: '14px' }}>#{i + 1}</span>
+                    <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: '0.85rem', color: p.color, fontFamily: 'Cinzel, serif' }}>{p.nombre}</span>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>{p.palabras} pal.</span>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text2)', minWidth: '36px', textAlign: 'right' }}>{p.count} entr.</span>
+                  </div>
+                ))}
               </div>
+            )}
+            <div className="modal-actions" style={{ marginTop: '1.5rem' }}>
+              <button className="btn-primary" onClick={() => setShowStats(false)}>Cerrar</button>
             </div>
           </div>
-        )
-      })()}
+        </div>
+      )}
 
       {gestionarSesion && (
         <div className="modal-overlay" onClick={() => setGestionarSesion(null)}>
