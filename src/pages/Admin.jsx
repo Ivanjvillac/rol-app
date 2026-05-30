@@ -56,7 +56,7 @@ export default function Admin() {
 
     // Calcular uso de storage listando archivos de cada bucket
     try {
-      const buckets = ['avatares', 'stickers', 'imagenes-chat', 'perfiles']
+      const buckets = ['avatares', 'stickers', 'imagenes-chat', 'perfiles', 'personaje-imagenes']
       let totalBytes = 0
       const detalleBuckets = []
       for (const bucket of buckets) {
