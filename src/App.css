@@ -1230,7 +1230,7 @@ input, textarea, select {
   /* Mesa contenedor */
   .mesa {
     flex-direction: column;
-    height: calc(100vh - 48px - 52px - env(safe-area-inset-bottom, 0px));
+    height: calc(100vh - 48px);
     overflow: hidden;
     position: relative;
   }
@@ -3336,6 +3336,10 @@ input, textarea, select {
 
 /* ===== BOTTOM NAV ===== */
 .bottom-nav { display: none; }
+
+/* En la Mesa la bottom nav se oculta — tiene su propio sidebar */
+.app-mesa .bottom-nav { display: none !important; }
+.app-mesa { padding-bottom: 0 !important; }
 
 @media (max-width: 768px) {
   .bottom-nav {

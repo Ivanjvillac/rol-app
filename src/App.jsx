@@ -30,7 +30,7 @@ function AppInner({ page, navigate, selectedUniverso, setSelectedUniverso, cerra
   }, [invitacionToken])
 
   return (
-    <div className="app">
+    <div className={`app${page === 'mesa' ? ' app-mesa' : ''}`}>
       <nav className="navbar">
         <span className="nav-brand" onClick={() => navigate('home')}>🎲 Tinta y Dados</span>
         <div className="nav-links">
