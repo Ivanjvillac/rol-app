@@ -84,8 +84,41 @@ export function AppProvider({ userId, children }) {
   }
 
   const deleteUniverso = async (id) => {
+    // Recoger todas las imágenes asociadas antes de borrar
+    const [{ data: pers }, { data: sess }] = await Promise.all([
+      supabase.from('personajes').select('avatar_url').eq('universo_id', id),
+      supabase.from('sesiones').select('id').eq('universo_id', id),
+    ])
+
+    // Imágenes de chat de todas las entradas del universo
+    const sesionIds = (sess || []).map(s => s.id)
+    let imagenesChat = []
+    if (sesionIds.length > 0) {
+      const { data: entr } = await supabase
+        .from('entradas').select('imagen_url').in('sesion_id', sesionIds).not('imagen_url', 'is', null)
+      imagenesChat = (entr || []).map(e => e.imagen_url.split('/imagenes-chat/')[1]).filter(Boolean)
+    }
+
+    // Imágenes de galería de personajes
+    const personajeIds = (pers || []).map(p => p.id).filter(Boolean)
+    let imagenesGaleria = []
+    if (personajeIds.length > 0) {
+      const { data: gal } = await supabase
+        .from('personaje_imagenes').select('url').in('personaje_id', personajeIds)
+      imagenesGaleria = (gal || []).map(g => g.url.split('/personaje-imagenes/')[1]).filter(Boolean)
+    }
+
+    // Avatares de personajes
+    const avatares = (pers || [])
+      .map(p => p.avatar_url?.split('/avatares/')[1]).filter(Boolean)
+
     const { error } = await supabase.from('universos').delete().eq('id', id).eq('user_id', userId)
     if (!error) {
+      // Limpiar storage en paralelo (fire-and-forget, no bloquear UI)
+      if (avatares.length > 0) supabase.storage.from('avatares').remove(avatares)
+      if (imagenesChat.length > 0) supabase.storage.from('imagenes-chat').remove(imagenesChat)
+      if (imagenesGaleria.length > 0) supabase.storage.from('personaje-imagenes').remove(imagenesGaleria)
+
       setUniversos(prev => prev.filter(u => u.id !== id))
       setPersonajes(prev => prev.filter(p => p.universo_id !== id))
     }
@@ -273,8 +306,14 @@ const editarEntrada = async (id, contenido) => {
 }
 
 const borrarEntrada = async (id) => {
+  // Obtener imagen_url antes de borrar para limpiar storage
+  const entrada = Object.values(sesiones).flat().find(e => e.id === id)
   const { error } = await supabase.from('entradas').delete().eq('id', id).eq('user_id', userId)
   if (!error) {
+    if (entrada?.imagen_url) {
+      const path = entrada.imagen_url.split('/imagenes-chat/')[1]
+      if (path) supabase.storage.from('imagenes-chat').remove([path])
+    }
     setSesiones(prev => {
       const nuevo = {}
       for (const key in prev) {
