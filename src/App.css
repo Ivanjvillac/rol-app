@@ -256,7 +256,7 @@ input, textarea, select {
 .universo-banner { height: 6px; }
 
 /* ===== PERSONAJE CARD ===== */
-.personaje-card { display: flex; align-items: flex-start; }
+.personaje-card { display: flex; flex-direction: column; align-items: flex-start; }
 .personaje-avatar {
   width: 48px;
   height: 48px;

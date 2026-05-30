@@ -262,6 +262,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const esDuenoRef = useRef(false)        // Ref de esDueno para closures estáticas
   const musicaIniciadaEnRef = useRef(null) // Ref espejo de musicaIniciadaEn para el useEffect del player
   const debounceRef = useRef(null)
+  const timerIntervalRef = useRef(null)
   const fijadosRef = useRef(null)
 
   const [sesionesConMiembros, setSesionesConMiembros] = useState([])
@@ -636,17 +637,23 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
   // Temporizador: intervalo de cuenta atrás
   useEffect(() => {
+    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
     if (!timerFin) { setTimerDisplay(''); return }
+    const fin = new Date(timerFin).getTime()
     const tick = () => {
-      const diff = new Date(timerFin) - Date.now()
-      if (diff <= 0) { setTimerDisplay('⏰ ¡Tiempo!'); return }
+      const diff = fin - Date.now()
+      if (diff <= 0) {
+        setTimerDisplay('⏰ ¡Tiempo!')
+        if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
+        return
+      }
       const m = Math.floor(diff / 60000)
       const s = Math.floor((diff % 60000) / 1000)
       setTimerDisplay(`${m}:${s.toString().padStart(2, '0')}`)
     }
     tick()
-    const id = setInterval(tick, 1000)
-    return () => clearInterval(id)
+    timerIntervalRef.current = setInterval(tick, 1000)
+    return () => { if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null } }
   }, [timerFin])
 
   // Extraer videoId y listId de una URL de YouTube
@@ -964,10 +971,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
   }
 
   const detenerTimer = async () => {
-    await supabase.from('universos').update({ timer_fin: null, timer_label: null }).eq('id', selectedUniverso.id)
+    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
     setTimerFin(null)
     setTimerLabel('')
     setTimerDisplay('')
+    setShowTimerConfig(false)
+    await supabase.from('universos').update({ timer_fin: null, timer_label: null }).eq('id', selectedUniverso.id)
   }
 
   const exportarSesion = () => {
