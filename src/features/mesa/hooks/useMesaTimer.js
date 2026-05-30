@@ -70,8 +70,12 @@ export function useMesaTimer(selectedUniverso) {
     const fin = new Date(Date.now() + ms).toISOString()
     const label = timerLabel || 'Tiempo restante'
     await supabase.from('universos').update({ timer_fin: fin, timer_label: label }).eq('id', selectedUniverso.id)
-    setTimerFin(new Date(fin))
-    setTimerLabel(label)
+    // Leer el valor exacto que guardó la DB (evita divergencia por precisión de timestamp)
+    const { data } = await supabase.from('universos').select('timer_fin, timer_label').eq('id', selectedUniverso.id).single()
+    if (data?.timer_fin) {
+      setTimerFin(new Date(data.timer_fin))
+      setTimerLabel(data.timer_label || label)
+    }
     setShowTimerConfig(false)
   }
 
