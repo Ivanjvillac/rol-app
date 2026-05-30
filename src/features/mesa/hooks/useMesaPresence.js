@@ -6,6 +6,7 @@ export function useMesaPresence(selectedUniverso, userId, sesionActiva, personaj
   const [otrosEscribiendo, setOtrosEscribiendo] = useState([])
   const canalPresenciaRef = useRef(null)
   const canalEscribiendoRef = useRef(null)
+  const nombrePerfilRef = useRef('')
 
   // Canal de presencia global del universo
   useEffect(() => {
@@ -30,6 +31,7 @@ export function useMesaPresence(selectedUniverso, userId, sesionActiva, personaj
         if (status === 'SUBSCRIBED') {
           const { data: perfil } = await supabase.from('perfiles').select('nombre').eq('id', userId).single()
           const nombrePerfil = perfil?.nombre || 'Jugador'
+          nombrePerfilRef.current = nombrePerfil
           canalPresenciaRef.current = canal
           canalPresenciaRef.current._nombre = nombrePerfil
           await canal.track({
@@ -74,12 +76,11 @@ export function useMesaPresence(selectedUniverso, userId, sesionActiva, personaj
     return () => { supabase.removeChannel(canal); canalEscribiendoRef.current = null }
   }, [selectedUniverso?.id, sesionActiva?.id, userId])
 
-  const emitirEscribiendo = async (activo) => {
+  const emitirEscribiendo = (activo) => {
     if (!selectedUniverso || !canalEscribiendoRef.current) return
-    const { data: perfil } = await supabase.from('perfiles').select('nombre').eq('id', userId).single()
     canalEscribiendoRef.current.send({
       type: 'broadcast', event: 'escribiendo',
-      payload: { userId, nombre: perfil?.nombre || 'Alguien', activo },
+      payload: { userId, nombre: nombrePerfilRef.current || 'Alguien', activo },
     })
   }
 
