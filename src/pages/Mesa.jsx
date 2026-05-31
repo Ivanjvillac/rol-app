@@ -9,7 +9,7 @@ import PanelMisiones from '../components/PanelMisiones'
 import PanelDadoEvento from '../components/PanelDadoEvento'
 import { jsPDF } from 'jspdf'
 import { parseMessage } from '../lib/parseMessage'
-import { generarResumenConIA } from '../lib/gemini'
+import { generarResumenConIA, generarDescripcionDado, tieneApiKey } from '../lib/gemini'
 import { useMesaTimer } from '../features/mesa/hooks/useMesaTimer'
 import { useMesaPresence } from '../features/mesa/hooks/useMesaPresence'
 import { useMesaMusic } from '../features/mesa/hooks/useMesaMusic'
@@ -263,6 +263,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [sesionesConMiembros, setSesionesConMiembros] = useState([])
   const [kickedFrom, setKickedFrom] = useState(null)
   const [tamanoFuente, setTamanoFuente] = useState(() => parseInt(localStorage.getItem('mesaFontSize') || '15', 10))
+  const [dadoDramatico, setDadoDramatico] = useState(() => localStorage.getItem('dadoDramatico') !== 'false')
   const [seccionSesiones, setSeccionSesiones] = useState(true)
   const [seccionPersonajes, setSeccionPersonajes] = useState(true)
   const [seccionConectados, setSeccionConectados] = useState(true)
@@ -1112,6 +1113,14 @@ export default function Mesa({ navigate, selectedUniverso }) {
         contenido: `🎲 ${personajeActivo?.nombre || 'Narrador'} tiró d${caras} → ${resultado}`,
         personaje: personajeActivo
       }, sesionActiva.id)
+      // Descripción dramática con IA (fire-and-forget)
+      if (dadoDramatico && tieneApiKey()) {
+        generarDescripcionDado(caras, resultado, personajeActivo?.nombre).then(frase => {
+          if (frase && sesionActiva) {
+            addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: `✨ ${frase}` }, sesionActiva.id)
+          }
+        }).catch(() => {})
+      }
     }
   }
 
@@ -1716,6 +1725,16 @@ export default function Mesa({ navigate, selectedUniverso }) {
                 <span>Pequeño</span><span>Grande</span>
               </div>
             </div>
+            {tieneApiKey() && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0', marginBottom: '0.2rem' }}>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text2)' }}>✨ Dados dramáticos</span>
+                <button
+                  onClick={() => { const v = !dadoDramatico; setDadoDramatico(v); localStorage.setItem('dadoDramatico', v) }}
+                  style={{ background: dadoDramatico ? 'var(--accent)' : 'var(--bg3)', color: dadoDramatico ? '#000' : 'var(--text3)', border: 'none', borderRadius: '999px', padding: '0.15rem 0.7rem', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600, transition: 'background 0.2s' }}>
+                  {dadoDramatico ? 'ON' : 'OFF'}
+                </button>
+              </div>
+            )}
             <button className="modo-btn" onClick={exportarSesion} disabled={!sesionActiva}>📄 Exportar TXT</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={exportarPDF} disabled={!sesionActiva}>📕 Exportar PDF</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowStats(true)} disabled={!sesionActiva}>📊 Estadísticas</button>

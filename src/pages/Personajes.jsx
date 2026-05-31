@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import PanelJuramentos from '../components/PanelJuramentos'
 import { useImageUpload } from '../hooks/useImageUpload'
+import { generarDescripcionPersonaje, tieneApiKey } from '../lib/gemini'
 
 const COLORES = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#1abc9c', '#3498db', '#9b59b6', '#e91e63']
 const ROLES = ['Guerrero', 'Mago', 'Pícaro', 'Clérigo', 'Explorador', 'Bardo', 'Narrador', 'Otro']
@@ -356,6 +357,7 @@ export default function Personajes({ navigate, selectedUniverso }) {
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [filtroUniverso, setFiltroUniverso] = useState(selectedUniverso?.id || 'todos')
   const [guardando, setGuardando] = useState(false)
+  const [generandoDesc, setGenerandoDesc] = useState(false)
   const [avatarPreview, setAvatarPreview] = useState(null)
   const [avatarFile, setAvatarFile] = useState(null)
   const fileInputRef = useRef(null)
@@ -543,8 +545,23 @@ export default function Personajes({ navigate, selectedUniverso }) {
             </div>
 
             <div className="form-group">
-              <label>Descripción</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                <label style={{ margin: 0 }}>Descripción</label>
+                {tieneApiKey() && (
+                  <button type="button" className="btn-ghost btn-sm"
+                    disabled={generandoDesc || !form.nombre.trim()}
+                    onClick={async () => {
+                      setGenerandoDesc(true)
+                      const texto = await generarDescripcionPersonaje(form.nombre, form.rol, form.descripcion)
+                      if (texto) setForm(prev => ({ ...prev, descripcion: texto }))
+                      setGenerandoDesc(false)
+                    }}>
+                    {generandoDesc ? '✨ Generando...' : '✨ Generar con IA'}
+                  </button>
+                )}
+              </div>
               <textarea placeholder="¿Quién es este personaje? ¿Cuál es su historia?" value={form.descripcion} onChange={e => setForm({ ...form, descripcion: e.target.value })} rows={3} />
+              {tieneApiKey() && !form.nombre.trim() && <small style={{ color: 'var(--text3)', fontSize: '0.75rem' }}>Escribe el nombre primero para generar la descripción.</small>}
             </div>
 
             <div className="form-group">
