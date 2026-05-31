@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import PanelJuramentos from '../components/PanelJuramentos'
+import PanelMapaRelaciones from '../components/PanelMapaRelaciones'
 import { useImageUpload } from '../hooks/useImageUpload'
 import { generarDescripcionPersonaje, generarTrasfondo, tieneApiKey } from '../lib/gemini'
 
@@ -464,6 +465,7 @@ export default function Personajes({ navigate, selectedUniverso }) {
   const [showForm, setShowForm] = useState(false)
   const [editando, setEditando] = useState(null)
   const [verDetalle, setVerDetalle] = useState(null)
+  const [showMapa, setShowMapa] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [filtroUniverso, setFiltroUniverso] = useState(selectedUniverso?.id || 'todos')
   const [guardando, setGuardando] = useState(false)
@@ -599,6 +601,9 @@ export default function Personajes({ navigate, selectedUniverso }) {
           <option value="todos">Todos</option>
           {universos.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
         </select>
+        {filtroUniverso !== 'todos' && (
+          <button className="btn-ghost btn-sm" onClick={() => setShowMapa(true)}>🗺️ Mapa</button>
+        )}
       </div>
 
       {showForm && (
@@ -737,6 +742,14 @@ export default function Personajes({ navigate, selectedUniverso }) {
           onCerrar={() => setVerDetalle(null)}
           onGuardarNotas={handleGuardarNotas}
           userId={userId}
+        />
+      )}
+
+      {showMapa && filtroUniverso !== 'todos' && (
+        <PanelMapaRelaciones
+          universoId={filtroUniverso}
+          personajes={personajesFiltrados}
+          onCerrar={() => setShowMapa(false)}
         />
       )}
 

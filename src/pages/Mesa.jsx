@@ -10,7 +10,9 @@ import PanelObjetos from '../components/PanelObjetos'
 import PanelDadoEvento from '../components/PanelDadoEvento'
 import { jsPDF } from 'jspdf'
 import { parseMessage } from '../lib/parseMessage'
-import { generarResumenConIA, generarDescripcionDado, generarDescripcionEscena, generarNPC, tieneApiKey } from '../lib/gemini'
+import { generarResumenConIA, generarDescripcionDado, generarDescripcionEscena, generarNPC, consultarNPC, tieneApiKey } from '../lib/gemini'
+import PanelMapaRelaciones from '../components/PanelMapaRelaciones'
+import PanelTimeline from '../components/PanelTimeline'
 import { useMesaTimer } from '../features/mesa/hooks/useMesaTimer'
 import { useMesaPresence } from '../features/mesa/hooks/useMesaPresence'
 import { useMesaMusic } from '../features/mesa/hooks/useMesaMusic'
@@ -279,6 +281,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [seccionAyuda, setSeccionAyuda] = useState(false)
   const [seccionArchivadas, setSeccionArchivadas] = useState(false)
   const [seccionDados, setSeccionDados] = useState(false)
+  const [showMapaRelaciones, setShowMapaRelaciones] = useState(false)
+  const [showTimeline, setShowTimeline] = useState(false)
+  const [npcMemoriaId, setNpcMemoriaId] = useState('')
+  const [npcPregunta, setNpcPregunta] = useState('')
+  const [npcRespuesta, setNpcRespuesta] = useState(null)
+  const [generandoNpcMemoria, setGenerandoNpcMemoria] = useState(false)
 
   // Filtros de búsqueda global
   const [filtroTipo, setFiltroTipo] = useState('')
@@ -673,6 +681,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
         else if (showTimerConfig) setShowTimerConfig(false)
         else if (showChat) setShowChat(false)
         else if (showInvestigacion) setShowInvestigacion(false)
+        else if (showMapaRelaciones) setShowMapaRelaciones(false)
+        else if (showTimeline) setShowTimeline(false)
         else if (showGaleria) setShowGaleria(false)
         else if (showMisiones) setShowMisiones(false)
         else if (showDadoEvento) setShowDadoEvento(false)
@@ -686,7 +696,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   }, [showBusquedaGlobal, showMusica, showStats, showResumen, showDados, showVersiones,
       editandoEntrada, gestionarSesion, confirmDeleteEntrada, confirmDeleteSesion,
       showInvitar, showNuevaSesion, fichaPersonaje, fichaCompartida, showTimerConfig,
-      showChat, showInvestigacion, showGaleria, showMisiones, showDadoEvento, showObjetos,
+      showChat, showInvestigacion, showMapaRelaciones, showTimeline, showGaleria, showMisiones, showDadoEvento, showObjetos,
       respondiendo, sidebarAbierto])
 
   // ── AUTO-SCROLL ──
@@ -1148,6 +1158,19 @@ export default function Mesa({ navigate, selectedUniverso }) {
     })
   }
 
+  // Log en chat cuando cambia HP (owner o máster)
+  const handleHpChange = async (nombrePersonaje, nombreStat, valorAntes, valorDespues) => {
+    if (!sesionActiva) return
+    await supabase.from('entradas').insert({
+      universo_id: selectedUniverso.id,
+      user_id: userId,
+      tipo: 'narrador',
+      contenido: `❤️ ${nombrePersonaje} — ${nombreStat}: ${valorAntes} → ${valorDespues}`,
+      sesion_id: sesionActiva.id,
+      tono: 'normal',
+    })
+  }
+
   const abrirInvitar = async () => {
     setShowInvitar(true)
     setMsgInvitar(null)
@@ -1566,6 +1589,11 @@ export default function Mesa({ navigate, selectedUniverso }) {
           <h4 style={{ cursor: 'pointer', userSelect: 'none', marginBottom: seccionPersonajes ? '0.6rem' : 0 }} onClick={() => setSeccionPersonajes(p => !p)}>
             {seccionPersonajes ? '▾' : '▸'} 👥 Personajes
           </h4>
+          {seccionPersonajes && selectedUniverso && (
+            <button className="modo-btn" style={{ marginBottom: '0.5rem' }} onClick={() => setShowMapaRelaciones(true)}>
+              🗺️ Ver mapa de relaciones
+            </button>
+          )}
           {seccionPersonajes && (
             <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
               <div className={`personaje-btn narrador-btn ${modoEntrada === 'narrador' && !personajeActivo ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(null); setModoEntrada('narrador'); setSidebarAbierto(false) }}>
@@ -1784,6 +1812,54 @@ export default function Mesa({ navigate, selectedUniverso }) {
                 }}>
                 {generandoNPC ? '✨ Generando...' : '✨ Generar PNJ'}
               </button>
+
+              {/* NPC con memoria */}
+              {personajes.filter(p => p.es_npc && (p.universo_id === selectedUniverso?.id || p.universoId === selectedUniverso?.id)).length > 0 && (
+                <div style={{ marginTop: '0.7rem', borderTop: '1px solid var(--border)', paddingTop: '0.7rem' }}>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '0.4rem' }}>🧠 NPC con memoria</p>
+                  <select value={npcMemoriaId} onChange={e => { setNpcMemoriaId(e.target.value); setNpcRespuesta(null) }}
+                    style={{ width: '100%', background: 'var(--bg3)', color: npcMemoriaId ? 'var(--text)' : 'var(--text3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.35rem 0.5rem', fontSize: '0.82rem', marginBottom: '0.3rem' }}>
+                    <option value="">Seleccionar NPC...</option>
+                    {personajes.filter(p => p.es_npc && (p.universo_id === selectedUniverso?.id || p.universoId === selectedUniverso?.id)).map(p => (
+                      <option key={p.id} value={p.id}>{p.nombre}</option>
+                    ))}
+                  </select>
+                  {npcMemoriaId && (<>
+                    <textarea placeholder="¿Qué sabe sobre...?" value={npcPregunta} onChange={e => setNpcPregunta(e.target.value)}
+                      rows={2} style={{ width: '100%', resize: 'none', fontSize: '0.82rem', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', padding: '0.4rem 0.6rem', boxSizing: 'border-box', marginBottom: '0.3rem' }} />
+                    <button className="modo-btn" disabled={generandoNpcMemoria || !npcPregunta.trim()}
+                      onClick={async () => {
+                        const npc = personajes.find(p => p.id === npcMemoriaId)
+                        if (!npc) return
+                        setGenerandoNpcMemoria(true)
+                        const resp = await consultarNPC(npc, npcPregunta, entradas.slice(-60))
+                        setNpcRespuesta(resp || 'Sin respuesta.')
+                        setGenerandoNpcMemoria(false)
+                      }}>
+                      {generandoNpcMemoria ? '🧠 Consultando...' : '🧠 Consultar NPC'}
+                    </button>
+                    {npcRespuesta && (
+                      <div style={{ marginTop: '0.5rem', background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: '0.6rem 0.8rem', fontSize: '0.82rem', color: 'var(--text2)', lineHeight: 1.5, borderLeft: '3px solid var(--accent)', fontStyle: 'italic' }}>
+                        <span style={{ fontFamily: 'Cinzel, serif', color: 'var(--accent)', fontSize: '0.78rem', display: 'block', marginBottom: '0.3rem', fontStyle: 'normal' }}>
+                          {personajes.find(p => p.id === npcMemoriaId)?.nombre}:
+                        </span>
+                        "{npcRespuesta}"
+                        <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.5rem' }}>
+                          <button className="modo-btn" style={{ flex: 1, fontSize: '0.72rem', padding: '0.2rem 0.4rem' }}
+                            disabled={!sesionActiva}
+                            onClick={async () => {
+                              const npc = personajes.find(p => p.id === npcMemoriaId)
+                              if (!npc || !sesionActiva) return
+                              await addEntrada(selectedUniverso.id, { tipo: 'dialogo', contenido: npcRespuesta, personaje: npc }, sesionActiva.id)
+                              setNpcRespuesta(null); setNpcPregunta('')
+                            }}>📨 Enviar al chat</button>
+                          <button className="modo-btn" style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }} onClick={() => setNpcRespuesta(null)}>✕</button>
+                        </div>
+                      </div>
+                    )}
+                  </>)}
+                </div>
+              )}
             </>)}
           </div>
         )}
@@ -1815,7 +1891,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
             {seccionHerramientas ? '▾' : '▸'} 🛠️ Herramientas
           </h4>
           {seccionHerramientas && (<>
-            <button className="modo-btn" onClick={exportarSesion} disabled={!sesionActiva}>📄 Exportar TXT</button>
+            <button className="modo-btn" onClick={() => setShowTimeline(true)} disabled={!selectedUniverso}>📅 Línea de tiempo</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={exportarSesion} disabled={!sesionActiva}>📄 Exportar TXT</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={exportarPDF} disabled={!sesionActiva}>📕 Exportar PDF</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowStats(true)} disabled={!sesionActiva}>📊 Estadísticas</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowDados(true)} disabled={!sesionActiva}>🎲 Historial de dados</button>
@@ -2602,6 +2679,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
         onCerrar={() => setFichaPersonaje(null)}
         esDueno={esDueno}
         onStatEdit={handleStatEdit}
+        onHpChange={handleHpChange}
       />}
 
       {fichaCompartida && (
@@ -2639,6 +2717,22 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
       {showGaleria && selectedUniverso && (
         <PanelGaleria universoId={selectedUniverso.id} onCerrar={() => setShowGaleria(false)} />
+      )}
+
+      {showMapaRelaciones && selectedUniverso && (
+        <PanelMapaRelaciones
+          universoId={selectedUniverso.id}
+          personajes={personajes.filter(p => p.universo_id === selectedUniverso.id || p.universoId === selectedUniverso.id)}
+          onCerrar={() => setShowMapaRelaciones(false)}
+        />
+      )}
+
+      {showTimeline && selectedUniverso && (
+        <PanelTimeline
+          universoId={selectedUniverso.id}
+          sesiones={listaSesiones[selectedUniverso.id] || []}
+          onCerrar={() => setShowTimeline(false)}
+        />
       )}
 
       {showMisiones && selectedUniverso && (
