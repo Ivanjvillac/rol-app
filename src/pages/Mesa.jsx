@@ -1832,7 +1832,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                         const npc = personajes.find(p => p.id === npcMemoriaId)
                         if (!npc) return
                         setGenerandoNpcMemoria(true)
-                        const resp = await consultarNPC(npc, npcPregunta, entradas.slice(-60))
+                        const resp = await consultarNPC(npc, npcPregunta, sesionCompleta.slice(-60))
                         setNpcRespuesta(resp || 'Sin respuesta.')
                         setGenerandoNpcMemoria(false)
                       }}>
