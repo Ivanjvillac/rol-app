@@ -75,7 +75,10 @@ export function useMesaMusic(sesionActiva, esDueno) {
     if (playerRef.current) { try { playerRef.current.destroy() } catch (e) {} playerRef.current = null }
     if (!musicaUrl) return
 
-    const { videoId, listId } = extractYTIds(musicaUrl)
+    const { videoId, listId: rawListId } = extractYTIds(musicaUrl)
+    // If the URL has both a video ID and a playlist ID (e.g. watched inside a playlist),
+    // treat it as a single video — the list param is just navigation context.
+    const listId = videoId ? null : rawListId
     if (!videoId && !listId) return
     const offsetSegs = musicaIniciadaEnRef.current
       ? Math.max(0, Math.floor((Date.now() - musicaIniciadaEnRef.current) / 1000))
