@@ -2644,11 +2644,13 @@ export default function Mesa({ navigate, selectedUniverso }) {
                       { label: '🏙️ Ciudad medieval', q: 'medieval city ambient fantasy music' },
                       { label: '😢 Drama / Tensión', q: 'dramatic tense fantasy RPG music' },
                     ].map(preset => (
-                      <button key={preset.label}
-                        style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.4rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text2)', textAlign: 'left', transition: 'border-color 0.15s' }}
-                        onClick={() => window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(preset.q)}`, '_blank', 'noopener,noreferrer')}>
+                      <a key={preset.label}
+                        href={`https://www.youtube.com/results?search_query=${encodeURIComponent(preset.q)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.4rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text2)', textAlign: 'left', transition: 'border-color 0.15s', textDecoration: 'none', display: 'block' }}>
                         {preset.label} ↗
-                      </button>
+                      </a>
                     ))}
                   </div>
                 </div>
