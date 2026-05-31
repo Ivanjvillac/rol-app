@@ -387,17 +387,17 @@ input, textarea, select {
 .form-group textarea:focus,
 .form-group select:focus { border-color: var(--accent2); }
 
-.color-picker { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.color-picker { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .color-dot {
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   cursor: pointer;
   transition: all 0.2s;
   border: 2px solid transparent;
 }
-.color-dot.selected { border-color: white; transform: scale(1.2); }
-.color-dot:hover { transform: scale(1.15); }
+.color-dot.selected { border-color: white; transform: scale(1.15); }
+.color-dot:hover { transform: scale(1.1); }
 
 .modal-actions { display: flex; gap: 0.7rem; justify-content: flex-end; margin-top: 1.5rem; }
 
@@ -1244,7 +1244,7 @@ input, textarea, select {
     position: fixed;
     top: 0;
     left: -290px;
-    width: 280px;
+    width: min(280px, 82vw);
     height: 100vh;
     z-index: 500;
     background: var(--bg2);
