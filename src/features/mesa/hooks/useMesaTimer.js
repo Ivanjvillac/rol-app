@@ -10,14 +10,19 @@ export function useMesaTimer(selectedUniverso) {
   const [showTimerConfig, setShowTimerConfig] = useState(false)
   const timerIntervalRef = useRef(null)
 
-  // Carga estado inicial desde el universo
+  // Carga inicial directa desde DB (no depende del timing del canal)
   useEffect(() => {
-    if (!selectedUniverso) return
-    setTimerFin(selectedUniverso.timer_fin ? new Date(selectedUniverso.timer_fin) : null)
-    setTimerLabel(selectedUniverso.timer_label || '')
+    if (!selectedUniverso?.id) return
+    supabase.from('universos').select('timer_fin, timer_label').eq('id', selectedUniverso.id).single()
+      .then(({ data }) => {
+        if (data) {
+          setTimerFin(data.timer_fin ? new Date(data.timer_fin) : null)
+          setTimerLabel(data.timer_label || '')
+        }
+      })
   }, [selectedUniverso?.id])
 
-  // Suscripción realtime a cambios en el universo
+  // Suscripción realtime a cambios posteriores
   useEffect(() => {
     if (!selectedUniverso?.id) return
     const ch = supabase
@@ -65,8 +70,12 @@ export function useMesaTimer(selectedUniverso) {
     const fin = new Date(Date.now() + ms).toISOString()
     const label = timerLabel || 'Tiempo restante'
     await supabase.from('universos').update({ timer_fin: fin, timer_label: label }).eq('id', selectedUniverso.id)
-    setTimerFin(new Date(fin))
-    setTimerLabel(label)
+    // Leer el valor exacto que guardó la DB (evita divergencia por precisión de timestamp)
+    const { data } = await supabase.from('universos').select('timer_fin, timer_label').eq('id', selectedUniverso.id).single()
+    if (data?.timer_fin) {
+      setTimerFin(new Date(data.timer_fin))
+      setTimerLabel(data.timer_label || label)
+    }
     setShowTimerConfig(false)
   }
 

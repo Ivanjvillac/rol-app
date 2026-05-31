@@ -3,9 +3,41 @@ import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import PanelJuramentos from '../components/PanelJuramentos'
 import { useImageUpload } from '../hooks/useImageUpload'
+import { generarDescripcionPersonaje, generarTrasfondo, tieneApiKey } from '../lib/gemini'
 
 const COLORES = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#1abc9c', '#3498db', '#9b59b6', '#e91e63']
 const ROLES = ['Guerrero', 'Mago', 'Pícaro', 'Clérigo', 'Explorador', 'Bardo', 'Narrador', 'Otro']
+
+const PLANTILLAS = [
+  { nombre: 'Guerrero', rol: 'Guerrero', atributos: [{ nombre: 'Fuerza', valor: '16' }, { nombre: 'Constitución', valor: '14' }, { nombre: 'Destreza', valor: '12' }, { nombre: 'HP', valor: '45' }, { nombre: 'Armadura', valor: '16' }] },
+  { nombre: 'Mago', rol: 'Mago', atributos: [{ nombre: 'Inteligencia', valor: '18' }, { nombre: 'Sabiduría', valor: '14' }, { nombre: 'Constitución', valor: '10' }, { nombre: 'HP', valor: '22' }, { nombre: 'Hechizos', valor: '8' }, { nombre: 'Mana', valor: '30' }] },
+  { nombre: 'Pícaro', rol: 'Pícaro', atributos: [{ nombre: 'Destreza', valor: '17' }, { nombre: 'Carisma', valor: '14' }, { nombre: 'Inteligencia', valor: '13' }, { nombre: 'HP', valor: '30' }, { nombre: 'Sigilo', valor: '15' }] },
+  { nombre: 'Clérigo', rol: 'Clérigo', atributos: [{ nombre: 'Sabiduría', valor: '17' }, { nombre: 'Constitución', valor: '14' }, { nombre: 'Fuerza', valor: '12' }, { nombre: 'HP', valor: '35' }, { nombre: 'Curación', valor: '3d8' }] },
+  { nombre: 'Explorador', rol: 'Explorador', atributos: [{ nombre: 'Destreza', valor: '16' }, { nombre: 'Sabiduría', valor: '14' }, { nombre: 'Fuerza', valor: '13' }, { nombre: 'HP', valor: '35' }, { nombre: 'Percepción', valor: '15' }] },
+  { nombre: 'Paladín', rol: 'Paladín', atributos: [{ nombre: 'Fuerza', valor: '17' }, { nombre: 'Carisma', valor: '15' }, { nombre: 'Constitución', valor: '14' }, { nombre: 'HP', valor: '42' }, { nombre: 'Aura sagrada', valor: '10' }] },
+  { nombre: 'Bardo', rol: 'Bardo', atributos: [{ nombre: 'Carisma', valor: '17' }, { nombre: 'Destreza', valor: '14' }, { nombre: 'Inteligencia', valor: '13' }, { nombre: 'HP', valor: '28' }, { nombre: 'Inspiración', valor: '5' }] },
+  { nombre: 'Druida', rol: 'Druida', atributos: [{ nombre: 'Sabiduría', valor: '17' }, { nombre: 'Constitución', valor: '14' }, { nombre: 'Destreza', valor: '12' }, { nombre: 'HP', valor: '30' }, { nombre: 'Formas salvajes', valor: '3' }] },
+]
+
+const TIPO_ICON = { arma: '⚔️', armadura: '🛡️', artefacto: '✨', poción: '🧪', joya: '💎', herramienta: '🔧', objeto: '📦', otro: '🎁' }
+
+function DescripcionTruncada({ texto }) {
+  const [expandida, setExpandida] = useState(false)
+  const limite = 120
+  if (!texto) return <p style={{ color: 'var(--text3)', fontStyle: 'italic' }}>Sin descripción</p>
+  if (texto.length <= limite) return <p>{texto}</p>
+  return (
+    <p>
+      {expandida ? texto : `${texto.slice(0, limite)}…`}
+      {' '}
+      <button
+        onClick={e => { e.stopPropagation(); setExpandida(v => !v) }}
+        style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.78rem', padding: 0, fontFamily: 'inherit' }}>
+        {expandida ? 'Ver menos' : 'Ver más'}
+      </button>
+    </p>
+  )
+}
 
 function FichaInline({ personajeId, userId, esMio }) {
   const [atributos, setAtributos] = useState([])
@@ -87,6 +119,10 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
   const [guardado, setGuardado] = useState(false)
   const [pestana, setPestana] = useState('notas')
   const [nombrePropietario, setNombrePropietario] = useState(null)
+  const [generandoTrasfondo, setGenerandoTrasfondo] = useState(false)
+  const [inventario, setInventario] = useState([])
+  const [objetosUniverso, setObjetosUniverso] = useState([])
+  const [objetoAgregar, setObjetoAgregar] = useState('')
   const esMio = personaje.user_id === userId
 
   const [galeria, setGaleria] = useState([])
@@ -101,31 +137,40 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
 
   useEffect(() => {
     const cargar = async () => {
-      const [notasRes, perfilRes, galeriaRes, historialRes, relacionesRes] = await Promise.all([
+      const [notasRes, perfilRes, galeriaRes, historialRes, relacionesRes, inventarioRes] = await Promise.all([
         supabase.from('notas_privadas').select('contenido').eq('personaje_id', personaje.id).eq('user_id', userId).maybeSingle(),
         personaje.user_id ? supabase.from('perfiles').select('nombre').eq('id', personaje.user_id).maybeSingle() : Promise.resolve({ data: null }),
         supabase.from('personaje_imagenes').select('*').eq('personaje_id', personaje.id).order('created_at'),
         supabase.from('atributos_historial').select('*').eq('personaje_id', personaje.id).order('created_at', { ascending: false }).limit(30),
         supabase.from('personaje_relaciones').select('*, relacionado:relacionado_id(id, nombre, color, iniciales, avatar_url)').eq('personaje_id', personaje.id),
+        supabase.from('inventario').select('*, objeto:objetos(*)').eq('personaje_id', personaje.id).order('created_at'),
       ])
       if (notasRes.data) setNotas(notasRes.data.contenido || '')
       setNombrePropietario(perfilRes.data?.nombre || null)
       setGaleria(galeriaRes.data || [])
       setHistorialAtrib(historialRes.data || [])
       setRelaciones(relacionesRes.data || [])
+      setInventario(inventarioRes.data || [])
     }
     cargar()
+    if (universo?.id) {
+      supabase.from('objetos').select('*').eq('universo_id', universo.id).order('nombre').then(({ data }) => setObjetosUniverso(data || []))
+    }
   }, [personaje.id])
 
   const subirImagenGaleria = async (file) => {
     setSubiendoImagen(true)
-    const compressed = await compressImage(file, 'npc')
-    const path = `${personaje.id}/${Date.now()}.jpg`
-    const { error } = await supabase.storage.from('personaje-imagenes').upload(path, compressed, { contentType: 'image/jpeg' })
-    if (!error) {
-      const { data: urlData } = supabase.storage.from('personaje-imagenes').getPublicUrl(path)
-      const { data: img } = await supabase.from('personaje_imagenes').insert({ personaje_id: personaje.id, url: urlData.publicUrl }).select().single()
-      if (img) setGaleria(prev => [...prev, img])
+    try {
+      const compressed = await compressImage(file, 'npc')
+      const path = `${personaje.id}/${Date.now()}.jpg`
+      const { error } = await supabase.storage.from('personaje-imagenes').upload(path, compressed, { contentType: 'image/jpeg' })
+      if (!error) {
+        const { data: urlData } = supabase.storage.from('personaje-imagenes').getPublicUrl(path)
+        const { data: img } = await supabase.from('personaje_imagenes').insert({ personaje_id: personaje.id, url: urlData.publicUrl }).select().single()
+        if (img) setGaleria(prev => [...prev, img])
+      }
+    } catch (err) {
+      alert(err.message)
     }
     setSubiendoImagen(false)
   }
@@ -194,6 +239,7 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
           <button className={pestana === 'historial' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('historial')}>📜 Historial</button>
           <button className={pestana === 'relaciones' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('relaciones')}>🔗 Relaciones</button>
           <button className={pestana === 'juramentos' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('juramentos')}>🕯️ Juramentos</button>
+          <button className={pestana === 'inventario' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('inventario')}>🎒 Inventario{inventario.length > 0 ? ` (${inventario.length})` : ''}</button>
         </div>
 
         {pestana === 'notas' && (
@@ -212,11 +258,25 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
             {personaje.descripcion && (
               <div className="detalle-seccion">
                 <h4>Descripción</h4>
-                <p style={{ color: 'var(--text2)', fontStyle: 'italic', lineHeight: '1.6' }}>{personaje.descripcion}</p>
+                <p style={{ color: 'var(--text2)', fontStyle: 'italic', lineHeight: '1.6', maxHeight: '8rem', overflowY: 'auto' }}>{personaje.descripcion}</p>
               </div>
             )}
             <div className="detalle-seccion">
-              <h4>Notas privadas</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                <h4 style={{ margin: 0 }}>Notas privadas</h4>
+                {esMio && tieneApiKey() && (
+                  <button type="button" className="btn-ghost btn-sm"
+                    disabled={generandoTrasfondo}
+                    onClick={async () => {
+                      setGenerandoTrasfondo(true)
+                      const texto = await generarTrasfondo(personaje.nombre, personaje.rol, personaje.descripcion)
+                      if (texto) setNotas(prev => prev ? `${prev}\n\n${texto}` : texto)
+                      setGenerandoTrasfondo(false)
+                    }}>
+                    {generandoTrasfondo ? '✨ Generando...' : '✨ Generar trasfondo'}
+                  </button>
+                )}
+              </div>
               <p style={{ fontSize: '0.85rem', color: 'var(--text3)', marginBottom: '0.6rem' }}>Solo tú puedes ver estas notas.</p>
               <textarea className="notas-textarea" placeholder="Escribe aquí los secretos, motivaciones, historia personal..." value={notas} onChange={e => setNotas(e.target.value)} rows={10} />
             </div>
@@ -339,6 +399,61 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
             <PanelJuramentos personajeId={personaje.id} esMio={esMio} />
           </div>
         )}
+
+        {pestana === 'inventario' && (
+          <div className="detalle-seccion">
+            <h4>🎒 Inventario</h4>
+            {inventario.length === 0 && (
+              <p style={{ color: 'var(--text3)', fontStyle: 'italic', fontSize: '0.85rem', marginBottom: '0.8rem' }}>Sin objetos en el inventario.</p>
+            )}
+            {inventario.map(item => (
+              <div key={item.id} style={{ background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: '0.6rem 0.8rem', marginBottom: '0.5rem', display: 'flex', gap: '0.6rem', alignItems: 'flex-start' }}>
+                <span style={{ fontSize: '1.1rem', marginTop: '0.1rem' }}>{TIPO_ICON[item.objeto?.tipo] || '📦'}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 600, color: 'var(--text)', fontSize: '0.9rem' }}>{item.objeto?.nombre}</span>
+                    {item.cantidad > 1 && <span style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>×{item.cantidad}</span>}
+                    <button
+                      onClick={async () => {
+                        const eq = !item.equipado
+                        await supabase.from('inventario').update({ equipado: eq }).eq('id', item.id)
+                        setInventario(prev => prev.map(i => i.id === item.id ? { ...i, equipado: eq } : i))
+                      }}
+                      style={{ fontSize: '0.68rem', padding: '0.1rem 0.5rem', borderRadius: '999px', border: 'none', cursor: 'pointer', fontWeight: 600, background: item.equipado ? 'var(--accent)' : 'var(--bg2)', color: item.equipado ? '#000' : 'var(--text3)' }}>
+                      {item.equipado ? 'Equipado' : 'Sin equipar'}
+                    </button>
+                  </div>
+                  {item.objeto?.descripcion && <p style={{ fontSize: '0.8rem', color: 'var(--text2)', margin: '0.2rem 0 0', lineHeight: 1.4 }}>{item.objeto.descripcion}</p>}
+                  {item.objeto?.estadisticas && <p style={{ fontSize: '0.72rem', color: 'var(--accent)', margin: '0.2rem 0 0', fontFamily: 'Cinzel, serif' }}>{item.objeto.estadisticas}</p>}
+                  {item.notas && <p style={{ fontSize: '0.78rem', color: 'var(--text3)', fontStyle: 'italic', margin: '0.2rem 0 0' }}>{item.notas}</p>}
+                </div>
+                {esMio && (
+                  <button className="btn-sm danger" onClick={async () => {
+                    await supabase.from('inventario').delete().eq('id', item.id)
+                    setInventario(prev => prev.filter(i => i.id !== item.id))
+                  }}>🗑</button>
+                )}
+              </div>
+            ))}
+            {esMio && objetosUniverso.length > 0 && (
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <select value={objetoAgregar} onChange={e => setObjetoAgregar(e.target.value)}
+                  style={{ flex: 1, background: 'var(--bg3)', color: objetoAgregar ? 'var(--text)' : 'var(--text3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.4rem 0.6rem', fontSize: '0.82rem' }}>
+                  <option value="">Añadir objeto del catálogo...</option>
+                  {objetosUniverso.map(o => <option key={o.id} value={o.id}>{TIPO_ICON[o.tipo] || '📦'} {o.nombre}</option>)}
+                </select>
+                <button className="btn-primary btn-sm" disabled={!objetoAgregar}
+                  onClick={async () => {
+                    const { data } = await supabase.from('inventario').insert({ personaje_id: personaje.id, objeto_id: objetoAgregar }).select('*, objeto:objetos(*)').single()
+                    if (data) { setInventario(prev => [...prev, data]); setObjetoAgregar('') }
+                  }}>+</button>
+              </div>
+            )}
+            {esMio && objetosUniverso.length === 0 && (
+              <p style={{ fontSize: '0.8rem', color: 'var(--text3)', fontStyle: 'italic' }}>Crea objetos desde la Mesa de Rol → Opciones → 🎒 Objetos para poder añadirlos aquí.</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -352,6 +467,7 @@ export default function Personajes({ navigate, selectedUniverso }) {
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [filtroUniverso, setFiltroUniverso] = useState(selectedUniverso?.id || 'todos')
   const [guardando, setGuardando] = useState(false)
+  const [generandoDesc, setGenerandoDesc] = useState(false)
   const [avatarPreview, setAvatarPreview] = useState(null)
   const [avatarFile, setAvatarFile] = useState(null)
   const fileInputRef = useRef(null)
@@ -408,7 +524,11 @@ export default function Personajes({ navigate, selectedUniverso }) {
       if (!form.universoId) { setGuardando(false); return }
       const tempId = crypto.randomUUID()
       const avatar_url = await subirAvatar(tempId)
-      await addPersonaje({ ...form, iniciales, universoId: form.universoId, avatar_url, es_npc: form.es_npc, oculto: form.oculto })
+      const { data: nuevoPersonaje } = await addPersonaje({ ...form, iniciales, universoId: form.universoId, avatar_url, es_npc: form.es_npc, oculto: form.oculto })
+      if (nuevoPersonaje && form._plantilla?.atributos?.length > 0) {
+        const atributosInsert = form._plantilla.atributos.map((a, i) => ({ personaje_id: nuevoPersonaje.id, nombre: a.nombre, valor: a.valor, orden: i }))
+        await supabase.from('atributos').insert(atributosInsert)
+      }
     }
     setGuardando(false)
     cerrarForm()
@@ -446,7 +566,7 @@ export default function Personajes({ navigate, selectedUniverso }) {
             {p.oculto && <div className="card-badge" style={{ background: 'rgba(127,140,141,0.15)', borderColor: '#7f8c8d', color: '#7f8c8d' }}>🙈 Oculto</div>}
           </div>
           <h3>{p.nombre}</h3>
-          <p>{p.descripcion || 'Sin descripción'}</p>
+          <DescripcionTruncada texto={p.descripcion} />
           {universo && (
             <div className="personaje-universo">
               <span style={{ background: universo.color }} className="universo-dot" />
@@ -485,6 +605,28 @@ export default function Personajes({ navigate, selectedUniverso }) {
         <div className="modal-overlay" onClick={cerrarForm}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h3>{editando ? 'Editar personaje' : 'Crear personaje'}</h3>
+
+            {!editando && (
+              <div className="form-group">
+                <label>Plantilla (opcional)</label>
+                <select
+                  defaultValue=""
+                  onChange={e => {
+                    const p = PLANTILLAS.find(t => t.nombre === e.target.value)
+                    if (p) setForm(prev => ({ ...prev, rol: p.rol, _plantilla: p }))
+                    else setForm(prev => ({ ...prev, _plantilla: null }))
+                  }}
+                  style={{ background: 'var(--bg3)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.4rem 0.6rem', width: '100%' }}>
+                  <option value="">Sin plantilla</option>
+                  {PLANTILLAS.map(p => <option key={p.nombre} value={p.nombre}>{p.nombre}</option>)}
+                </select>
+                {form._plantilla && (
+                  <small style={{ color: 'var(--text3)', fontSize: '0.75rem' }}>
+                    Se añadirán atributos base: {form._plantilla.atributos.map(a => `${a.nombre} ${a.valor}`).join(', ')}
+                  </small>
+                )}
+              </div>
+            )}
 
             <div className="form-group">
               <label>Tipo de personaje</label>
@@ -539,8 +681,23 @@ export default function Personajes({ navigate, selectedUniverso }) {
             </div>
 
             <div className="form-group">
-              <label>Descripción</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                <label style={{ margin: 0 }}>Descripción</label>
+                {tieneApiKey() && (
+                  <button type="button" className="btn-ghost btn-sm"
+                    disabled={generandoDesc || !form.nombre.trim()}
+                    onClick={async () => {
+                      setGenerandoDesc(true)
+                      const texto = await generarDescripcionPersonaje(form.nombre, form.rol, form.descripcion)
+                      if (texto) setForm(prev => ({ ...prev, descripcion: texto }))
+                      setGenerandoDesc(false)
+                    }}>
+                    {generandoDesc ? '✨ Generando...' : '✨ Generar con IA'}
+                  </button>
+                )}
+              </div>
               <textarea placeholder="¿Quién es este personaje? ¿Cuál es su historia?" value={form.descripcion} onChange={e => setForm({ ...form, descripcion: e.target.value })} rows={3} />
+              {tieneApiKey() && !form.nombre.trim() && <small style={{ color: 'var(--text3)', fontSize: '0.75rem' }}>Escribe el nombre primero para generar la descripción.</small>}
             </div>
 
             <div className="form-group">

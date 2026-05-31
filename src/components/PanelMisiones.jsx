@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { generarMision, tieneApiKey } from '../lib/gemini'
 
-export default function PanelMisiones({ universoId, userId, esDueno, onCerrar }) {
+export default function PanelMisiones({ universoId, userId, esDueno, onCerrar, universoNombre }) {
   const [misiones, setMisiones] = useState([])
   const [cargando, setCargando] = useState(true)
   const [nuevaTitulo, setNuevaTitulo] = useState('')
   const [nuevaDesc, setNuevaDesc] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editando, setEditando] = useState(null)
+  const [generandoMision, setGenerandoMision] = useState(false)
 
   useEffect(() => {
     cargar()
@@ -32,26 +34,32 @@ export default function PanelMisiones({ universoId, userId, esDueno, onCerrar })
 
   const agregar = async () => {
     if (!nuevaTitulo.trim()) return
-    await supabase.from('misiones').insert({
+    const { data } = await supabase.from('misiones').insert({
       universo_id: universoId, user_id: userId,
       titulo: nuevaTitulo.trim(), descripcion: nuevaDesc.trim(),
       orden: misiones.length
-    })
+    }).select().single()
+    if (data) setMisiones(prev => [...prev, data])
     setNuevaTitulo(''); setNuevaDesc(''); setShowForm(false)
   }
 
   const guardarEdit = async () => {
     if (!editando || !nuevaTitulo.trim()) return
-    await supabase.from('misiones').update({ titulo: nuevaTitulo.trim(), descripcion: nuevaDesc.trim() }).eq('id', editando.id)
+    const updates = { titulo: nuevaTitulo.trim(), descripcion: nuevaDesc.trim() }
+    await supabase.from('misiones').update(updates).eq('id', editando.id)
+    setMisiones(prev => prev.map(m => m.id === editando.id ? { ...m, ...updates } : m))
     setEditando(null); setNuevaTitulo(''); setNuevaDesc('')
   }
 
   const toggleCompletada = async (mision) => {
-    await supabase.from('misiones').update({ completada: !mision.completada }).eq('id', mision.id)
+    const completada = !mision.completada
+    await supabase.from('misiones').update({ completada }).eq('id', mision.id)
+    setMisiones(prev => prev.map(m => m.id === mision.id ? { ...m, completada } : m))
   }
 
   const borrar = async (id) => {
     await supabase.from('misiones').delete().eq('id', id)
+    setMisiones(prev => prev.filter(m => m.id !== id))
   }
 
   const pendientes = misiones.filter(m => !m.completada)
@@ -129,6 +137,27 @@ export default function PanelMisiones({ universoId, userId, esDueno, onCerrar })
           )}
 
           {/* Formulario nueva misión */}
+          {esDueno && !editando && tieneApiKey() && (
+            <button className="btn-ghost" style={{ marginTop: '0.5rem', width: '100%', opacity: generandoMision ? 0.6 : 1 }}
+              disabled={generandoMision}
+              onClick={async () => {
+                setGenerandoMision(true)
+                const texto = await generarMision(universoNombre)
+                if (texto) {
+                  const titulo = texto.match(/Título:\s*(.+)/i)?.[1]?.trim() || 'Misión generada'
+                  const objetivo = texto.match(/Objetivo:\s*(.+)/i)?.[1]?.trim() || ''
+                  const obstaculo = texto.match(/Obstáculo:\s*(.+)/i)?.[1]?.trim() || ''
+                  const recompensa = texto.match(/Recompensa:\s*(.+)/i)?.[1]?.trim() || ''
+                  const desc = [objetivo && `Objetivo: ${objetivo}`, obstaculo && `Obstáculo: ${obstaculo}`, recompensa && `Recompensa: ${recompensa}`].filter(Boolean).join('\n')
+                  const { data } = await supabase.from('misiones').insert({ universo_id: universoId, user_id: userId, titulo, descripcion: desc, orden: misiones.length }).select().single()
+                  if (data) setMisiones(prev => [...prev, data])
+                }
+                setGenerandoMision(false)
+              }}>
+              {generandoMision ? '✨ Generando...' : '✨ Generar misión con IA'}
+            </button>
+          )}
+
           {esDueno && !editando && (
             showForm ? (
               <div className="mision-form">

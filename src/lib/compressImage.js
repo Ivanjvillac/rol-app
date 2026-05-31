@@ -1,39 +1,34 @@
 import imageCompression from 'browser-image-compression'
 
-/**
- * Comprime una imagen antes de subirla a Supabase Storage.
- *
- * @param {File} file  - El archivo original seleccionado por el usuario.
- * @param {'avatar'|'chat'|'npc'} type - El contexto de uso de la imagen.
- * @returns {Promise<File>} - Archivo comprimido listo para subir.
- */
+const LIMITS = {
+  avatar: 0.05,  // 50 KB
+  chat:   0.2,   // 200 KB
+  npc:    0.2,   // 200 KB
+}
+
 export async function compressImage(file, type = 'chat') {
-  let options
+  const maxSizeMB = LIMITS[type] ?? LIMITS.chat
 
-  if (type === 'avatar') {
-    options = {
-      maxSizeMB: 0.05,        // 50 KB
-      maxWidthOrHeight: 400,
-      initialQuality: 0.7,
-      useWebWorker: true,
-      fileType: 'image/jpeg',
-    }
-  } else {
-    // 'chat' | 'npc' | cualquier otro
-    options = {
-      maxSizeMB: 0.2,         // 200 KB
-      maxWidthOrHeight: 1024,
-      initialQuality: 0.7,
-      useWebWorker: true,
-      fileType: 'image/jpeg',
-    }
+  const options = {
+    maxSizeMB,
+    maxWidthOrHeight: type === 'avatar' ? 400 : 1024,
+    initialQuality: 0.7,
+    useWebWorker: true,
+    fileType: 'image/jpeg',
   }
 
+  let result
   try {
-    const compressed = await imageCompression(file, options)
-    return compressed
+    result = await imageCompression(file, options)
   } catch (err) {
-    console.warn('[compressImage] Error al comprimir, se usará el archivo original:', err)
-    return file
+    console.warn('[compressImage] Error al comprimir:', err)
+    result = file
   }
+
+  // Límite duro: rechazar si sigue siendo demasiado grande tras el fallback
+  if (result.size > maxSizeMB * 1024 * 1024 * 1.1) {
+    throw new Error(`La imagen es demasiado grande (máx. ${maxSizeMB * 1000} KB). Usa una imagen más pequeña o en formato JPEG.`)
+  }
+
+  return result
 }

@@ -44,6 +44,11 @@ const [msgPassword, setMsgPassword] = useState(null)
 
   const subirAvatar = async () => {
     if (!avatarFile) return avatarUrl
+    // Borrar avatar anterior antes de subir el nuevo
+    if (avatarUrl) {
+      const oldPath = avatarUrl.split('/perfiles/')[1]
+      if (oldPath) supabase.storage.from('perfiles').remove([oldPath])
+    }
     const { url } = await uploadAvatar(avatarFile, `${userId}.jpg`)
     return url || avatarUrl
   }

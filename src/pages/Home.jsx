@@ -1,7 +1,12 @@
 import { useApp } from '../context/AppContext'
 
-export default function Home({ navigate }) {
+export default function Home({ navigate, selectedUniverso }) {
   const { universos } = useApp()
+
+  const irAMesa = () => {
+    if (selectedUniverso) navigate('mesa')
+    else navigate('universos')
+  }
 
   return (
     <div className="home">
@@ -26,10 +31,14 @@ export default function Home({ navigate }) {
           <h3>Personajes</h3>
           <p>Da vida a tus personajes con historia y atributos</p>
         </div>
-        <div className="home-card">
+        <div className="home-card" onClick={irAMesa} style={{ cursor: 'pointer' }}>
           <span className="home-card-icon">✍️</span>
           <h3>Mesa de Rol</h3>
-          <p>Selecciona un universo y empieza a escribir tu historia</p>
+          {selectedUniverso
+            ? <p>Continuar en <strong style={{ color: 'var(--accent)' }}>{selectedUniverso.nombre}</strong></p>
+            : <p>Selecciona un universo y empieza a escribir tu historia</p>
+          }
+          {selectedUniverso && <span className="home-card-count">Ir a la mesa →</span>}
         </div>
       </div>
     </div>

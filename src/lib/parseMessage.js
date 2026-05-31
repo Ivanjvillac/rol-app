@@ -95,6 +95,9 @@ function tokenizeDialogo(text, miNombre) {
 export function parseMessage(text, miNombre = '') {
   if (!text) return []
 
+  const cacheKey = text + '\x00' + miNombre
+  if (_cache.has(cacheKey)) return _cache.get(cacheKey)
+
   // Eliminar comillas redundantes — la burbuja ya indica diálogo, no hace falta "..."
   // Soporta: comillas rectas " , tipográficas « »  y angulares << >>
   text = text.replace(/«|»|<<|>>/g, '').replace(/"/g, '')
@@ -135,10 +138,19 @@ export function parseMessage(text, miNombre = '') {
   }
 
   // Tokenizar solo los bloques de diálogo (las acciones inline no tienen sub-marcado)
-  return blocks.map(block => ({
+  const result = blocks.map(block => ({
     type: block.type,
     segments: block.type === 'dialogo'
       ? tokenizeDialogo(block.raw, miNombre)
       : [{ text: block.raw, classes: [] }],
   }))
+
+  if (_cache.size >= 500) {
+    const firstKey = _cache.keys().next().value
+    _cache.delete(firstKey)
+  }
+  _cache.set(cacheKey, result)
+  return result
 }
+
+const _cache = new Map()

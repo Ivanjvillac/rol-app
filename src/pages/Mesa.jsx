@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import SelectorImagenSticker from '../components/SelectorImagenSticker'
@@ -6,9 +6,14 @@ import FichaPersonaje from '../components/FichaPersonaje'
 import PanelInvestigacion from '../components/PanelInvestigacion'
 import PanelGaleria from '../components/PanelGaleria'
 import PanelMisiones from '../components/PanelMisiones'
+import PanelObjetos from '../components/PanelObjetos'
 import PanelDadoEvento from '../components/PanelDadoEvento'
 import { jsPDF } from 'jspdf'
 import { parseMessage } from '../lib/parseMessage'
+import { generarResumenConIA, generarDescripcionDado, generarDescripcionEscena, generarNPC, tieneApiKey } from '../lib/gemini'
+import { useMesaTimer } from '../features/mesa/hooks/useMesaTimer'
+import { useMesaPresence } from '../features/mesa/hooks/useMesaPresence'
+import { useMesaMusic } from '../features/mesa/hooks/useMesaMusic'
 
 const abrirUrlSegura = (url) => {
   if (!url || !url.startsWith('https://')) return
@@ -96,6 +101,15 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
     if (!miPersonaje || !destinatario) return
     await supabase.from('mensajes_privados').insert({ universo_id: universo.id, remitente_id: miPersonaje.id, destinatario_id: destinatario.id, remitente_user_id: userId, destinatario_user_id: destinatario.user_id, contenido: '', imagen_url: url })
   }
+  const borrarMensaje = async (m) => {
+    await supabase.from('mensajes_privados').delete().eq('id', m.id).eq('remitente_user_id', userId)
+    if (m.imagen_url) {
+      const path = m.imagen_url.split('/imagenes-chat/')[1]
+      if (path) supabase.storage.from('imagenes-chat').remove([path])
+    }
+    const key = claveConv(miPersonaje.id, destinatario.id)
+    setConversaciones(prev => ({ ...prev, [key]: (prev[key] || []).filter(x => x.id !== m.id) }))
+  }
   const handleKey = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }
   const formatHora = (ts) => { const d = new Date(ts); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` }
   const mensajesActuales = destinatario && miPersonaje ? (conversaciones[claveConv(miPersonaje.id, destinatario.id)] || []) : []
@@ -153,6 +167,7 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
                           {m.contenido && <p>{m.contenido}</p>}
                           {m.imagen_url && <img src={m.imagen_url} alt="imagen" style={{ maxWidth: '180px', borderRadius: '8px', cursor: 'pointer' }} onClick={() => abrirUrlSegura(m.imagen_url)} />}
                           <span className="entrada-hora">{formatHora(m.created_at)}</span>
+                          {esMio && <button onClick={() => borrarMensaje(m)} title="Borrar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: '0.7rem', padding: '0 0.2rem', opacity: 0.5 }}>🗑️</button>}
                         </div>
                         {esMio && (autor.avatar_url ? <img src={autor.avatar_url} alt={autor.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: autor.color }}>{autor.iniciales}</div>)}
                       </div>
@@ -176,7 +191,7 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
 }
 
 export default function Mesa({ navigate, selectedUniverso }) {
-  const { getPersonajesDeUniverso, addEntrada, getSesion, cargarSesion, suscribirMesa, invitarUsuario, getInvitaciones, esPropietario, userId, cargarListaSesiones, crearSesion, eliminarSesion, listaSesiones, editarEntrada, borrarEntrada, getPerfil, backupUniverso, transferirPropiedad, updatePersonaje } = useApp()
+  const { getPersonajesDeUniverso, addEntrada, getSesion, cargarSesion, cargarEntradasAnteriores, hayMasEntradas, suscribirMesa, invitarUsuario, getInvitaciones, limpiarInvitacionesAntiguas, aceptarInvitacion, esPropietario, userId, cargarListaSesiones, crearSesion, eliminarSesion, listaSesiones, editarEntrada, borrarEntrada, getPerfil, backupUniverso, transferirPropiedad, updatePersonaje, archivarSesion } = useApp()
 
   const [personajeActivo, setPersonajeActivo] = useState(null)
   const [texto, setTexto] = useState('')
@@ -207,6 +222,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [usuariosUniverso, setUsuariosUniverso] = useState([])
   const [padreSesion, setPadreSesion] = useState(null)
   const [busqueda, setBusqueda] = useState('')
+  const [busquedaFiltro, setBusquedaFiltro] = useState('')
+  const busquedaDebounceRef = useRef(null)
   const [busquedaGlobal, setBusquedaGlobal] = useState('')
   const [resultadosGlobales, setResultadosGlobales] = useState([])
   const [buscandoGlobal, setBuscandoGlobal] = useState(false)
@@ -214,29 +231,17 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [editandoEntrada, setEditandoEntrada] = useState(null)
   const [confirmDeleteEntrada, setConfirmDeleteEntrada] = useState(null)
   const [fichaPersonaje, setFichaPersonaje] = useState(null)
-  const [usuariosConectados, setUsuariosConectados] = useState([])
-  const [otrosEscribiendo, setOtrosEscribiendo] = useState([])
   const [mostrarIrAbajo, setMostrarIrAbajo] = useState(false)
-  const [showMusica, setShowMusica] = useState(false)
   const [showInvestigacion, setShowInvestigacion] = useState(false)
   const [showGaleria, setShowGaleria] = useState(false)
   const [showMisiones, setShowMisiones] = useState(false)
   const [showDadoEvento, setShowDadoEvento] = useState(false)
+  const [showObjetos, setShowObjetos] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [showDados, setShowDados] = useState(false)
-  // Temporizador
-  const [timerFin, setTimerFin] = useState(null)
-  const [timerLabel, setTimerLabel] = useState('')
-  const [timerDisplay, setTimerDisplay] = useState('')
-  const [showTimerConfig, setShowTimerConfig] = useState(false)
-  const [timerMinutos, setTimerMinutos] = useState('5')
-  const [timerSegundos, setTimerSegundos] = useState('0')
   const [fichaCompartida, setFichaCompartida] = useState(null)
   const [showResumen, setShowResumen] = useState(false)
   const [resumenTexto, setResumenTexto] = useState('')
-  const [youtubeUrl, setYoutubeUrl] = useState('')
-  const [musicaUrl, setMusicaUrl] = useState(null)           // URL raw persistida
-  const [musicaIniciadaEn, setMusicaIniciadaEn] = useState(null) // timestamp ms
   const [reacciones, setReacciones] = useState({})
   const [showReacciones, setShowReacciones] = useState(null)
   const [notifsSesion, setNotifsSesion] = useState({})
@@ -253,39 +258,144 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const isAtBottomRef = useRef(true)        // actualizado en onScroll, siempre fresco
   const inputRef = useRef(null)
   const timeoutEscribiendoRef = useRef(null)
-  const canalEscribiendoRef = useRef(null)
-  const canalPresenciaRef = useRef(null)
-  const canalMusicaRef = useRef(null)
-  const playerRef = useRef(null)          // YT.Player instance
-  const syncIntervalRef = useRef(null)    // Intervalo de sync periódico
-  const esDuenoRef = useRef(false)        // Ref de esDueno para closures estáticas
-  const musicaIniciadaEnRef = useRef(null) // Ref espejo de musicaIniciadaEn para el useEffect del player
   const debounceRef = useRef(null)
-  const timerIntervalRef = useRef(null)
   const fijadosRef = useRef(null)
   const canalFichaRef = useRef(null)
 
   const [sesionesConMiembros, setSesionesConMiembros] = useState([])
-  const [kickedFrom, setKickedFrom] = useState(null) // nombre de la sala de la que fuiste expulsado
+  const [kickedFrom, setKickedFrom] = useState(null)
+  const [tamanoFuente, setTamanoFuente] = useState(() => parseInt(localStorage.getItem('mesaFontSize') || '15', 10))
+  const [dadoDramatico, setDadoDramatico] = useState(() => localStorage.getItem('dadoDramatico') !== 'false')
+  const [textoEscenaIA, setTextoEscenaIA] = useState('')
+  const [generandoEscena, setGenerandoEscena] = useState(false)
+  const [generandoNPC, setGenerandoNPC] = useState(false)
+  const [seccionIA, setSeccionIA] = useState(false)
   const [seccionSesiones, setSeccionSesiones] = useState(true)
   const [seccionPersonajes, setSeccionPersonajes] = useState(true)
   const [seccionConectados, setSeccionConectados] = useState(true)
   const [seccionOpciones, setSeccionOpciones] = useState(false)
   const [seccionAyuda, setSeccionAyuda] = useState(false)
+  const [seccionArchivadas, setSeccionArchivadas] = useState(false)
 
-  const personajesTodos = selectedUniverso ? getPersonajesDeUniverso(selectedUniverso.id) : []
-  const personajes = personajesTodos.filter(p => !p.oculto || p.user_id === userId)
-  const sesionCompleta = sesionActiva ? getSesion(sesionActiva.id) : []
-  const sesion = busqueda.trim()
-    ? sesionCompleta.filter(e =>
-        e.contenido?.toLowerCase().includes(busqueda.toLowerCase()) ||
-        e.personaje_nombre?.toLowerCase().includes(busqueda.toLowerCase())
-      )
-    : sesionCompleta
-  const esDueno = selectedUniverso ? esPropietario(selectedUniverso.id) : false
-  const sesiones = sesionesConMiembros.filter(s =>
-    !s.es_privada || s.user_id === userId || (s.miembros || []).includes(userId)
+  // Filtros de búsqueda global
+  const [filtroTipo, setFiltroTipo] = useState('')
+  const [filtroPersonaje, setFiltroPersonaje] = useState('')
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState('')
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState('')
+
+  // Historial de versiones de una entrada
+  const [showVersiones, setShowVersiones] = useState(null) // entrada con versiones
+
+  // Offline
+  const [estaOnline, setEstaOnline] = useState(navigator.onLine)
+
+  // Resumen IA
+  const [cargandoResumen, setCargandoResumen] = useState(false)
+
+  const personajes = useMemo(() => {
+    const todos = selectedUniverso ? getPersonajesDeUniverso(selectedUniverso.id) : []
+    return todos.filter(p => !p.oculto || p.user_id === userId)
+  }, [selectedUniverso?.id, getPersonajesDeUniverso, userId])
+
+  const sesionCompleta = useMemo(() =>
+    sesionActiva ? getSesion(sesionActiva.id) : [],
+    [sesionActiva?.id, getSesion]
   )
+
+  const sesion = useMemo(() => {
+    const q = busquedaFiltro.trim().toLowerCase()
+    if (!q) return sesionCompleta
+    return sesionCompleta.filter(e =>
+      e.contenido?.toLowerCase().includes(q) ||
+      e.personaje_nombre?.toLowerCase().includes(q)
+    )
+  }, [sesionCompleta, busquedaFiltro])
+
+  const esDueno = useMemo(() =>
+    selectedUniverso ? esPropietario(selectedUniverso.id) : false,
+    [selectedUniverso?.id, esPropietario]
+  )
+
+  const sesiones = useMemo(() =>
+    sesionesConMiembros.filter(s =>
+      !s.es_privada || s.user_id === userId || (s.miembros || []).includes(userId)
+    ),
+    [sesionesConMiembros, userId]
+  )
+
+  const {
+    timerFin, timerLabel, setTimerLabel, timerDisplay,
+    timerMinutos, setTimerMinutos, timerSegundos, setTimerSegundos,
+    showTimerConfig, setShowTimerConfig,
+    iniciarTimer, detenerTimer,
+  } = useMesaTimer(selectedUniverso)
+
+  const {
+    usuariosConectados, otrosEscribiendo, emitirEscribiendo,
+    canalPresenciaRef, canalEscribiendoRef,
+  } = useMesaPresence(selectedUniverso, userId, sesionActiva, personajeActivo)
+
+  const {
+    musicaUrl, showMusica, setShowMusica,
+    youtubeUrl, setYoutubeUrl,
+    cargarYoutube, quitarMusica,
+    canalMusicaRef, playerRef,
+  } = useMesaMusic(sesionActiva, esDueno)
+
+  // O(1) lookup for reply-to previews (replaces O(n²) .find() inside render loop)
+  const entradaMap = useMemo(() =>
+    new Map(sesionCompleta.map(e => [e.id, e])),
+    [sesionCompleta]
+  )
+
+  const entradasFijadas = useMemo(() =>
+    sesionCompleta.filter(e => fijadas[e.id]),
+    [sesionCompleta, fijadas]
+  )
+
+  const tiradas = useMemo(() =>
+    sesionCompleta.filter(e => e.tipo === 'dado'),
+    [sesionCompleta]
+  )
+
+  // Precompute children map so sidebar avoids O(n²) nested filter
+  const sesionesHijas = useMemo(() => {
+    const map = new Map()
+    sesiones.forEach(s => {
+      if (s.padre_id) {
+        if (!map.has(s.padre_id)) map.set(s.padre_id, [])
+        map.get(s.padre_id).push(s)
+      }
+    })
+    return map
+  }, [sesiones])
+
+  // Stats modal computation — runs once per sesionCompleta change, not on every re-render
+  const statsData = useMemo(() => {
+    const entradas = sesionCompleta
+    let narrador = 0, dialogo = 0, accion = 0, dado = 0, palabras = 0
+    const porPersonaje = {}
+    for (const e of entradas) {
+      if (e.tipo === 'narrador') narrador++
+      else if (e.tipo === 'dialogo') dialogo++
+      else if (e.tipo === 'accion') accion++
+      else if (e.tipo === 'dado') dado++
+      const wc = e.contenido?.split(/\s+/).filter(Boolean).length || 0
+      palabras += wc
+      if (e.personaje_nombre) {
+        const k = e.personaje_nombre
+        if (!porPersonaje[k]) porPersonaje[k] = { nombre: k, color: e.personaje_color, count: 0, palabras: 0 }
+        porPersonaje[k].count++
+        porPersonaje[k].palabras += wc
+      }
+    }
+    return {
+      total: entradas.length,
+      palabras,
+      porTipo: { narrador, dialogo, accion, dado },
+      rankPersonajes: Object.values(porPersonaje).sort((a, b) => b.count - a.count),
+    }
+  }, [sesionCompleta])
 
   useEffect(() => {
     if (!userId) return
@@ -433,12 +543,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
   useEffect(() => {
     if (!sesionActiva) return
-    // Cargar nivel_tension y url_musica iniciales de la sesión
-    supabase.from('sesiones').select('nivel_tension, url_musica').eq('id', sesionActiva.id).single()
-      .then(({ data }) => {
-        if (data?.nivel_tension) setNivelTension(data.nivel_tension)
-        setMusicaUrl(data?.url_musica || null)
-      })
+    supabase.from('sesiones').select('nivel_tension').eq('id', sesionActiva.id).single()
+      .then(({ data }) => { if (data?.nivel_tension) setNivelTension(data.nivel_tension) })
     cargarSesion(sesionActiva.id)
     const unsub = suscribirMesa(selectedUniverso.id, sesionActiva.id, () => {})
     return unsub
@@ -449,7 +555,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
     document.documentElement.style.setProperty('--nivel-tension', nivelTension)
   }, [nivelTension])
 
-  // Suscripción Realtime a UPDATE en sesiones (nivel_tension Y url_musica)
+  // Suscripción Realtime a UPDATE en sesiones (nivel_tension)
   useEffect(() => {
     if (!sesionActiva?.id) return
     const canal = supabase
@@ -462,22 +568,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
       }, (payload) => {
         const nt = payload.new?.nivel_tension
         if (nt !== undefined) setNivelTension(nt)
-        // Sincronizar música entre clientes
-        if ('url_musica' in payload.new) setMusicaUrl(payload.new.url_musica || null)
       })
       .subscribe()
     return () => supabase.removeChannel(canal)
   }, [sesionActiva?.id])
-
-  // (emociones personalizadas eliminadas — reemplazadas por el parser inline)
-  useEffect(() => {
-    if (!canalPresenciaRef.current || !canalPresenciaRef.current._nombre) return
-    canalPresenciaRef.current.track({
-      user_id: userId,
-      nombre: canalPresenciaRef.current._nombre,
-      personaje: personajeActivo ? { nombre: personajeActivo.nombre, color: personajeActivo.color, iniciales: personajeActivo.iniciales, avatar_url: personajeActivo.avatar_url } : null,
-    })
-  }, [personajeActivo?.id])
 
   useEffect(() => {
     if (!selectedUniverso || !userId) return
@@ -503,167 +597,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
     return () => supabase.removeChannel(channel)
   }, [selectedUniverso?.id, userId])
 
-  useEffect(() => {
-    if (!selectedUniverso || !userId) return
-    const canal = supabase.channel(`presencia-${selectedUniverso.id}`, {
-      config: { presence: { key: userId } }
-    })
-    canal
-      .on('presence', { event: 'sync' }, () => {
-        const estado = canal.presenceState()
-        // Cada key del estado es un userId, su valor es un array de tracks
-        // Tomamos solo el último track de cada usuario para evitar duplicados
-        const conectados = Object.values(estado).map(tracks => {
-          const ultimo = tracks[tracks.length - 1]
-          return {
-            userId: ultimo.user_id,
-            nombre: ultimo.nombre || ultimo.user_id?.slice(0, 8),
-            personaje: ultimo.personaje || null,
-          }
-        })
-        setUsuariosConectados(conectados)
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          const perfil = await supabase.from('perfiles').select('nombre').eq('id', userId).single()
-          const nombrePerfil = perfil.data?.nombre || 'Jugador'
-          canalPresenciaRef.current = canal
-          canalPresenciaRef.current._nombre = nombrePerfil
-          await canal.track({
-            user_id: userId,
-            nombre: nombrePerfil,
-            personaje: personajeActivo ? { nombre: personajeActivo.nombre, color: personajeActivo.color, iniciales: personajeActivo.iniciales, avatar_url: personajeActivo.avatar_url } : null,
-          })
-        }
-      })
-    return () => {
-      supabase.removeChannel(canal)
-      canalPresenciaRef.current = null
-    }
-  }, [selectedUniverso?.id, userId])
-
-  useEffect(() => {
-    if (!selectedUniverso || !userId || !sesionActiva) return
-    const canal = supabase.channel(`escribiendo-${selectedUniverso.id}-${sesionActiva.id}`)
-      .on('broadcast', { event: 'escribiendo' }, ({ payload }) => {
-        if (payload.userId === userId) return
-        setOtrosEscribiendo(prev => {
-          const sin = prev.filter(x => x.userId !== payload.userId)
-          if (payload.activo) return [...sin, { userId: payload.userId, nombre: payload.nombre }]
-          return sin
-        })
-      })
-      .subscribe()
-    canalEscribiendoRef.current = canal
-    return () => {
-      supabase.removeChannel(canal)
-      canalEscribiendoRef.current = null
-    }
-  }, [selectedUniverso?.id, sesionActiva?.id, userId])
-
-  // Canal Broadcast para sincronizar música en tiempo real
-  useEffect(() => {
-    if (!sesionActiva?.id) return
-    const canal = supabase
-      .channel(`musica-${sesionActiva.id}`)
-      // --- Cambio de canción (dueño la cambia o la quita) ---
-      .on('broadcast', { event: 'musica_cambio' }, ({ payload }) => {
-        if (!payload.url) {
-          setMusicaUrl(null)
-          setMusicaIniciadaEn(null)
-          musicaIniciadaEnRef.current = null
-          return
-        }
-        const ts = payload.startedAt || Date.now()
-        setMusicaUrl(payload.url)
-        setMusicaIniciadaEn(ts)
-        musicaIniciadaEnRef.current = ts
-      })
-      // --- Sync de posición/estado del reproductor (solo para no-dueños) ---
-      .on('broadcast', { event: 'musica_sync' }, ({ payload }) => {
-        if (esDuenoRef.current) return // El dueño es la fuente de verdad
-        if (!playerRef.current) return
-        try {
-          const { state, currentTime, timestamp } = payload
-          const latency = Math.max(0, (Date.now() - timestamp) / 1000)
-          const targetTime = Math.max(0, currentTime + latency)
-          playerRef.current.seekTo(targetTime, true)
-          if (state === 'playing') playerRef.current.playVideo()
-          else if (state === 'paused') playerRef.current.pauseVideo()
-        } catch (e) {}
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          const { data } = await supabase
-            .from('sesiones')
-            .select('url_musica, musica_iniciada_en')
-            .eq('id', sesionActiva.id)
-            .single()
-          if (data?.url_musica) {
-            const ts = data.musica_iniciada_en
-              ? new Date(data.musica_iniciada_en).getTime()
-              : Date.now()
-            setMusicaUrl(data.url_musica)
-            setMusicaIniciadaEn(ts)
-            musicaIniciadaEnRef.current = ts
-          }
-        }
-      })
-    canalMusicaRef.current = canal
-    return () => {
-      supabase.removeChannel(canal)
-      canalMusicaRef.current = null
-    }
-  }, [sesionActiva?.id])
-
-  // Mantener esDuenoRef sincronizado
-  useEffect(() => { esDuenoRef.current = esDueno }, [esDueno])
-
-  // Temporizador: cargar estado inicial
-  useEffect(() => {
-    if (!selectedUniverso) return
-    setTimerFin(selectedUniverso.timer_fin ? new Date(selectedUniverso.timer_fin) : null)
-    setTimerLabel(selectedUniverso.timer_label || '')
-  }, [selectedUniverso?.id])
-
-  // Temporizador: suscribir a cambios en universos
-  useEffect(() => {
-    if (!selectedUniverso) return
-    const ch = supabase
-      .channel(`timer-universo-${selectedUniverso.id}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'universos', filter: `id=eq.${selectedUniverso.id}` }, (payload) => {
-        setTimerFin(payload.new.timer_fin ? new Date(payload.new.timer_fin) : null)
-        setTimerLabel(payload.new.timer_label || '')
-      })
-      .subscribe()
-    return () => supabase.removeChannel(ch)
-  }, [selectedUniverso?.id])
-
-  // Temporizador: intervalo de cuenta atrás
-  useEffect(() => {
-    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
-    if (!timerFin) { setTimerDisplay(''); return }
-    const fin = new Date(timerFin).getTime()
-    const tick = () => {
-      const diff = fin - Date.now()
-      if (diff <= 0) {
-        setTimerDisplay('⏰ ¡Tiempo!')
-        if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
-        setTimeout(() => {
-          setTimerDisplay('')
-          setTimerFin(null)
-        }, 5000)
-        return
-      }
-      const m = Math.floor(diff / 60000)
-      const s = Math.floor((diff % 60000) / 1000)
-      setTimerDisplay(`${m}:${s.toString().padStart(2, '0')}`)
-    }
-    tick()
-    timerIntervalRef.current = setInterval(tick, 1000)
-    return () => { if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null } }
-  }, [timerFin])
-
   // Canal broadcast para fichas compartidas
   useEffect(() => {
     if (!selectedUniverso?.id) return
@@ -688,107 +621,70 @@ export default function Mesa({ navigate, selectedUniverso }) {
     }
   }, [userId])
 
-  // Extraer videoId y listId de una URL de YouTube
-  const extractYTIds = (url) => {
-    if (!url) return { videoId: null, listId: null }
-    try {
-      const rawUrl = url.startsWith('http') ? url : `https://${url}`
-      const u = new URL(rawUrl)
-      const host = u.hostname.replace('www.', '')
-      let videoId = null, listId = null
-      if (host === 'youtube.com' || host === 'music.youtube.com') {
-        videoId = u.searchParams.get('v')
-        listId = u.searchParams.get('list')
-        if (!videoId && u.pathname.startsWith('/shorts/')) videoId = u.pathname.split('/shorts/')[1]?.split('?')[0] || null
-        if (!videoId && u.pathname.startsWith('/embed/')) { videoId = u.pathname.split('/embed/')[1]?.split('?')[0] || null; if (!listId) listId = u.searchParams.get('list') }
-        if (!listId && u.pathname.startsWith('/playlist')) listId = u.searchParams.get('list')
-      }
-      if (host === 'youtu.be') { videoId = u.pathname.slice(1).split('?')[0] || null; listId = u.searchParams.get('list') }
-      return { videoId, listId }
-    } catch { return { videoId: null, listId: null } }
-  }
-
-  // Inicializar / destruir el reproductor YT cuando cambia la canción
+  // Detección de conexión offline
   useEffect(() => {
-    // Limpiar reproductor e intervalo anteriores
-    clearInterval(syncIntervalRef.current)
-    if (playerRef.current) {
-      try { playerRef.current.destroy() } catch (e) {}
-      playerRef.current = null
-    }
-    if (!musicaUrl) return
-
-    const { videoId, listId } = extractYTIds(musicaUrl)
-    if (!videoId && !listId) return
-
-    const offsetSegs = musicaIniciadaEnRef.current
-      ? Math.max(0, Math.floor((Date.now() - musicaIniciadaEnRef.current) / 1000))
-      : 0
-
-    const doInit = () => {
-      const container = document.getElementById('yt-music-player')
-      if (!container || playerRef.current) return
-      playerRef.current = new window.YT.Player('yt-music-player', {
-        height: '52',
-        width: '100%',
-        videoId: videoId || undefined,
-        playerVars: {
-          autoplay: 1,
-          loop: listId ? 0 : 1,
-          ...(listId ? { listType: 'playlist', list: listId } : { playlist: videoId }),
-          start: offsetSegs,
-        },
-        events: {
-          onReady: (e) => {
-            if (offsetSegs > 5) e.target.seekTo(offsetSegs, true)
-          },
-          onStateChange: (e) => {
-            if (!esDuenoRef.current) return // Solo el dueño emite sync
-            const YTState = window.YT?.PlayerState
-            if (!YTState) return
-            if (e.data !== YTState.PLAYING && e.data !== YTState.PAUSED) return
-            const ct = e.target.getCurrentTime?.() ?? 0
-            canalMusicaRef.current?.send({
-              type: 'broadcast', event: 'musica_sync',
-              payload: { state: e.data === YTState.PLAYING ? 'playing' : 'paused', currentTime: ct, timestamp: Date.now() }
-            })
-          }
-        }
-      })
-      // Dueño: sync periódico cada 10s para corregir deriva
-      if (esDuenoRef.current) {
-        syncIntervalRef.current = setInterval(() => {
-          if (!playerRef.current || !canalMusicaRef.current) return
-          try {
-            const state = playerRef.current.getPlayerState()
-            const ct = playerRef.current.getCurrentTime()
-            const YTState = window.YT?.PlayerState
-            canalMusicaRef.current.send({
-              type: 'broadcast', event: 'musica_sync',
-              payload: { state: state === YTState?.PLAYING ? 'playing' : 'paused', currentTime: ct, timestamp: Date.now() }
-            })
-          } catch (e) {}
-        }, 10000)
-      }
-    }
-
-    if (window.YT?.Player) {
-      setTimeout(doInit, 80)
-    } else {
-      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
-        const tag = document.createElement('script')
-        tag.src = 'https://www.youtube.com/iframe_api'
-        document.head.appendChild(tag)
-      }
-      const prev = window.onYouTubeIframeAPIReady
-      window.onYouTubeIframeAPIReady = () => { if (typeof prev === 'function') prev(); setTimeout(doInit, 80) }
-    }
-
+    const goOnline = () => setEstaOnline(true)
+    const goOffline = () => setEstaOnline(false)
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
     return () => {
-      clearInterval(syncIntervalRef.current)
-      if (playerRef.current) { try { playerRef.current.destroy() } catch (e) {} playerRef.current = null }
+      window.removeEventListener('online', goOnline)
+      window.removeEventListener('offline', goOffline)
     }
-  }, [musicaUrl])
+  }, [])
+
+  // ── ATAJOS DE TECLADO GLOBALES ──
+  useEffect(() => {
+    const handler = (e) => {
+      const ctrl = e.ctrlKey || e.metaKey
+
+      // Ctrl+B → búsqueda global
+      if (ctrl && e.key === 'b') {
+        e.preventDefault()
+        setShowBusquedaGlobal(true)
+        return
+      }
+      // Ctrl+M → música
+      if (ctrl && e.key === 'm') {
+        e.preventDefault()
+        setShowMusica(true)
+        return
+      }
+
+      // Escape → cerrar modales (no interceptar el textarea principal)
+      if (e.key === 'Escape' && document.activeElement !== inputRef.current) {
+        if (showBusquedaGlobal) { setShowBusquedaGlobal(false); setBusquedaGlobal(''); setResultadosGlobales([]) }
+        else if (showMusica) setShowMusica(false)
+        else if (showStats) setShowStats(false)
+        else if (showResumen) { setShowResumen(false); setCargandoResumen(false) }
+        else if (showDados) setShowDados(false)
+        else if (showVersiones) setShowVersiones(null)
+        else if (editandoEntrada) setEditandoEntrada(null)
+        else if (gestionarSesion) setGestionarSesion(null)
+        else if (confirmDeleteEntrada) setConfirmDeleteEntrada(null)
+        else if (confirmDeleteSesion) setConfirmDeleteSesion(null)
+        else if (showInvitar) { setShowInvitar(false); setMsgInvitar(null) }
+        else if (showNuevaSesion) setShowNuevaSesion(false)
+        else if (fichaPersonaje) setFichaPersonaje(null)
+        else if (fichaCompartida) setFichaCompartida(null)
+        else if (showTimerConfig) setShowTimerConfig(false)
+        else if (showChat) setShowChat(false)
+        else if (showInvestigacion) setShowInvestigacion(false)
+        else if (showGaleria) setShowGaleria(false)
+        else if (showMisiones) setShowMisiones(false)
+        else if (showDadoEvento) setShowDadoEvento(false)
+        else if (showObjetos) setShowObjetos(false)
+        else if (respondiendo) setRespondiendo(null)
+        else if (sidebarAbierto) setSidebarAbierto(false)
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [showBusquedaGlobal, showMusica, showStats, showResumen, showDados, showVersiones,
+      editandoEntrada, gestionarSesion, confirmDeleteEntrada, confirmDeleteSesion,
+      showInvitar, showNuevaSesion, fichaPersonaje, fichaCompartida, showTimerConfig,
+      showChat, showInvestigacion, showGaleria, showMisiones, showDadoEvento, showObjetos,
+      respondiendo, sidebarAbierto])
 
   // ── AUTO-SCROLL ──
   // Al cambiar de sesión: siempre ir al final usando useLayoutEffect
@@ -824,16 +720,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const irAbajo = () => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
     isAtBottomRef.current = true
-  }
-
-  const emitirEscribiendo = async (activo) => {
-    if (!selectedUniverso || !canalEscribiendoRef.current) return
-    const perfil = await supabase.from('perfiles').select('nombre').eq('id', userId).single()
-    canalEscribiendoRef.current.send({
-      type: 'broadcast',
-      event: 'escribiendo',
-      payload: { userId, nombre: perfil.data?.nombre || 'Alguien', activo }
-    })
   }
 
   if (!selectedUniverso) {
@@ -989,28 +875,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
   const formatHora = (ts) => { const d = new Date(ts); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` }
 
-  const iniciarTimer = async () => {
-    const m = parseInt(timerMinutos) || 0
-    const s = parseInt(timerSegundos) || 0
-    const ms = (m * 60 + s) * 1000
-    if (ms <= 0) return
-    const fin = new Date(Date.now() + ms).toISOString()
-    const label = timerLabel || 'Tiempo restante'
-    await supabase.from('universos').update({ timer_fin: fin, timer_label: label }).eq('id', selectedUniverso.id)
-    setTimerFin(new Date(fin))
-    setTimerLabel(label)
-    setShowTimerConfig(false)
-  }
-
-  const detenerTimer = async () => {
-    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
-    setTimerFin(null)
-    setTimerLabel('')
-    setTimerDisplay('')
-    setShowTimerConfig(false)
-    await supabase.from('universos').update({ timer_fin: null, timer_label: null }).eq('id', selectedUniverso.id)
-  }
-
   const compartirFicha = (personaje) => {
     canalFichaRef.current?.send({ type: 'broadcast', event: 'mostrar_ficha', payload: { personaje } })
     setFichaPersonaje(personaje) // también la abre localmente para el narrador
@@ -1021,13 +885,27 @@ export default function Mesa({ navigate, selectedUniverso }) {
     setFichaCompartida(null)
   }
 
-  const abrirResumen = () => {
+  const abrirResumen = async () => {
     const entradas = sesionCompleta.filter(e => e.tipo !== 'dado')
     if (entradas.length === 0) { setResumenTexto('La sesión está vacía.'); setShowResumen(true); return }
 
+    setShowResumen(true)
+    setCargandoResumen(true)
+    setResumenTexto('')
+
+    // Intentar Gemini primero
+    try {
+      const iaTexto = await generarResumenConIA(sesionActiva?.nombre || 'Sesión', entradas)
+      if (iaTexto) {
+        setResumenTexto(iaTexto)
+        setCargandoResumen(false)
+        return
+      }
+    } catch (_) {}
+
+    // Fallback heurístico si Gemini falla o no hay API key
     const escenas = []
     let escenaActual = null
-
     for (const e of entradas) {
       if (e.tipo === 'narrador') {
         if (escenaActual) escenas.push(escenaActual)
@@ -1040,7 +918,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
     if (escenaActual) escenas.push(escenaActual)
 
     let texto = `📜 ${sesionActiva?.nombre || 'Resumen de sesión'}\n${'─'.repeat(40)}\n\n`
-
     if (escenas.length === 0) {
       const hablantes = [...new Set(entradas.filter(e => e.personaje_nombre).map(e => e.personaje_nombre))]
       texto += `Participantes: ${hablantes.join(', ') || '—'}\n${entradas.length} entradas en total.\n`
@@ -1052,12 +929,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
         texto += '\n'
       })
     }
-
     const palabrasTotales = entradas.reduce((acc, e) => acc + (e.contenido?.split(/\s+/).filter(Boolean).length || 0), 0)
     texto += `─\n${escenas.length} escenas · ${entradas.length} entradas · ~${palabrasTotales} palabras`
-
     setResumenTexto(texto)
-    setShowResumen(true)
+    setCargandoResumen(false)
   }
 
   const exportarSesion = () => {
@@ -1245,6 +1120,14 @@ export default function Mesa({ navigate, selectedUniverso }) {
         contenido: `🎲 ${personajeActivo?.nombre || 'Narrador'} tiró d${caras} → ${resultado}`,
         personaje: personajeActivo
       }, sesionActiva.id)
+      // Descripción dramática con IA (fire-and-forget)
+      if (dadoDramatico && tieneApiKey()) {
+        generarDescripcionDado(caras, resultado, personajeActivo?.nombre).then(frase => {
+          if (frase && sesionActiva) {
+            addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: `✨ ${frase}` }, sesionActiva.id)
+          }
+        }).catch(() => {})
+      }
     }
   }
 
@@ -1266,6 +1149,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
     setShowInvitar(true)
     setMsgInvitar(null)
     setEmailInvitar('')
+    limpiarInvitacionesAntiguas(selectedUniverso.id)
     const invs = await getInvitaciones(selectedUniverso.id)
     setInvitaciones(invs)
     // Cargar miembros actuales del universo
@@ -1335,43 +1219,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
       setInvitaciones(invs)
     }
     setEnviando(false)
-  }
-
-  // Validar URL de YouTube (para el alert) — reutiliza extractYTIds
-  const buildEmbedUrl = (url) => {
-    const { videoId, listId } = extractYTIds(url)
-    if (listId && videoId) return `https://www.youtube.com/embed/${videoId}?list=${listId}&autoplay=1`
-    if (listId) return `https://www.youtube.com/embed/videoseries?list=${listId}&autoplay=1`
-    if (videoId) return `https://www.youtube.com/embed/${videoId}?autoplay=1`
-    return null
-  }
-
-  const cargarYoutube = async () => {
-    const url = youtubeUrl.trim()
-    if (!url) return
-    if (!sesionActiva) { alert('⚠️ Selecciona una sesión primero antes de cargar música.'); return }
-    const { videoId, listId } = extractYTIds(url)
-    if (!videoId && !listId) { alert('⚠️ No se reconoce la URL. Asegúrate de que es un enlace de YouTube (youtube.com o youtu.be).'); return }
-    const startedAt = Date.now()
-    setMusicaUrl(url)
-    setMusicaIniciadaEn(startedAt)
-    musicaIniciadaEnRef.current = startedAt
-    setYoutubeUrl('')
-    setShowMusica(false)
-    canalMusicaRef.current?.send({ type: 'broadcast', event: 'musica_cambio', payload: { url, startedAt } })
-    const ahora = new Date(startedAt).toISOString()
-    const { error } = await supabase.from('sesiones').update({ url_musica: url, musica_iniciada_en: ahora }).eq('id', sesionActiva.id)
-    if (error) console.warn('[Música] Error al guardar en Supabase:', error.message)
-  }
-
-  const quitarMusica = async () => {
-    if (!sesionActiva) return
-    setMusicaUrl(null)
-    setMusicaIniciadaEn(null)
-    musicaIniciadaEnRef.current = null
-    canalMusicaRef.current?.send({ type: 'broadcast', event: 'musica_cambio', payload: { url: null, startedAt: null } })
-    const { error } = await supabase.from('sesiones').update({ url_musica: null, musica_iniciada_en: null }).eq('id', sesionActiva.id)
-    if (error) console.warn('[Música] Error al quitar música en Supabase:', error.message)
   }
 
   const handleCrearSesion = async () => {
@@ -1471,12 +1318,15 @@ export default function Mesa({ navigate, selectedUniverso }) {
     setShowReacciones(null)
   }
 
-  const agruparReacciones = (entradaId) => {
-    const rs = reacciones[entradaId] || []
-    const grupos = {}
-    rs.forEach(r => { if (!grupos[r.emoji]) grupos[r.emoji] = []; grupos[r.emoji].push(r.user_id) })
-    return Object.entries(grupos).map(([emoji, uids]) => ({ emoji, count: uids.length, mia: uids.includes(userId) }))
-  }
+  const agruparReacciones = useMemo(() => {
+    const result = {}
+    for (const [entradaId, rs] of Object.entries(reacciones)) {
+      const grupos = {}
+      rs.forEach(r => { if (!grupos[r.emoji]) grupos[r.emoji] = []; grupos[r.emoji].push(r.user_id) })
+      result[entradaId] = Object.entries(grupos).map(([emoji, uids]) => ({ emoji, count: uids.length, mia: uids.includes(userId) }))
+    }
+    return result
+  }, [reacciones, userId])
 
   // ── FIJAR ENTRADAS (estado local, sin depender del store del contexto) ──
   const cargarFijadas = async (entradas) => {
@@ -1494,22 +1344,21 @@ export default function Mesa({ navigate, selectedUniverso }) {
     setFijadas(prev => ({ ...prev, [entrada.id]: nuevoValor }))
   }
 
-  const entradasFijadas = sesionCompleta.filter(e => fijadas[e.id])
-
-  // ── HISTORIAL DE DADOS ──
-  const tiradas = sesionCompleta.filter(e => e.tipo === 'dado')
-
   // ── BUSCADOR GLOBAL ──
   const buscarGlobal = async () => {
     if (!busquedaGlobal.trim() || !selectedUniverso) return
     setBuscandoGlobal(true)
-    const { data } = await supabase
+    let query = supabase
       .from('entradas')
       .select('*, sesiones(nombre)')
       .eq('universo_id', selectedUniverso.id)
       .ilike('contenido', `%${busquedaGlobal.trim()}%`)
-      .order('created_at', { ascending: false })
-      .limit(50)
+    if (filtroTipo) query = query.eq('tipo', filtroTipo)
+    if (filtroPersonaje) query = query.ilike('personaje_nombre', `%${filtroPersonaje.trim()}%`)
+    if (filtroFechaDesde) query = query.gte('created_at', filtroFechaDesde)
+    if (filtroFechaHasta) query = query.lte('created_at', filtroFechaHasta + 'T23:59:59Z')
+    query = query.order('created_at', { ascending: false }).limit(50)
+    const { data } = await query
     setResultadosGlobales(data || [])
     setBuscandoGlobal(false)
   }
@@ -1526,7 +1375,20 @@ export default function Mesa({ navigate, selectedUniverso }) {
         const nueva = payload.new
         if (nueva.user_id === userId) return
         if (nueva.sesion_id === sesionActiva?.id) return
-        if (nueva.sesion_id) setNotifsSesion(prev => ({ ...prev, [nueva.sesion_id]: (prev[nueva.sesion_id] || 0) + 1 }))
+        if (nueva.sesion_id) {
+          setNotifsSesion(prev => ({ ...prev, [nueva.sesion_id]: (prev[nueva.sesion_id] || 0) + 1 }))
+          // Push notification cuando la pestaña está en segundo plano
+          if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+            const sesCon = sesionesConMiembros.find(s => s.id === nueva.sesion_id)
+            const nombreSes = sesCon?.nombre || 'otra sesión'
+            const quien = nueva.personaje_nombre || 'Alguien'
+            new Notification(`💬 Nuevo mensaje en #${nombreSes}`, {
+              body: nueva.contenido?.slice(0, 80) || `${quien} ha escrito`,
+              icon: '/favicon.ico',
+              silent: false,
+            })
+          }
+        }
       })
       .subscribe()
     return () => supabase.removeChannel(canal)
@@ -1630,8 +1492,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
           </div>
           {seccionSesiones && (
             <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-              {sesiones.length === 0 && <p className="sidebar-empty">Sin sesiones. Crea la primera.</p>}
-              {sesiones.filter(s => !s.padre_id).map(s => (
+              {sesiones.filter(s => !s.archivada).length === 0 && <p className="sidebar-empty">Sin sesiones. Crea la primera.</p>}
+              {sesiones.filter(s => !s.padre_id && !s.archivada).map(s => (
                 <div key={s.id}>
                   <div className={`sesion-item ${sesionActiva?.id === s.id ? 'activa' : ''}`} onClick={() => { setSesionActiva(s); setSidebarAbierto(false) }}>
                     <span style={{ flex: 1 }}>{s.es_privada ? '🔒' : '#'} {s.nombre}</span>
@@ -1640,10 +1502,18 @@ export default function Mesa({ navigate, selectedUniverso }) {
                       {s.es_privada && s.user_id === userId && (
                         <button className="sesion-delete" title="Gestionar miembros" onClick={e => { e.stopPropagation(); abrirGestionSesion(s) }}>👥</button>
                       )}
+                      {(s.user_id === userId || esDueno) && (
+                        <button className="sesion-delete" title="Archivar sesión" onClick={async e => {
+                          e.stopPropagation()
+                          await archivarSesion(s.id, true)
+                          setSesionesConMiembros(prev => prev.map(x => x.id === s.id ? { ...x, archivada: true } : x))
+                          if (sesionActiva?.id === s.id) setSesionActiva(null)
+                        }}>📦</button>
+                      )}
                       <button className="sesion-delete" onClick={e => { e.stopPropagation(); setConfirmDeleteSesion(s) }}>✕</button>
                     </div>
                   </div>
-                  {sesiones.filter(sub => sub.padre_id === s.id).map(sub => (
+                  {(sesionesHijas.get(s.id) || []).filter(sub => !sub.archivada).map(sub => (
                     <div key={sub.id} className={`sesion-item sesion-sub ${sesionActiva?.id === sub.id ? 'activa' : ''}`} onClick={() => { setSesionActiva(sub); setSidebarAbierto(false) }}>
                       <span style={{ flex: 1 }}>↳ {sub.es_privada ? '🔒' : '#'} {sub.nombre}</span>
                       {notifsSesion[sub.id] > 0 && <span style={{ background: 'var(--accent)', color: '#000', borderRadius: '999px', fontSize: '0.65rem', padding: '0.1rem 0.4rem', fontWeight: 700, marginRight: '0.2rem' }}>{notifsSesion[sub.id]}</span>}
@@ -1651,10 +1521,38 @@ export default function Mesa({ navigate, selectedUniverso }) {
                         {sub.es_privada && sub.user_id === userId && (
                           <button className="sesion-delete" title="Gestionar miembros" onClick={e => { e.stopPropagation(); abrirGestionSesion(sub) }}>👥</button>
                         )}
+                        {(sub.user_id === userId || esDueno) && (
+                          <button className="sesion-delete" title="Archivar sesión" onClick={async e => {
+                            e.stopPropagation()
+                            await archivarSesion(sub.id, true)
+                            setSesionesConMiembros(prev => prev.map(x => x.id === sub.id ? { ...x, archivada: true } : x))
+                            if (sesionActiva?.id === sub.id) setSesionActiva(null)
+                          }}>📦</button>
+                        )}
                         <button className="sesion-delete" onClick={e => { e.stopPropagation(); setConfirmDeleteSesion(sub) }}>✕</button>
                       </div>
                     </div>
                   ))}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Sesiones archivadas */}
+          {sesiones.filter(s => s.archivada).length > 0 && (
+            <div style={{ marginTop: '0.4rem' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text3)', cursor: 'pointer', userSelect: 'none', padding: '0.2rem 0', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                onClick={() => setSeccionArchivadas(p => !p)}>
+                {seccionArchivadas ? '▾' : '▸'} 📦 Archivadas ({sesiones.filter(s => s.archivada).length})
+              </div>
+              {seccionArchivadas && sesiones.filter(s => s.archivada).map(s => (
+                <div key={s.id} className="sesion-item" style={{ opacity: 0.6 }} onClick={() => { setSesionActiva(s); setSidebarAbierto(false) }}>
+                  <span style={{ flex: 1 }}># {s.nombre}</span>
+                  <button className="sesion-delete" title="Desarchivar" onClick={async e => {
+                    e.stopPropagation()
+                    await archivarSesion(s.id, false)
+                    setSesionesConMiembros(prev => prev.map(x => x.id === s.id ? { ...x, archivada: false } : x))
+                  }}>♻️</button>
                 </div>
               ))}
             </div>
@@ -1816,11 +1714,79 @@ export default function Mesa({ navigate, selectedUniverso }) {
           )}
         </div>
 
+        {tieneApiKey() && (
+          <div className="sidebar-section">
+            <h4 style={{ cursor: 'pointer', userSelect: 'none', marginBottom: seccionIA ? '0.6rem' : 0 }} onClick={() => setSeccionIA(p => !p)}>
+              {seccionIA ? '▾' : '▸'} ✨ IA
+            </h4>
+            {seccionIA && (<>
+              <div style={{ marginBottom: '0.7rem' }}>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '0.3rem' }}>Descripción de escena</p>
+                <textarea
+                  placeholder="Taberna oscura, lluvia intensa..."
+                  value={textoEscenaIA}
+                  onChange={e => setTextoEscenaIA(e.target.value)}
+                  rows={2}
+                  style={{ width: '100%', resize: 'none', fontSize: '0.82rem', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', padding: '0.4rem 0.6rem', boxSizing: 'border-box' }}
+                />
+                <button className="modo-btn" style={{ marginTop: '0.3rem' }}
+                  disabled={generandoEscena || !sesionActiva || !textoEscenaIA.trim()}
+                  onClick={async () => {
+                    setGenerandoEscena(true)
+                    const texto = await generarDescripcionEscena(textoEscenaIA, selectedUniverso?.nombre)
+                    if (texto && sesionActiva) {
+                      await addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: texto }, sesionActiva.id)
+                      setTextoEscenaIA('')
+                    }
+                    setGenerandoEscena(false)
+                  }}>
+                  {generandoEscena ? '✨ Generando...' : '✨ Describir escena'}
+                </button>
+              </div>
+              <button className="modo-btn"
+                disabled={generandoNPC || !sesionActiva}
+                onClick={async () => {
+                  setGenerandoNPC(true)
+                  const texto = await generarNPC(selectedUniverso?.nombre)
+                  if (texto && sesionActiva) {
+                    await addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: `🎭 PNJ generado:\n${texto}` }, sesionActiva.id)
+                  }
+                  setGenerandoNPC(false)
+                }}>
+                {generandoNPC ? '✨ Generando...' : '✨ Generar PNJ'}
+              </button>
+            </>)}
+          </div>
+        )}
+
         <div className="sidebar-section">
           <h4 style={{ cursor: 'pointer', userSelect: 'none', marginBottom: seccionOpciones ? '0.6rem' : 0 }} onClick={() => setSeccionOpciones(p => !p)}>
             {seccionOpciones ? '▾' : '▸'} Opciones
           </h4>
           {seccionOpciones && (<>
+            {/* Tamaño de fuente */}
+            <div style={{ marginBottom: '0.6rem', padding: '0.4rem 0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text2)' }}>🔤 Tamaño de texto</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--accent)', fontFamily: 'Cinzel, serif', fontWeight: 700 }}>{tamanoFuente}px</span>
+              </div>
+              <input type="range" min="12" max="20" step="1" value={tamanoFuente}
+                style={{ width: '100%', accentColor: 'var(--accent)', cursor: 'pointer' }}
+                onChange={e => { const v = Number(e.target.value); setTamanoFuente(v); localStorage.setItem('mesaFontSize', v) }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--text3)', marginTop: '0.1rem' }}>
+                <span>Pequeño</span><span>Grande</span>
+              </div>
+            </div>
+            {tieneApiKey() && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0', marginBottom: '0.2rem' }}>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text2)' }}>✨ Dados dramáticos</span>
+                <button
+                  onClick={() => { const v = !dadoDramatico; setDadoDramatico(v); localStorage.setItem('dadoDramatico', v) }}
+                  style={{ background: dadoDramatico ? 'var(--accent)' : 'var(--bg3)', color: dadoDramatico ? '#000' : 'var(--text3)', border: 'none', borderRadius: '999px', padding: '0.15rem 0.7rem', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600, transition: 'background 0.2s' }}>
+                  {dadoDramatico ? 'ON' : 'OFF'}
+                </button>
+              </div>
+            )}
             <button className="modo-btn" onClick={exportarSesion} disabled={!sesionActiva}>📄 Exportar TXT</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={exportarPDF} disabled={!sesionActiva}>📕 Exportar PDF</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowStats(true)} disabled={!sesionActiva}>📊 Estadísticas</button>
@@ -1837,6 +1803,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMisiones(true)} disabled={!selectedUniverso}>📋 Misiones</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowGaleria(true)} disabled={!selectedUniverso}>🖼️ Galería</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowDadoEvento(true)} disabled={!selectedUniverso}>🎲 Dado de evento</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowObjetos(true)} disabled={!selectedUniverso}>🎒 Objetos</button>
             {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirResumen} disabled={!sesionActiva}>📜 Resumen de sesión</button>}
             {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowTimerConfig(true)} disabled={!selectedUniverso}>⏱️ Temporizador{timerDisplay ? ` · ${timerDisplay}` : ''}</button>}
             {musicaUrl && (
@@ -1896,8 +1863,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
           )}
           {sesionActiva && (
             <div className="buscador-historial">
-              <input placeholder="🔍 Buscar..." value={busqueda} onChange={e => setBusqueda(e.target.value)} />
-              {busqueda && <button onClick={() => setBusqueda('')}>✕</button>}
+              <input placeholder="🔍 Buscar..." value={busqueda} onChange={e => {
+                setBusqueda(e.target.value)
+                clearTimeout(busquedaDebounceRef.current)
+                busquedaDebounceRef.current = setTimeout(() => setBusquedaFiltro(e.target.value), 250)
+              }} />
+              {busqueda && <button onClick={() => { setBusqueda(''); setBusquedaFiltro('') }}>✕</button>}
             </div>
           )}
           {sesionActiva && entradasFijadas.length > 0 && (
@@ -1919,11 +1890,26 @@ export default function Mesa({ navigate, selectedUniverso }) {
           <span className="sesion-count">{sesion.length} entradas</span>
         </div>
 
-        <div className="historial" ref={historialRef} onScroll={handleScroll}>
+        {!estaOnline && (
+          <div style={{ background: '#c0392b', color: 'white', padding: '0.4rem 1rem', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}>
+            <span>📵</span>
+            <span>Sin conexión — Los mensajes no se enviarán hasta que vuelva la conexión.</span>
+          </div>
+        )}
+
+        <div className="historial" ref={historialRef} onScroll={handleScroll} style={{ fontSize: tamanoFuente + 'px' }}>
           {!sesionActiva && (
             <div className="historial-empty">
               <p>Selecciona o crea una sesión en el panel lateral para empezar.</p>
               <button className="btn-primary" style={{ marginTop: '1rem' }} onClick={() => setShowNuevaSesion(true)}>+ Nueva sesión</button>
+            </div>
+          )}
+          {sesionActiva && hayMasEntradas[sesionActiva.id] && !busquedaFiltro && (
+            <div style={{ textAlign: 'center', padding: '0.6rem 0' }}>
+              <button className="btn-ghost" style={{ fontSize: '0.82rem' }}
+                onClick={() => cargarEntradasAnteriores(sesionActiva.id)}>
+                ↑ Cargar mensajes anteriores
+              </button>
             </div>
           )}
           {sesionActiva && sesion.length === 0 && <div className="historial-empty"><p>{busqueda ? 'Sin resultados.' : '¡Empieza a escribir!'}</p></div>}
@@ -1945,7 +1931,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
           {sesion.map(e => (
             <div key={e.id} id={`entrada-${e.id}`} className={`entrada entrada-${e.tipo}${fijadas[e.id] ? ' entrada-fijada' : ''}`}>
               {e.responder_a_id && (() => {
-                const ref = sesionCompleta.find(x => x.id === e.responder_a_id)
+                const ref = entradaMap.get(e.responder_a_id)
                 if (!ref) return null
                 return (
                   <div style={{ margin: '0.3rem 0.8rem 0', padding: '0.3rem 0.6rem', background: 'rgba(180,140,60,0.08)', borderLeft: '3px solid var(--accent)', borderRadius: '0 4px 4px 0', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--text3)' }}
@@ -1960,7 +1946,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   <span className="entrada-label">📖 Narrador</span>
                   {e.contenido && <p className={e.tono && e.tono !== 'normal' ? `entrada-tono-${e.tono}` : ''}>{renderMensaje(e.contenido, miNombrePerfil)}</p>}
                   {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '240px', borderRadius: '8px', marginTop: '0.4rem', cursor: 'pointer' }} onClick={() => abrirUrlSegura(e.imagen_url)} />}
-                  <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
+                  <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && (e.versiones?.length > 0
+  ? <span className="entrada-editado" style={{ cursor: 'pointer', textDecoration: 'underline dotted' }} onClick={ev => { ev.stopPropagation(); setShowVersiones(e) }}> · editado ({e.versiones.length})</span>
+  : <span className="entrada-editado"> · editado</span>
+)}</span>
                   {e.user_id === userId && (
                     <div className="entrada-acciones">
                       {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
@@ -2009,7 +1998,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   </div>
                 )
                 const hora = (
-                  <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
+                  <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && (e.versiones?.length > 0
+  ? <span className="entrada-editado" style={{ cursor: 'pointer', textDecoration: 'underline dotted' }} onClick={ev => { ev.stopPropagation(); setShowVersiones(e) }}> · editado ({e.versiones.length})</span>
+  : <span className="entrada-editado"> · editado</span>
+)}</span>
                 )
 
                 if (esTipoDialogo) {
@@ -2077,7 +2069,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   <div style={{ position: 'relative' }}>
                     <button onClick={() => setShowReacciones(showReacciones === e.id ? null : e.id)} title="Reaccionar">＋😊</button>
                     {showReacciones === e.id && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, background: 'var(--bg2)', border: '1px solid var(--border2)', borderRadius: 'var(--radius)', padding: '0.4rem', display: 'flex', gap: '0.3rem', zIndex: 200, boxShadow: 'var(--shadow)' }}>
+                      <div style={{ position: 'absolute', bottom: '100%', right: 0, background: 'var(--bg2)', border: '1px solid var(--border2)', borderRadius: 'var(--radius)', padding: '0.4rem', display: 'flex', flexWrap: 'wrap', gap: '0.3rem', zIndex: 200, boxShadow: 'var(--shadow)', maxWidth: '200px', marginBottom: '0.3rem' }}>
                         {EMOJIS_RAPIDOS.map(em => (
                           <button key={em} onClick={() => toggleReaccion(e.id, em)}
                             style={{ background: 'none', border: 'none', fontSize: '1.1rem', cursor: 'pointer', padding: '0.1rem', borderRadius: '4px' }}>{em}</button>
@@ -2099,9 +2091,9 @@ export default function Mesa({ navigate, selectedUniverso }) {
               {e.tipo !== 'dado' && (
                 <>
                   {/* Pills de reacciones existentes — siempre visibles */}
-                  {agruparReacciones(e.id).length > 0 && (
+                  {(agruparReacciones[e.id] || []).length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', padding: '0.1rem 0.8rem 0.3rem' }}>
-                      {agruparReacciones(e.id).map(({ emoji, count, mia }) => (
+                      {(agruparReacciones[e.id] || []).map(({ emoji, count, mia }) => (
                         <button key={emoji} onClick={() => toggleReaccion(e.id, emoji)}
                           style={{ background: mia ? 'rgba(180,140,60,0.15)' : 'var(--bg3)', border: `1px solid ${mia ? 'var(--accent)' : 'var(--border)'}`, borderRadius: '999px', padding: '0.1rem 0.5rem', fontSize: '0.82rem', cursor: 'pointer', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
                           {emoji} <span style={{ fontSize: '0.75rem', color: mia ? 'var(--accent)' : 'var(--text3)' }}>{count}</span>
@@ -2209,9 +2201,9 @@ export default function Mesa({ navigate, selectedUniverso }) {
               rows={2}
               disabled={!sesionActiva}
             />
-            <button className="btn-enviar" onClick={enviar} disabled={!sesionActiva}>↵</button>
+            <button className="btn-enviar" onClick={enviar} disabled={!sesionActiva || !estaOnline}>↵</button>
           </div>
-          <span className="input-hint">Enter para enviar · Shift+Enter para nueva línea</span>
+          <span className="input-hint">Enter para enviar · Shift+Enter para nueva línea · Ctrl+B buscar · Ctrl+M música · Esc cerrar</span>
         </div>
       </main>
 
@@ -2394,77 +2386,59 @@ export default function Mesa({ navigate, selectedUniverso }) {
         </div>
       )}
 
-      {showStats && sesionActiva && (() => {
-        const entradas = sesionCompleta
-        const porTipo = {
-          narrador: entradas.filter(e => e.tipo === 'narrador'),
-          dialogo: entradas.filter(e => e.tipo === 'dialogo'),
-          accion: entradas.filter(e => e.tipo === 'accion'),
-          dado: entradas.filter(e => e.tipo === 'dado'),
-        }
-        const palabras = entradas.reduce((acc, e) => acc + (e.contenido?.split(/\s+/).filter(Boolean).length || 0), 0)
-        const porPersonaje = {}
-        entradas.filter(e => e.personaje_nombre).forEach(e => {
-          const k = e.personaje_nombre
-          if (!porPersonaje[k]) porPersonaje[k] = { nombre: k, color: e.personaje_color, count: 0, palabras: 0 }
-          porPersonaje[k].count++
-          porPersonaje[k].palabras += e.contenido?.split(/\s+/).filter(Boolean).length || 0
-        })
-        const rankPersonajes = Object.values(porPersonaje).sort((a, b) => b.count - a.count)
-        return (
-          <div className="modal-overlay" onClick={() => setShowStats(false)}>
-            <div className="modal" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
-              <h3>📊 Estadísticas — {sesionActiva.nombre}</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem', margin: '1.2rem 0' }}>
-                {[
-                  { label: 'Entradas', valor: entradas.length, icono: '📝' },
-                  { label: 'Palabras', valor: palabras, icono: '✍️' },
-                  { label: 'Dados', valor: porTipo.dado.length, icono: '🎲' },
-                ].map(({ label, valor, icono }) => (
-                  <div key={label} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.8rem', textAlign: 'center' }}>
-                    <div style={{ fontSize: '1.4rem' }}>{icono}</div>
-                    <div style={{ fontFamily: 'Cinzel, serif', fontSize: '1.3rem', color: 'var(--accent)', fontWeight: 700 }}>{valor}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ marginBottom: '1.2rem' }}>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.6rem' }}>Por tipo</p>
-                {[
-                  { label: 'Narrador', count: porTipo.narrador.length, icono: '📖', color: 'var(--narrador)' },
-                  { label: 'Diálogo', count: porTipo.dialogo.length, icono: '💬', color: 'var(--accent)' },
-                  { label: 'Acción', count: porTipo.accion.length, icono: '⚡', color: '#e67e22' },
-                ].map(({ label, count, icono, color }) => (
-                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.4rem' }}>
-                    <span style={{ width: '70px', fontSize: '0.82rem', color: 'var(--text2)' }}>{icono} {label}</span>
-                    <div style={{ flex: 1, height: '6px', background: 'var(--bg3)', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ width: entradas.length ? `${(count / entradas.length) * 100}%` : '0%', height: '100%', background: color, borderRadius: '3px', transition: 'width 0.4s' }} />
-                    </div>
-                    <span style={{ fontSize: '0.82rem', color: 'var(--text2)', minWidth: '28px', textAlign: 'right' }}>{count}</span>
-                  </div>
-                ))}
-              </div>
-              {rankPersonajes.length > 0 && (
-                <div>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.6rem' }}>Participación por personaje</p>
-                  {rankPersonajes.map((p, i) => (
-                    <div key={p.nombre} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text3)', minWidth: '14px' }}>#{i + 1}</span>
-                      <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: p.color, flexShrink: 0 }} />
-                      <span style={{ flex: 1, fontSize: '0.85rem', color: p.color, fontFamily: 'Cinzel, serif' }}>{p.nombre}</span>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>{p.palabras} pal.</span>
-                      <span style={{ fontSize: '0.82rem', color: 'var(--text2)', minWidth: '36px', textAlign: 'right' }}>{p.count} entr.</span>
-                    </div>
-                  ))}
+      {showStats && sesionActiva && statsData && (
+        <div className="modal-overlay" onClick={() => setShowStats(false)}>
+          <div className="modal" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
+            <h3>📊 Estadísticas — {sesionActiva.nombre}</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem', margin: '1.2rem 0' }}>
+              {[
+                { label: 'Entradas', valor: statsData.total, icono: '📝' },
+                { label: 'Palabras', valor: statsData.palabras, icono: '✍️' },
+                { label: 'Dados', valor: statsData.porTipo.dado, icono: '🎲' },
+              ].map(({ label, valor, icono }) => (
+                <div key={label} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.8rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.4rem' }}>{icono}</div>
+                  <div style={{ fontFamily: 'Cinzel, serif', fontSize: '1.3rem', color: 'var(--accent)', fontWeight: 700 }}>{valor}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
                 </div>
-              )}
-              <div className="modal-actions" style={{ marginTop: '1.5rem' }}>
-                <button className="btn-primary" onClick={() => setShowStats(false)}>Cerrar</button>
+              ))}
+            </div>
+            <div style={{ marginBottom: '1.2rem' }}>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.6rem' }}>Por tipo</p>
+              {[
+                { label: 'Narrador', count: statsData.porTipo.narrador, icono: '📖', color: 'var(--narrador)' },
+                { label: 'Diálogo', count: statsData.porTipo.dialogo, icono: '💬', color: 'var(--accent)' },
+                { label: 'Acción', count: statsData.porTipo.accion, icono: '⚡', color: '#e67e22' },
+              ].map(({ label, count, icono, color }) => (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.4rem' }}>
+                  <span style={{ width: '70px', fontSize: '0.82rem', color: 'var(--text2)' }}>{icono} {label}</span>
+                  <div style={{ flex: 1, height: '6px', background: 'var(--bg3)', borderRadius: '3px', overflow: 'hidden' }}>
+                    <div style={{ width: statsData.total ? `${(count / statsData.total) * 100}%` : '0%', height: '100%', background: color, borderRadius: '3px', transition: 'width 0.4s' }} />
+                  </div>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text2)', minWidth: '28px', textAlign: 'right' }}>{count}</span>
+                </div>
+              ))}
+            </div>
+            {statsData.rankPersonajes.length > 0 && (
+              <div>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.6rem' }}>Participación por personaje</p>
+                {statsData.rankPersonajes.map((p, i) => (
+                  <div key={p.nombre} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text3)', minWidth: '14px' }}>#{i + 1}</span>
+                    <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: '0.85rem', color: p.color, fontFamily: 'Cinzel, serif' }}>{p.nombre}</span>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>{p.palabras} pal.</span>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text2)', minWidth: '36px', textAlign: 'right' }}>{p.count} entr.</span>
+                  </div>
+                ))}
               </div>
+            )}
+            <div className="modal-actions" style={{ marginTop: '1.5rem' }}>
+              <button className="btn-primary" onClick={() => setShowStats(false)}>Cerrar</button>
             </div>
           </div>
-        )
-      })()}
+        </div>
+      )}
 
       {gestionarSesion && (
         <div className="modal-overlay" onClick={() => setGestionarSesion(null)}>
@@ -2551,7 +2525,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
         <div className="modal-overlay" onClick={() => { setShowBusquedaGlobal(false); setResultadosGlobales([]); setBusquedaGlobal('') }}>
           <div className="modal" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
             <h3>🔍 Buscar en {selectedUniverso?.nombre}</h3>
-            <div style={{ display: 'flex', gap: '0.5rem', margin: '1rem 0' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', margin: '1rem 0 0.6rem' }}>
               <input placeholder="Buscar en todas las sesiones..."
                 value={busquedaGlobal} onChange={e => setBusquedaGlobal(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && buscarGlobal()} autoFocus
@@ -2559,6 +2533,34 @@ export default function Mesa({ navigate, selectedUniverso }) {
               <button className="btn-primary" onClick={buscarGlobal} disabled={buscandoGlobal || !busquedaGlobal.trim()}>
                 {buscandoGlobal ? '...' : 'Buscar'}
               </button>
+            </div>
+            {/* Filtros */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '1rem' }}>
+              <div>
+                <label style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'block', marginBottom: '0.2rem' }}>Tipo</label>
+                <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}
+                  style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text)', padding: '0.35rem 0.6rem', borderRadius: 'var(--radius)', fontSize: '0.82rem' }}>
+                  <option value="">Todos</option>
+                  <option value="narrador">Narrador</option>
+                  <option value="dialogo">Diálogo</option>
+                  <option value="accion">Acción</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'block', marginBottom: '0.2rem' }}>Personaje</label>
+                <input placeholder="Nombre del personaje" value={filtroPersonaje} onChange={e => setFiltroPersonaje(e.target.value)}
+                  style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text)', padding: '0.35rem 0.6rem', borderRadius: 'var(--radius)', fontSize: '0.82rem', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'block', marginBottom: '0.2rem' }}>Desde</label>
+                <input type="date" value={filtroFechaDesde} onChange={e => setFiltroFechaDesde(e.target.value)}
+                  style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text)', padding: '0.35rem 0.6rem', borderRadius: 'var(--radius)', fontSize: '0.82rem', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'block', marginBottom: '0.2rem' }}>Hasta</label>
+                <input type="date" value={filtroFechaHasta} onChange={e => setFiltroFechaHasta(e.target.value)}
+                  style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text)', padding: '0.35rem 0.6rem', borderRadius: 'var(--radius)', fontSize: '0.82rem', boxSizing: 'border-box' }} />
+              </div>
             </div>
             {resultadosGlobales.length > 0 && (
               <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
@@ -2595,7 +2597,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
               <p style={{ color: 'var(--text3)', fontStyle: 'italic', textAlign: 'center', margin: '1rem 0' }}>Sin resultados para "{busquedaGlobal}"</p>
             )}
             <div className="modal-actions" style={{ marginTop: '1rem' }}>
-              <button className="btn-ghost" onClick={() => { setShowBusquedaGlobal(false); setResultadosGlobales([]); setBusquedaGlobal('') }}>Cerrar</button>
+              <button className="btn-ghost" onClick={() => { setShowBusquedaGlobal(false); setResultadosGlobales([]); setBusquedaGlobal(''); setFiltroTipo(''); setFiltroPersonaje(''); setFiltroFechaDesde(''); setFiltroFechaHasta('') }}>Cerrar</button>
             </div>
           </div>
         </div>
@@ -2647,9 +2649,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
       )}
 
       {showMisiones && selectedUniverso && (
-        <PanelMisiones universoId={selectedUniverso.id} userId={userId} esDueno={esDueno} onCerrar={() => setShowMisiones(false)} />
+        <PanelMisiones universoId={selectedUniverso.id} userId={userId} esDueno={esDueno} onCerrar={() => setShowMisiones(false)} universoNombre={selectedUniverso.nombre} />
       )}
 
+      {showObjetos && selectedUniverso && (
+        <PanelObjetos universo={selectedUniverso} personajes={personajes} userId={userId} esDueno={esDueno} onCerrar={() => setShowObjetos(false)} />
+      )}
       {showDadoEvento && selectedUniverso && (
         <PanelDadoEvento
           universoId={selectedUniverso.id}
@@ -2691,24 +2696,59 @@ export default function Mesa({ navigate, selectedUniverso }) {
       )}
 
       {showResumen && (
-        <div className="modal-overlay" onClick={() => setShowResumen(false)}>
+        <div className="modal-overlay" onClick={() => { setShowResumen(false); setCargandoResumen(false) }}>
           <div className="modal" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>📜 Resumen de sesión</h3>
-              <button onClick={() => setShowResumen(false)}>✕</button>
+              <h3>📜 Resumen de sesión{cargandoResumen ? ' — generando con IA…' : ''}</h3>
+              <button onClick={() => { setShowResumen(false); setCargandoResumen(false) }}>✕</button>
             </div>
-            <pre style={{ fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: '0.88rem', color: 'var(--text2)', background: 'var(--bg3)', padding: '1rem', borderRadius: 'var(--radius)', maxHeight: '400px', overflowY: 'auto', lineHeight: 1.7, margin: '0 0 1rem' }}>
-              {resumenTexto}
-            </pre>
+            {cargandoResumen
+              ? <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text3)' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '0.8rem', animation: 'spin 1.5s linear infinite', display: 'inline-block' }}>✨</div>
+                  <p style={{ fontStyle: 'italic' }}>Gemini está leyendo la sesión...</p>
+                </div>
+              : <pre style={{ fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: '0.88rem', color: 'var(--text2)', background: 'var(--bg3)', padding: '1rem', borderRadius: 'var(--radius)', maxHeight: '400px', overflowY: 'auto', lineHeight: 1.7, margin: '0 0 1rem' }}>
+                  {resumenTexto}
+                </pre>
+            }
             <div className="modal-actions">
-              <button className="btn-ghost" onClick={() => setShowResumen(false)}>Cerrar</button>
-              <button className="btn-ghost" onClick={() => { navigator.clipboard?.writeText(resumenTexto).catch(() => {}) }}>📋 Copiar</button>
-              {sesionActiva && (
-                <button className="btn-primary" onClick={() => {
-                  addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: resumenTexto }, sesionActiva.id)
-                  setShowResumen(false)
-                }}>📢 Publicar en mesa</button>
-              )}
+              <button className="btn-ghost" onClick={() => { setShowResumen(false); setCargandoResumen(false) }}>Cerrar</button>
+              {!cargandoResumen && <>
+                <button className="btn-ghost" onClick={() => { navigator.clipboard?.writeText(resumenTexto).catch(() => {}) }}>📋 Copiar</button>
+                {sesionActiva && (
+                  <button className="btn-primary" onClick={() => {
+                    addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: resumenTexto }, sesionActiva.id)
+                    setShowResumen(false)
+                  }}>📢 Publicar en mesa</button>
+                )}
+              </>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal historial de versiones */}
+      {showVersiones && (
+        <div className="modal-overlay" onClick={() => setShowVersiones(null)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <h3>📝 Historial de ediciones</h3>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '1rem', fontStyle: 'italic' }}>Versiones anteriores (más reciente primero)</p>
+            <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
+              {[...showVersiones.versiones].reverse().map((v, i) => (
+                <div key={i} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.6rem 0.8rem', marginBottom: '0.5rem' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--accent)', marginBottom: '0.3rem', fontFamily: 'Cinzel, serif' }}>
+                    {new Date(v.ts).toLocaleString('es-ES', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text2)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{v.contenido}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ background: 'rgba(180,140,60,0.06)', border: '1px solid rgba(180,140,60,0.15)', borderRadius: 'var(--radius)', padding: '0.5rem 0.8rem', marginTop: '0.6rem' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginBottom: '0.3rem', fontFamily: 'Cinzel, serif' }}>Versión actual</div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{showVersiones.contenido}</div>
+            </div>
+            <div className="modal-actions" style={{ marginTop: '1rem' }}>
+              <button className="btn-primary" onClick={() => setShowVersiones(null)}>Cerrar</button>
             </div>
           </div>
         </div>
@@ -2730,22 +2770,43 @@ export default function Mesa({ navigate, selectedUniverso }) {
             {/* Control de cambio — solo para el dueño del universo */}
             {esDueno ? (
               <>
-                <p style={{ color: 'var(--text2)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-                  Pega una URL de YouTube (vídeo, playlist o mix).
-                </p>
-                <div className="form-group">
-                  <label>URL de YouTube</label>
-                  <input
-                    placeholder="https://www.youtube.com/watch?v=... o youtu.be/..."
-                    value={youtubeUrl}
-                    onChange={e => setYoutubeUrl(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && cargarYoutube()}
-                    autoFocus
-                  />
+                {/* Presets por escena */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.3rem' }}>Buscar música por escena en YouTube</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text3)', fontStyle: 'italic', marginBottom: '0.5rem' }}>Haz click para buscar → copia la URL del vídeo que quieras → pégala abajo</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.35rem' }}>
+                    {[
+                      { label: '⚔️ Combate épico', q: 'epic battle RPG fantasy music' },
+                      { label: '🌲 Exploración', q: 'fantasy exploration ambient music DnD' },
+                      { label: '🍺 Taberna', q: 'tavern music medieval fantasy RPG' },
+                      { label: '🏰 Mazmorra', q: 'dungeon dark ambient RPG music' },
+                      { label: '🌙 Misterio', q: 'mystery suspense RPG ambient music' },
+                      { label: '🌊 Viaje / Mar', q: 'sea voyage adventure fantasy music' },
+                      { label: '🏙️ Ciudad medieval', q: 'medieval city ambient fantasy music' },
+                      { label: '😢 Drama / Tensión', q: 'dramatic tense fantasy RPG music' },
+                    ].map(preset => (
+                      <a key={preset.label}
+                        href={`https://www.youtube.com/results?search_query=${encodeURIComponent(preset.q)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.4rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text2)', textAlign: 'left', transition: 'border-color 0.15s', textDecoration: 'none', display: 'block' }}>
+                        {preset.label} ↗
+                      </a>
+                    ))}
+                  </div>
                 </div>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text3)', marginBottom: '1rem', fontStyle: 'italic' }}>
-                  Busca "fantasy ambient music", "RPG battle music" o "D&D tavern music" en YouTube.
-                </p>
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.8rem' }}>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>Pega la URL del vídeo elegido</p>
+                  <div className="form-group">
+                    <input
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      value={youtubeUrl}
+                      onChange={e => setYoutubeUrl(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && cargarYoutube(youtubeUrl)}
+                      autoFocus
+                    />
+                  </div>
+                </div>
                 {musicaUrl && (
                   <button className="btn-danger btn-sm" style={{ marginBottom: '0.5rem' }} onClick={() => { quitarMusica(); setShowMusica(false) }}>
                     Quitar música
@@ -2753,7 +2814,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                 )}
                 <div className="modal-actions">
                   <button className="btn-ghost" onClick={() => setShowMusica(false)}>Cancelar</button>
-                  <button className="btn-primary" onClick={cargarYoutube} disabled={!youtubeUrl.trim()}>Cargar</button>
+                  <button className="btn-primary" onClick={() => cargarYoutube(youtubeUrl)} disabled={!youtubeUrl.trim()}>Cargar URL</button>
                 </div>
               </>
             ) : (

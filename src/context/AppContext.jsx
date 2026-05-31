@@ -84,8 +84,46 @@ export function AppProvider({ userId, children }) {
   }
 
   const deleteUniverso = async (id) => {
+    // Recoger todas las imágenes asociadas antes de borrar
+    const [{ data: pers }, { data: sess }] = await Promise.all([
+      supabase.from('personajes').select('avatar_url').eq('universo_id', id),
+      supabase.from('sesiones').select('id').eq('universo_id', id),
+    ])
+
+    // Imágenes de chat: entradas + mensajes privados del universo
+    const sesionIds = (sess || []).map(s => s.id)
+    let imagenesChat = []
+    const [entradasRes, mensajesRes] = await Promise.all([
+      sesionIds.length > 0
+        ? supabase.from('entradas').select('imagen_url').in('sesion_id', sesionIds).not('imagen_url', 'is', null)
+        : Promise.resolve({ data: [] }),
+      supabase.from('mensajes_privados').select('imagen_url').eq('universo_id', id).not('imagen_url', 'is', null),
+    ])
+    imagenesChat = [
+      ...(entradasRes.data || []).map(e => e.imagen_url.split('/imagenes-chat/')[1]),
+      ...(mensajesRes.data || []).map(m => m.imagen_url.split('/imagenes-chat/')[1]),
+    ].filter(Boolean)
+
+    // Imágenes de galería de personajes
+    const personajeIds = (pers || []).map(p => p.id).filter(Boolean)
+    let imagenesGaleria = []
+    if (personajeIds.length > 0) {
+      const { data: gal } = await supabase
+        .from('personaje_imagenes').select('url').in('personaje_id', personajeIds)
+      imagenesGaleria = (gal || []).map(g => g.url.split('/personaje-imagenes/')[1]).filter(Boolean)
+    }
+
+    // Avatares de personajes
+    const avatares = (pers || [])
+      .map(p => p.avatar_url?.split('/avatares/')[1]).filter(Boolean)
+
     const { error } = await supabase.from('universos').delete().eq('id', id).eq('user_id', userId)
     if (!error) {
+      // Limpiar storage en paralelo (fire-and-forget, no bloquear UI)
+      if (avatares.length > 0) supabase.storage.from('avatares').remove(avatares)
+      if (imagenesChat.length > 0) supabase.storage.from('imagenes-chat').remove(imagenesChat)
+      if (imagenesGaleria.length > 0) supabase.storage.from('personaje-imagenes').remove(imagenesGaleria)
+
       setUniversos(prev => prev.filter(u => u.id !== id))
       setPersonajes(prev => prev.filter(p => p.universo_id !== id))
     }
@@ -146,6 +184,7 @@ export function AppProvider({ userId, children }) {
  // SESIONES (hilos)
 const [listaSesiones, setListaSesiones] = useState({})
 const [sesionActivaId, setSesionActivaId] = useState({})
+const [hayMasEntradas, setHayMasEntradas] = useState({})
 
 const cargarListaSesiones = async (universoId) => {
   const { data } = await supabase
@@ -191,8 +230,9 @@ const eliminarSesion = async (sesionId, universoId) => {
   return { error }
 }
 
+const PAGINA_ENTRADAS = 100
+
 const cargarSesion = async (sesionId) => {
-  // Obtener joined_at del usuario en esta sesión (si es privada)
   const { data: membresia } = await supabase
     .from('sesion_miembros')
     .select('joined_at')
@@ -204,16 +244,40 @@ const cargarSesion = async (sesionId) => {
     .from('entradas')
     .select('*')
     .eq('sesion_id', sesionId)
-    .order('created_at')
+    .order('created_at', { ascending: false })
+    .limit(PAGINA_ENTRADAS)
 
-  // Si tiene joined_at y no es desde el principio de los tiempos, filtrar
   if (membresia?.joined_at && membresia.joined_at > '2001-01-01') {
     query = query.gte('created_at', membresia.joined_at)
   }
 
   const { data } = await query
-  const formateadas = (data || []).map(formatearEntrada)
+  const formateadas = (data || []).reverse().map(formatearEntrada)
   setSesiones(prev => ({ ...prev, [sesionId]: formateadas }))
+  // Indicar si puede haber más entradas anteriores
+  setHayMasEntradas(prev => ({ ...prev, [sesionId]: (data || []).length === PAGINA_ENTRADAS }))
+}
+
+const cargarEntradasAnteriores = async (sesionId) => {
+  const actuales = sesiones[sesionId] || []
+  if (actuales.length === 0) return
+  const masVieja = actuales[0].created_at
+
+  const { data } = await supabase
+    .from('entradas')
+    .select('*')
+    .eq('sesion_id', sesionId)
+    .lt('created_at', masVieja)
+    .order('created_at', { ascending: false })
+    .limit(PAGINA_ENTRADAS)
+
+  if (!data || data.length === 0) {
+    setHayMasEntradas(prev => ({ ...prev, [sesionId]: false }))
+    return
+  }
+  const formateadas = data.reverse().map(formatearEntrada)
+  setSesiones(prev => ({ ...prev, [sesionId]: [...formateadas, ...(prev[sesionId] || [])] }))
+  setHayMasEntradas(prev => ({ ...prev, [sesionId]: data.length === PAGINA_ENTRADAS }))
 }
 
 const getSesion = (sesionId) => sesiones[sesionId] || []
@@ -255,9 +319,15 @@ const getSesion = (sesionId) => sesiones[sesionId] || []
   }
 }
 const editarEntrada = async (id, contenido) => {
+  const entrada = Object.values(sesiones).flat().find(e => e.id === id)
+  const versionesActuales = entrada?.versiones || []
+  const nuevasVersiones = entrada?.contenido
+    ? [...versionesActuales, { contenido: entrada.contenido, ts: new Date().toISOString() }]
+    : versionesActuales
+
   const { data, error } = await supabase
     .from('entradas')
-    .update({ contenido, editado: true })
+    .update({ contenido, editado: true, versiones: nuevasVersiones })
     .eq('id', id)
     .eq('user_id', userId)
     .select()
@@ -265,16 +335,30 @@ const editarEntrada = async (id, contenido) => {
     setSesiones(prev => {
       const nuevo = {}
       for (const key in prev) {
-        nuevo[key] = prev[key].map(e => e.id === id ? { ...e, contenido, editado: true } : e)
+        nuevo[key] = prev[key].map(e => e.id === id ? { ...e, contenido, editado: true, versiones: nuevasVersiones } : e)
       }
       return nuevo
     })
   }
 }
 
+const archivarSesion = async (sesionId, archivar) => {
+  const { error } = await supabase
+    .from('sesiones')
+    .update({ archivada: archivar })
+    .eq('id', sesionId)
+  return { error }
+}
+
 const borrarEntrada = async (id) => {
+  // Obtener imagen_url antes de borrar para limpiar storage
+  const entrada = Object.values(sesiones).flat().find(e => e.id === id)
   const { error } = await supabase.from('entradas').delete().eq('id', id).eq('user_id', userId)
   if (!error) {
+    if (entrada?.imagen_url) {
+      const path = entrada.imagen_url.split('/imagenes-chat/')[1]
+      if (path) supabase.storage.from('imagenes-chat').remove([path])
+    }
     setSesiones(prev => {
       const nuevo = {}
       for (const key in prev) {
@@ -329,6 +413,16 @@ const borrarEntrada = async (id) => {
     const { data: u } = await supabase.from('universos').select('*').eq('id', inv.universo_id).single()
     if (u) setUniversos(prev => prev.find(x => x.id === u.id) ? prev : [...prev, u])
     return { ok: true, universo: u }
+  }
+
+  const limpiarInvitacionesAntiguas = async (universoId) => {
+    const hace30dias = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    await supabase
+      .from('invitaciones')
+      .delete()
+      .eq('universo_id', universoId)
+      .eq('estado', 'pendiente')
+      .lt('created_at', hace30dias)
   }
 
   // TIEMPO REAL
@@ -398,13 +492,14 @@ const suscribirMesa = (universoId, sesionId, onNuevaEntrada) => {
       universos, personajes, sesiones, cargando, userId,
       addUniverso, addPersonaje, deleteUniverso, deletePersonaje,
       updateUniverso, updatePersonaje,
-      addEntrada, getPersonajesDeUniverso, getSesion, cargarSesion,
-      invitarUsuario, getInvitaciones, aceptarInvitacion,
+      addEntrada, getPersonajesDeUniverso, getSesion, cargarSesion, cargarEntradasAnteriores,
+      invitarUsuario, getInvitaciones, aceptarInvitacion, limpiarInvitacionesAntiguas,
       suscribirMesa, esPropietario,
       listaSesiones, sesionActivaId, setSesionActivaId,
+      hayMasEntradas,
 cargarListaSesiones, crearSesion, eliminarSesion,
 editarEntrada, borrarEntrada, getPerfil,
-backupUniverso, transferirPropiedad,
+backupUniverso, transferirPropiedad, archivarSesion,
     }}>
       {children}
     </AppContext.Provider>

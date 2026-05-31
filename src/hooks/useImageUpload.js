@@ -34,6 +34,7 @@ export function useImageUpload(bucket, { compressionType = 'chat' } = {}) {
     } catch (err) {
       const msg = err.message || 'Error al subir la imagen'
       setError(msg)
+      alert(msg)
       return { url: null, error: msg }
     } finally {
       setUploading(false)

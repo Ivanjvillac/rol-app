@@ -387,17 +387,17 @@ input, textarea, select {
 .form-group textarea:focus,
 .form-group select:focus { border-color: var(--accent2); }
 
-.color-picker { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.color-picker { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .color-dot {
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   cursor: pointer;
   transition: all 0.2s;
   border: 2px solid transparent;
 }
-.color-dot.selected { border-color: white; transform: scale(1.2); }
-.color-dot:hover { transform: scale(1.15); }
+.color-dot.selected { border-color: white; transform: scale(1.15); }
+.color-dot:hover { transform: scale(1.1); }
 
 .modal-actions { display: flex; gap: 0.7rem; justify-content: flex-end; margin-top: 1.5rem; }
 
@@ -474,7 +474,7 @@ input, textarea, select {
 
 .personaje-btn:hover { background: var(--bg3); }
 .personaje-btn.activo { background: var(--bg4); }
-.personaje-btn span { font-size: 0.95rem; color: var(--text); }
+.personaje-btn span { font-size: 0.95rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
 .personaje-btn small { display: block; font-size: 0.78rem; color: var(--text3); }
 
 .narrador-btn .narrador-avatar { background: var(--bg4) !important; border: 1px solid var(--border2); }
@@ -772,6 +772,10 @@ input, textarea, select {
   letter-spacing: 0.04em;
   color: var(--text3);
   text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
 }
 
 .input-row { display: flex; gap: 0.5rem; align-items: flex-end; }
@@ -1241,7 +1245,7 @@ input, textarea, select {
     position: fixed;
     top: 0;
     left: -290px;
-    width: 280px;
+    width: min(280px, 82vw);
     height: 100vh;
     z-index: 500;
     background: var(--bg2);
@@ -1332,12 +1336,14 @@ input, textarea, select {
   .entrada-accion-texto { font-size: 0.92rem; }
 
   /* Input bar */
-  .mesa-input-bar { padding: 0.45rem 0.6rem; }
+  .mesa-input-bar { padding: 0.45rem 0.6rem; padding-bottom: calc(0.45rem + 52px + env(safe-area-inset-bottom, 0px)); }
   .input-contexto { margin-bottom: 0.25rem; }
   .input-modo { font-size: 0.68rem; }
   .mesa-textarea { font-size: 0.95rem; max-height: 80px; min-height: 34px; padding: 0.4rem 0.7rem; }
-  .btn-enviar { width: 36px; height: 36px; font-size: 0.95rem; }
+  .btn-enviar { width: 40px; height: 40px; font-size: 0.95rem; }
   .input-hint { display: none; }
+  .formato-bar { flex-wrap: wrap; gap: 0.25rem; }
+  .formato-btn { width: 32px; height: 32px; }
 
   /* Grid personajes */
   .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.7rem; }
@@ -1350,10 +1356,10 @@ input, textarea, select {
   border: 1px solid var(--border2);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  width: 320px;
+  width: min(320px, calc(100vw - 1rem));
   position: fixed;
-  bottom: 80px;
-  left: 60px;
+  bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  left: clamp(0.5rem, 60px, calc(100vw - 330px));
   z-index: 300;
   box-shadow: var(--shadow);
   max-height: min(460px, calc(100vh - 120px));
@@ -1997,19 +2003,23 @@ input, textarea, select {
   display: flex;
   border-bottom: 1px solid var(--border);
   margin-bottom: 1rem;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.detalle-tabs::-webkit-scrollbar { display: none; }
 
 .detalle-tab {
-  flex: 1;
+  flex: 0 0 auto;
   background: none;
   border: none;
   color: var(--text2);
-  padding: 0.6rem;
+  padding: 0.6rem 0.75rem;
   font-family: 'Crimson Pro', serif;
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   cursor: pointer;
   transition: all 0.15s;
   border-bottom: 2px solid transparent;
+  white-space: nowrap;
 }
 
 .detalle-tab:hover { color: var(--text); }
@@ -2773,11 +2783,14 @@ input, textarea, select {
   display: flex;
   border-bottom: 1px solid var(--border);
   background: var(--bg2);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.ficha-tabs::-webkit-scrollbar { display: none; }
 
 .ficha-tab {
-  flex: 1;
-  padding: 0.5rem 0.6rem;
+  flex: 0 0 auto;
+  padding: 0.5rem 0.7rem;
   background: none;
   border: none;
   color: var(--text3);
@@ -3338,8 +3351,6 @@ input, textarea, select {
 /* ===== BOTTOM NAV ===== */
 .bottom-nav { display: none; }
 
-/* En la Mesa la bottom nav se oculta — tiene su propio sidebar */
-.app-mesa .bottom-nav { display: none !important; }
 .app-mesa { padding-bottom: 0 !important; }
 
 @media (max-width: 768px) {
@@ -3630,3 +3641,5 @@ input, textarea, select {
   color: var(--accent);
   letter-spacing: 0.03em;
 }
+
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
