@@ -3629,3 +3629,5 @@ input, textarea, select {
   color: var(--accent);
   letter-spacing: 0.03em;
 }
+
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

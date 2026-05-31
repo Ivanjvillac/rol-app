@@ -9,6 +9,7 @@ import PanelMisiones from '../components/PanelMisiones'
 import PanelDadoEvento from '../components/PanelDadoEvento'
 import { jsPDF } from 'jspdf'
 import { parseMessage } from '../lib/parseMessage'
+import { generarResumenConIA } from '../lib/gemini'
 import { useMesaTimer } from '../features/mesa/hooks/useMesaTimer'
 import { useMesaPresence } from '../features/mesa/hooks/useMesaPresence'
 import { useMesaMusic } from '../features/mesa/hooks/useMesaMusic'
@@ -189,7 +190,7 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
 }
 
 export default function Mesa({ navigate, selectedUniverso }) {
-  const { getPersonajesDeUniverso, addEntrada, getSesion, cargarSesion, cargarEntradasAnteriores, hayMasEntradas, suscribirMesa, invitarUsuario, getInvitaciones, limpiarInvitacionesAntiguas, aceptarInvitacion, esPropietario, userId, cargarListaSesiones, crearSesion, eliminarSesion, listaSesiones, editarEntrada, borrarEntrada, getPerfil, backupUniverso, transferirPropiedad, updatePersonaje } = useApp()
+  const { getPersonajesDeUniverso, addEntrada, getSesion, cargarSesion, cargarEntradasAnteriores, hayMasEntradas, suscribirMesa, invitarUsuario, getInvitaciones, limpiarInvitacionesAntiguas, aceptarInvitacion, esPropietario, userId, cargarListaSesiones, crearSesion, eliminarSesion, listaSesiones, editarEntrada, borrarEntrada, getPerfil, backupUniverso, transferirPropiedad, updatePersonaje, archivarSesion } = useApp()
 
   const [personajeActivo, setPersonajeActivo] = useState(null)
   const [texto, setTexto] = useState('')
@@ -266,6 +267,22 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [seccionConectados, setSeccionConectados] = useState(true)
   const [seccionOpciones, setSeccionOpciones] = useState(false)
   const [seccionAyuda, setSeccionAyuda] = useState(false)
+  const [seccionArchivadas, setSeccionArchivadas] = useState(false)
+
+  // Filtros de búsqueda global
+  const [filtroTipo, setFiltroTipo] = useState('')
+  const [filtroPersonaje, setFiltroPersonaje] = useState('')
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState('')
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState('')
+
+  // Historial de versiones de una entrada
+  const [showVersiones, setShowVersiones] = useState(null) // entrada con versiones
+
+  // Offline
+  const [estaOnline, setEstaOnline] = useState(navigator.onLine)
+
+  // Resumen IA
+  const [cargandoResumen, setCargandoResumen] = useState(false)
 
   const personajes = useMemo(() => {
     const todos = selectedUniverso ? getPersonajesDeUniverso(selectedUniverso.id) : []
@@ -596,6 +613,18 @@ export default function Mesa({ navigate, selectedUniverso }) {
     }
   }, [userId])
 
+  // Detección de conexión offline
+  useEffect(() => {
+    const goOnline = () => setEstaOnline(true)
+    const goOffline = () => setEstaOnline(false)
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
+    return () => {
+      window.removeEventListener('online', goOnline)
+      window.removeEventListener('offline', goOffline)
+    }
+  }, [])
+
   // ── AUTO-SCROLL ──
   // Al cambiar de sesión: siempre ir al final usando useLayoutEffect
   // (garantiza que el DOM ya pintó antes de scrollear)
@@ -795,13 +824,27 @@ export default function Mesa({ navigate, selectedUniverso }) {
     setFichaCompartida(null)
   }
 
-  const abrirResumen = () => {
+  const abrirResumen = async () => {
     const entradas = sesionCompleta.filter(e => e.tipo !== 'dado')
     if (entradas.length === 0) { setResumenTexto('La sesión está vacía.'); setShowResumen(true); return }
 
+    setShowResumen(true)
+    setCargandoResumen(true)
+    setResumenTexto('')
+
+    // Intentar Gemini primero
+    try {
+      const iaTexto = await generarResumenConIA(sesionActiva?.nombre || 'Sesión', entradas)
+      if (iaTexto) {
+        setResumenTexto(iaTexto)
+        setCargandoResumen(false)
+        return
+      }
+    } catch (_) {}
+
+    // Fallback heurístico si Gemini falla o no hay API key
     const escenas = []
     let escenaActual = null
-
     for (const e of entradas) {
       if (e.tipo === 'narrador') {
         if (escenaActual) escenas.push(escenaActual)
@@ -814,7 +857,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
     if (escenaActual) escenas.push(escenaActual)
 
     let texto = `📜 ${sesionActiva?.nombre || 'Resumen de sesión'}\n${'─'.repeat(40)}\n\n`
-
     if (escenas.length === 0) {
       const hablantes = [...new Set(entradas.filter(e => e.personaje_nombre).map(e => e.personaje_nombre))]
       texto += `Participantes: ${hablantes.join(', ') || '—'}\n${entradas.length} entradas en total.\n`
@@ -826,12 +868,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
         texto += '\n'
       })
     }
-
     const palabrasTotales = entradas.reduce((acc, e) => acc + (e.contenido?.split(/\s+/).filter(Boolean).length || 0), 0)
     texto += `─\n${escenas.length} escenas · ${entradas.length} entradas · ~${palabrasTotales} palabras`
-
     setResumenTexto(texto)
-    setShowResumen(true)
+    setCargandoResumen(false)
   }
 
   const exportarSesion = () => {
@@ -1239,13 +1279,17 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const buscarGlobal = async () => {
     if (!busquedaGlobal.trim() || !selectedUniverso) return
     setBuscandoGlobal(true)
-    const { data } = await supabase
+    let query = supabase
       .from('entradas')
       .select('*, sesiones(nombre)')
       .eq('universo_id', selectedUniverso.id)
       .ilike('contenido', `%${busquedaGlobal.trim()}%`)
-      .order('created_at', { ascending: false })
-      .limit(50)
+    if (filtroTipo) query = query.eq('tipo', filtroTipo)
+    if (filtroPersonaje) query = query.ilike('personaje_nombre', `%${filtroPersonaje.trim()}%`)
+    if (filtroFechaDesde) query = query.gte('created_at', filtroFechaDesde)
+    if (filtroFechaHasta) query = query.lte('created_at', filtroFechaHasta + 'T23:59:59Z')
+    query = query.order('created_at', { ascending: false }).limit(50)
+    const { data } = await query
     setResultadosGlobales(data || [])
     setBuscandoGlobal(false)
   }
@@ -1262,7 +1306,20 @@ export default function Mesa({ navigate, selectedUniverso }) {
         const nueva = payload.new
         if (nueva.user_id === userId) return
         if (nueva.sesion_id === sesionActiva?.id) return
-        if (nueva.sesion_id) setNotifsSesion(prev => ({ ...prev, [nueva.sesion_id]: (prev[nueva.sesion_id] || 0) + 1 }))
+        if (nueva.sesion_id) {
+          setNotifsSesion(prev => ({ ...prev, [nueva.sesion_id]: (prev[nueva.sesion_id] || 0) + 1 }))
+          // Push notification cuando la pestaña está en segundo plano
+          if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+            const sesCon = sesionesConMiembros.find(s => s.id === nueva.sesion_id)
+            const nombreSes = sesCon?.nombre || 'otra sesión'
+            const quien = nueva.personaje_nombre || 'Alguien'
+            new Notification(`💬 Nuevo mensaje en #${nombreSes}`, {
+              body: nueva.contenido?.slice(0, 80) || `${quien} ha escrito`,
+              icon: '/favicon.ico',
+              silent: false,
+            })
+          }
+        }
       })
       .subscribe()
     return () => supabase.removeChannel(canal)
@@ -1366,8 +1423,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
           </div>
           {seccionSesiones && (
             <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-              {sesiones.length === 0 && <p className="sidebar-empty">Sin sesiones. Crea la primera.</p>}
-              {sesiones.filter(s => !s.padre_id).map(s => (
+              {sesiones.filter(s => !s.archivada).length === 0 && <p className="sidebar-empty">Sin sesiones. Crea la primera.</p>}
+              {sesiones.filter(s => !s.padre_id && !s.archivada).map(s => (
                 <div key={s.id}>
                   <div className={`sesion-item ${sesionActiva?.id === s.id ? 'activa' : ''}`} onClick={() => { setSesionActiva(s); setSidebarAbierto(false) }}>
                     <span style={{ flex: 1 }}>{s.es_privada ? '🔒' : '#'} {s.nombre}</span>
@@ -1376,10 +1433,18 @@ export default function Mesa({ navigate, selectedUniverso }) {
                       {s.es_privada && s.user_id === userId && (
                         <button className="sesion-delete" title="Gestionar miembros" onClick={e => { e.stopPropagation(); abrirGestionSesion(s) }}>👥</button>
                       )}
+                      {(s.user_id === userId || esDueno) && (
+                        <button className="sesion-delete" title="Archivar sesión" onClick={async e => {
+                          e.stopPropagation()
+                          await archivarSesion(s.id, true)
+                          setSesionesConMiembros(prev => prev.map(x => x.id === s.id ? { ...x, archivada: true } : x))
+                          if (sesionActiva?.id === s.id) setSesionActiva(null)
+                        }}>📦</button>
+                      )}
                       <button className="sesion-delete" onClick={e => { e.stopPropagation(); setConfirmDeleteSesion(s) }}>✕</button>
                     </div>
                   </div>
-                  {(sesionesHijas.get(s.id) || []).map(sub => (
+                  {(sesionesHijas.get(s.id) || []).filter(sub => !sub.archivada).map(sub => (
                     <div key={sub.id} className={`sesion-item sesion-sub ${sesionActiva?.id === sub.id ? 'activa' : ''}`} onClick={() => { setSesionActiva(sub); setSidebarAbierto(false) }}>
                       <span style={{ flex: 1 }}>↳ {sub.es_privada ? '🔒' : '#'} {sub.nombre}</span>
                       {notifsSesion[sub.id] > 0 && <span style={{ background: 'var(--accent)', color: '#000', borderRadius: '999px', fontSize: '0.65rem', padding: '0.1rem 0.4rem', fontWeight: 700, marginRight: '0.2rem' }}>{notifsSesion[sub.id]}</span>}
@@ -1387,10 +1452,38 @@ export default function Mesa({ navigate, selectedUniverso }) {
                         {sub.es_privada && sub.user_id === userId && (
                           <button className="sesion-delete" title="Gestionar miembros" onClick={e => { e.stopPropagation(); abrirGestionSesion(sub) }}>👥</button>
                         )}
+                        {(sub.user_id === userId || esDueno) && (
+                          <button className="sesion-delete" title="Archivar sesión" onClick={async e => {
+                            e.stopPropagation()
+                            await archivarSesion(sub.id, true)
+                            setSesionesConMiembros(prev => prev.map(x => x.id === sub.id ? { ...x, archivada: true } : x))
+                            if (sesionActiva?.id === sub.id) setSesionActiva(null)
+                          }}>📦</button>
+                        )}
                         <button className="sesion-delete" onClick={e => { e.stopPropagation(); setConfirmDeleteSesion(sub) }}>✕</button>
                       </div>
                     </div>
                   ))}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Sesiones archivadas */}
+          {sesiones.filter(s => s.archivada).length > 0 && (
+            <div style={{ marginTop: '0.4rem' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text3)', cursor: 'pointer', userSelect: 'none', padding: '0.2rem 0', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                onClick={() => setSeccionArchivadas(p => !p)}>
+                {seccionArchivadas ? '▾' : '▸'} 📦 Archivadas ({sesiones.filter(s => s.archivada).length})
+              </div>
+              {seccionArchivadas && sesiones.filter(s => s.archivada).map(s => (
+                <div key={s.id} className="sesion-item" style={{ opacity: 0.6 }} onClick={() => { setSesionActiva(s); setSidebarAbierto(false) }}>
+                  <span style={{ flex: 1 }}># {s.nombre}</span>
+                  <button className="sesion-delete" title="Desarchivar" onClick={async e => {
+                    e.stopPropagation()
+                    await archivarSesion(s.id, false)
+                    setSesionesConMiembros(prev => prev.map(x => x.id === s.id ? { ...x, archivada: false } : x))
+                  }}>♻️</button>
                 </div>
               ))}
             </div>
@@ -1659,6 +1752,13 @@ export default function Mesa({ navigate, selectedUniverso }) {
           <span className="sesion-count">{sesion.length} entradas</span>
         </div>
 
+        {!estaOnline && (
+          <div style={{ background: '#c0392b', color: 'white', padding: '0.4rem 1rem', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}>
+            <span>📵</span>
+            <span>Sin conexión — Los mensajes no se enviarán hasta que vuelva la conexión.</span>
+          </div>
+        )}
+
         <div className="historial" ref={historialRef} onScroll={handleScroll}>
           {!sesionActiva && (
             <div className="historial-empty">
@@ -1708,7 +1808,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   <span className="entrada-label">📖 Narrador</span>
                   {e.contenido && <p className={e.tono && e.tono !== 'normal' ? `entrada-tono-${e.tono}` : ''}>{renderMensaje(e.contenido, miNombrePerfil)}</p>}
                   {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '240px', borderRadius: '8px', marginTop: '0.4rem', cursor: 'pointer' }} onClick={() => abrirUrlSegura(e.imagen_url)} />}
-                  <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
+                  <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && (e.versiones?.length > 0
+  ? <span className="entrada-editado" style={{ cursor: 'pointer', textDecoration: 'underline dotted' }} onClick={ev => { ev.stopPropagation(); setShowVersiones(e) }}> · editado ({e.versiones.length})</span>
+  : <span className="entrada-editado"> · editado</span>
+)}</span>
                   {e.user_id === userId && (
                     <div className="entrada-acciones">
                       {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
@@ -1757,7 +1860,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   </div>
                 )
                 const hora = (
-                  <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && <span className="entrada-editado"> · editado</span>}</span>
+                  <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && (e.versiones?.length > 0
+  ? <span className="entrada-editado" style={{ cursor: 'pointer', textDecoration: 'underline dotted' }} onClick={ev => { ev.stopPropagation(); setShowVersiones(e) }}> · editado ({e.versiones.length})</span>
+  : <span className="entrada-editado"> · editado</span>
+)}</span>
                 )
 
                 if (esTipoDialogo) {
@@ -1957,7 +2063,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
               rows={2}
               disabled={!sesionActiva}
             />
-            <button className="btn-enviar" onClick={enviar} disabled={!sesionActiva}>↵</button>
+            <button className="btn-enviar" onClick={enviar} disabled={!sesionActiva || !estaOnline}>↵</button>
           </div>
           <span className="input-hint">Enter para enviar · Shift+Enter para nueva línea</span>
         </div>
@@ -2281,7 +2387,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
         <div className="modal-overlay" onClick={() => { setShowBusquedaGlobal(false); setResultadosGlobales([]); setBusquedaGlobal('') }}>
           <div className="modal" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
             <h3>🔍 Buscar en {selectedUniverso?.nombre}</h3>
-            <div style={{ display: 'flex', gap: '0.5rem', margin: '1rem 0' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', margin: '1rem 0 0.6rem' }}>
               <input placeholder="Buscar en todas las sesiones..."
                 value={busquedaGlobal} onChange={e => setBusquedaGlobal(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && buscarGlobal()} autoFocus
@@ -2289,6 +2395,34 @@ export default function Mesa({ navigate, selectedUniverso }) {
               <button className="btn-primary" onClick={buscarGlobal} disabled={buscandoGlobal || !busquedaGlobal.trim()}>
                 {buscandoGlobal ? '...' : 'Buscar'}
               </button>
+            </div>
+            {/* Filtros */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '1rem' }}>
+              <div>
+                <label style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'block', marginBottom: '0.2rem' }}>Tipo</label>
+                <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}
+                  style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text)', padding: '0.35rem 0.6rem', borderRadius: 'var(--radius)', fontSize: '0.82rem' }}>
+                  <option value="">Todos</option>
+                  <option value="narrador">Narrador</option>
+                  <option value="dialogo">Diálogo</option>
+                  <option value="accion">Acción</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'block', marginBottom: '0.2rem' }}>Personaje</label>
+                <input placeholder="Nombre del personaje" value={filtroPersonaje} onChange={e => setFiltroPersonaje(e.target.value)}
+                  style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text)', padding: '0.35rem 0.6rem', borderRadius: 'var(--radius)', fontSize: '0.82rem', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'block', marginBottom: '0.2rem' }}>Desde</label>
+                <input type="date" value={filtroFechaDesde} onChange={e => setFiltroFechaDesde(e.target.value)}
+                  style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text)', padding: '0.35rem 0.6rem', borderRadius: 'var(--radius)', fontSize: '0.82rem', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'block', marginBottom: '0.2rem' }}>Hasta</label>
+                <input type="date" value={filtroFechaHasta} onChange={e => setFiltroFechaHasta(e.target.value)}
+                  style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text)', padding: '0.35rem 0.6rem', borderRadius: 'var(--radius)', fontSize: '0.82rem', boxSizing: 'border-box' }} />
+              </div>
             </div>
             {resultadosGlobales.length > 0 && (
               <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
@@ -2325,7 +2459,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
               <p style={{ color: 'var(--text3)', fontStyle: 'italic', textAlign: 'center', margin: '1rem 0' }}>Sin resultados para "{busquedaGlobal}"</p>
             )}
             <div className="modal-actions" style={{ marginTop: '1rem' }}>
-              <button className="btn-ghost" onClick={() => { setShowBusquedaGlobal(false); setResultadosGlobales([]); setBusquedaGlobal('') }}>Cerrar</button>
+              <button className="btn-ghost" onClick={() => { setShowBusquedaGlobal(false); setResultadosGlobales([]); setBusquedaGlobal(''); setFiltroTipo(''); setFiltroPersonaje(''); setFiltroFechaDesde(''); setFiltroFechaHasta('') }}>Cerrar</button>
             </div>
           </div>
         </div>
@@ -2421,24 +2555,59 @@ export default function Mesa({ navigate, selectedUniverso }) {
       )}
 
       {showResumen && (
-        <div className="modal-overlay" onClick={() => setShowResumen(false)}>
+        <div className="modal-overlay" onClick={() => { setShowResumen(false); setCargandoResumen(false) }}>
           <div className="modal" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>📜 Resumen de sesión</h3>
-              <button onClick={() => setShowResumen(false)}>✕</button>
+              <h3>📜 Resumen de sesión{cargandoResumen ? ' — generando con IA…' : ''}</h3>
+              <button onClick={() => { setShowResumen(false); setCargandoResumen(false) }}>✕</button>
             </div>
-            <pre style={{ fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: '0.88rem', color: 'var(--text2)', background: 'var(--bg3)', padding: '1rem', borderRadius: 'var(--radius)', maxHeight: '400px', overflowY: 'auto', lineHeight: 1.7, margin: '0 0 1rem' }}>
-              {resumenTexto}
-            </pre>
+            {cargandoResumen
+              ? <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text3)' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '0.8rem', animation: 'spin 1.5s linear infinite', display: 'inline-block' }}>✨</div>
+                  <p style={{ fontStyle: 'italic' }}>Gemini está leyendo la sesión...</p>
+                </div>
+              : <pre style={{ fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: '0.88rem', color: 'var(--text2)', background: 'var(--bg3)', padding: '1rem', borderRadius: 'var(--radius)', maxHeight: '400px', overflowY: 'auto', lineHeight: 1.7, margin: '0 0 1rem' }}>
+                  {resumenTexto}
+                </pre>
+            }
             <div className="modal-actions">
-              <button className="btn-ghost" onClick={() => setShowResumen(false)}>Cerrar</button>
-              <button className="btn-ghost" onClick={() => { navigator.clipboard?.writeText(resumenTexto).catch(() => {}) }}>📋 Copiar</button>
-              {sesionActiva && (
-                <button className="btn-primary" onClick={() => {
-                  addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: resumenTexto }, sesionActiva.id)
-                  setShowResumen(false)
-                }}>📢 Publicar en mesa</button>
-              )}
+              <button className="btn-ghost" onClick={() => { setShowResumen(false); setCargandoResumen(false) }}>Cerrar</button>
+              {!cargandoResumen && <>
+                <button className="btn-ghost" onClick={() => { navigator.clipboard?.writeText(resumenTexto).catch(() => {}) }}>📋 Copiar</button>
+                {sesionActiva && (
+                  <button className="btn-primary" onClick={() => {
+                    addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: resumenTexto }, sesionActiva.id)
+                    setShowResumen(false)
+                  }}>📢 Publicar en mesa</button>
+                )}
+              </>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal historial de versiones */}
+      {showVersiones && (
+        <div className="modal-overlay" onClick={() => setShowVersiones(null)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <h3>📝 Historial de ediciones</h3>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '1rem', fontStyle: 'italic' }}>Versiones anteriores (más reciente primero)</p>
+            <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
+              {[...showVersiones.versiones].reverse().map((v, i) => (
+                <div key={i} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.6rem 0.8rem', marginBottom: '0.5rem' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--accent)', marginBottom: '0.3rem', fontFamily: 'Cinzel, serif' }}>
+                    {new Date(v.ts).toLocaleString('es-ES', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text2)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{v.contenido}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ background: 'rgba(180,140,60,0.06)', border: '1px solid rgba(180,140,60,0.15)', borderRadius: 'var(--radius)', padding: '0.5rem 0.8rem', marginTop: '0.6rem' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginBottom: '0.3rem', fontFamily: 'Cinzel, serif' }}>Versión actual</div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{showVersiones.contenido}</div>
+            </div>
+            <div className="modal-actions" style={{ marginTop: '1rem' }}>
+              <button className="btn-primary" onClick={() => setShowVersiones(null)}>Cerrar</button>
             </div>
           </div>
         </div>
@@ -2460,22 +2629,39 @@ export default function Mesa({ navigate, selectedUniverso }) {
             {/* Control de cambio — solo para el dueño del universo */}
             {esDueno ? (
               <>
-                <p style={{ color: 'var(--text2)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-                  Pega una URL de YouTube (vídeo, playlist o mix).
-                </p>
-                <div className="form-group">
-                  <label>URL de YouTube</label>
-                  <input
-                    placeholder="https://www.youtube.com/watch?v=... o youtu.be/..."
-                    value={youtubeUrl}
-                    onChange={e => setYoutubeUrl(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && cargarYoutube(youtubeUrl)}
-                    autoFocus
-                  />
+                {/* Presets por escena */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>Presets de escena</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.35rem' }}>
+                    {[
+                      { label: '⚔️ Combate épico', url: 'https://www.youtube.com/watch?v=m-kbFRpBNGg' },
+                      { label: '🌲 Exploración', url: 'https://www.youtube.com/watch?v=4EcgruWlXiQ' },
+                      { label: '🍺 Taberna', url: 'https://www.youtube.com/watch?v=PFhG9bDPLEo' },
+                      { label: '🏰 Mazmorra', url: 'https://www.youtube.com/watch?v=Ub_E9EBvMrE' },
+                      { label: '🌙 Misterio', url: 'https://www.youtube.com/watch?v=X4rA2KCjpuY' },
+                      { label: '🌊 Viaje / Mar', url: 'https://www.youtube.com/watch?v=7gdxFCX7fvs' },
+                      { label: '🏙️ Ciudad', url: 'https://www.youtube.com/watch?v=DRTsbFHQraE' },
+                      { label: '😢 Drama / Tensión', url: 'https://www.youtube.com/watch?v=lMqfXEhW5-M' },
+                    ].map(preset => (
+                      <button key={preset.label}
+                        style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.4rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text2)', textAlign: 'left', transition: 'border-color 0.15s' }}
+                        onClick={() => { setYoutubeUrl(preset.url); cargarYoutube(preset.url) }}>
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text3)', marginBottom: '1rem', fontStyle: 'italic' }}>
-                  Busca "fantasy ambient music", "RPG battle music" o "D&D tavern music" en YouTube.
-                </p>
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.8rem' }}>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>O pega una URL propia</p>
+                  <div className="form-group">
+                    <input
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      value={youtubeUrl}
+                      onChange={e => setYoutubeUrl(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && cargarYoutube(youtubeUrl)}
+                    />
+                  </div>
+                </div>
                 {musicaUrl && (
                   <button className="btn-danger btn-sm" style={{ marginBottom: '0.5rem' }} onClick={() => { quitarMusica(); setShowMusica(false) }}>
                     Quitar música
@@ -2483,7 +2669,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                 )}
                 <div className="modal-actions">
                   <button className="btn-ghost" onClick={() => setShowMusica(false)}>Cancelar</button>
-                  <button className="btn-primary" onClick={() => cargarYoutube(youtubeUrl)} disabled={!youtubeUrl.trim()}>Cargar</button>
+                  <button className="btn-primary" onClick={() => cargarYoutube(youtubeUrl)} disabled={!youtubeUrl.trim()}>Cargar URL</button>
                 </div>
               </>
             ) : (
