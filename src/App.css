@@ -1323,7 +1323,7 @@ input, textarea, select {
   input, textarea, select { font-size: 16px !important; }
 
   /* Padding inferior para que el contenido no quede bajo la bottom nav */
-  .page { padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px) + 1rem); }
+  .page, .home { padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px) + 1.5rem); }
 
   /* Burbujas compactas */
   .entrada-burbuja { max-width: 92%; min-width: 180px; padding: 0.45rem 0.7rem; }

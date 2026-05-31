@@ -274,8 +274,11 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [seccionPersonajes, setSeccionPersonajes] = useState(true)
   const [seccionConectados, setSeccionConectados] = useState(true)
   const [seccionOpciones, setSeccionOpciones] = useState(false)
+  const [seccionHerramientas, setSeccionHerramientas] = useState(false)
+  const [seccionPersonalizacion, setSeccionPersonalizacion] = useState(false)
   const [seccionAyuda, setSeccionAyuda] = useState(false)
   const [seccionArchivadas, setSeccionArchivadas] = useState(false)
+  const [seccionDados, setSeccionDados] = useState(false)
 
   // Filtros de búsqueda global
   const [filtroTipo, setFiltroTipo] = useState('')
@@ -1622,15 +1625,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
           )}
         </div>
 
-        {personajeActivo && (
-          <div className="sidebar-section">
-            <h4>Modo</h4>
-            <div className="modo-btns">
-              <button className={modoEntrada === 'dialogo' ? 'modo-btn activo' : 'modo-btn'} onClick={() => setModoEntrada('dialogo')}>💬 Diálogo</button>
-              <button className={modoEntrada === 'accion' ? 'modo-btn activo' : 'modo-btn'} onClick={() => setModoEntrada('accion')}>⚡ Acción</button>
-            </div>
-          </div>
-        )}
 
         {/* Medidor de Tensión — visible cuando el usuario está en modo Narrador */}
         {sesionActiva && !personajeActivo && modoEntrada === 'narrador' && (
@@ -1663,25 +1657,20 @@ export default function Mesa({ navigate, selectedUniverso }) {
         )}
 
         <div className="sidebar-section">
-          <h4>Dados</h4>
-          <div className="dados-grid">
-            {[4, 6, 8, 10, 12, 20].map(c => <button key={c} className="dado-btn" onClick={() => tirarDado(c)}>d{c}</button>)}
-          </div>
-          {resultadoDado && (
-            <div className="dado-resultado">
-              <span>🎲 d{resultadoDado.caras}: <strong>{resultadoDado.resultado}</strong></span>
-              <button onClick={() => setResultadoDado(null)}>✕</button>
+          <h4 style={{ cursor: 'pointer', userSelect: 'none', marginBottom: seccionDados ? '0.6rem' : 0 }} onClick={() => setSeccionDados(p => !p)}>
+            {seccionDados ? '▾' : '▸'} 🎲 Dados
+          </h4>
+          {seccionDados && (<>
+            <div className="dados-grid">
+              {[4, 6, 8, 10, 12, 20].map(c => <button key={c} className="dado-btn" onClick={() => tirarDado(c)}>d{c}</button>)}
             </div>
-          )}
-        </div>
-
-        <div className="sidebar-section">
-          <h4>Comandos</h4>
-          <div className="comandos-list">
-            <code>/narrador texto</code>
-            <code>/[nombre] texto</code>
-            <code>/me acción</code>
-          </div>
+            {resultadoDado && (
+              <div className="dado-resultado">
+                <span>🎲 d{resultadoDado.caras}: <strong>{resultadoDado.resultado}</strong></span>
+                <button onClick={() => setResultadoDado(null)}>✕</button>
+              </div>
+            )}
+          </>)}
         </div>
 
         <div className="sidebar-section">
@@ -1759,12 +1748,58 @@ export default function Mesa({ navigate, selectedUniverso }) {
           </div>
         )}
 
+        {/* ── Sesión (herramientas de uso frecuente durante el juego) ── */}
         <div className="sidebar-section">
           <h4 style={{ cursor: 'pointer', userSelect: 'none', marginBottom: seccionOpciones ? '0.6rem' : 0 }} onClick={() => setSeccionOpciones(p => !p)}>
-            {seccionOpciones ? '▾' : '▸'} Opciones
+            {seccionOpciones ? '▾' : '▸'} ⚙️ Sesión
           </h4>
           {seccionOpciones && (<>
-            {/* Tamaño de fuente */}
+            <button className="modo-btn" onClick={() => setShowMusica(true)}>🎵 Música{musicaUrl ? ' ▶' : ''}</button>
+            <button className="modo-btn notif-btn" style={{ marginTop: '0.4rem' }} onClick={() => { setShowChat(true); setTieneNoLeidos(false); setSidebarAbierto(false) }}>
+              🔒 Mensajes privados
+              {(tieneNoLeidos || notifsMenciones > 0) && <span className="notif-dot" />}
+              {notifsMenciones > 0 && <span style={{ background: '#e74c3c', color: 'white', borderRadius: '999px', fontSize: '0.65rem', padding: '0.1rem 0.4rem', fontWeight: 700, marginLeft: '0.2rem' }}>{notifsMenciones}</span>}
+            </button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMisiones(true)} disabled={!selectedUniverso}>📋 Misiones</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowGaleria(true)} disabled={!selectedUniverso}>🖼️ Galería</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowObjetos(true)} disabled={!selectedUniverso}>🎒 Objetos</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowDadoEvento(true)} disabled={!selectedUniverso}>🎲 Dado de evento</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowInvestigacion(true)} disabled={!selectedUniverso}>🔍 Investigación</button>
+            {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowTimerConfig(true)} disabled={!selectedUniverso}>⏱️ Temporizador{timerDisplay ? ` · ${timerDisplay}` : ''}</button>}
+            {musicaUrl && (
+              <div style={{ marginTop: '0.6rem', borderRadius: 'var(--radius)', overflow: 'hidden', position: 'relative', background: '#000' }}>
+                <div id="yt-music-player" style={{ width: '100%', height: '52px' }} />
+                {esDueno && (
+                  <button onClick={quitarMusica}
+                    style={{ position: 'absolute', top: '2px', right: '2px', background: 'rgba(0,0,0,0.7)', border: 'none', color: 'white', borderRadius: '3px', padding: '1px 5px', fontSize: '0.7rem', cursor: 'pointer', lineHeight: 1.4 }}>✕</button>
+                )}
+              </div>
+            )}
+          </>)}
+        </div>
+
+        {/* ── Herramientas (exportar, buscar, estadísticas…) ── */}
+        <div className="sidebar-section">
+          <h4 style={{ cursor: 'pointer', userSelect: 'none', marginBottom: seccionHerramientas ? '0.6rem' : 0 }} onClick={() => setSeccionHerramientas(p => !p)}>
+            {seccionHerramientas ? '▾' : '▸'} 🛠️ Herramientas
+          </h4>
+          {seccionHerramientas && (<>
+            <button className="modo-btn" onClick={exportarSesion} disabled={!sesionActiva}>📄 Exportar TXT</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={exportarPDF} disabled={!sesionActiva}>📕 Exportar PDF</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowStats(true)} disabled={!sesionActiva}>📊 Estadísticas</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowDados(true)} disabled={!sesionActiva}>🎲 Historial de dados</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowBusquedaGlobal(true)} disabled={!selectedUniverso}>🔍 Buscar en universo</button>
+            {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirInvitar}>✉️ Invitar jugador</button>}
+            {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirResumen} disabled={!sesionActiva}>📜 Resumen de sesión</button>}
+          </>)}
+        </div>
+
+        {/* ── Personalización ── */}
+        <div className="sidebar-section">
+          <h4 style={{ cursor: 'pointer', userSelect: 'none', marginBottom: seccionPersonalizacion ? '0.6rem' : 0 }} onClick={() => setSeccionPersonalizacion(p => !p)}>
+            {seccionPersonalizacion ? '▾' : '▸'} 🎨 Personalización
+          </h4>
+          {seccionPersonalizacion && (<>
             <div style={{ marginBottom: '0.6rem', padding: '0.4rem 0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
                 <span style={{ fontSize: '0.82rem', color: 'var(--text2)' }}>🔤 Tamaño de texto</span>
@@ -1778,42 +1813,13 @@ export default function Mesa({ navigate, selectedUniverso }) {
               </div>
             </div>
             {tieneApiKey() && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0', marginBottom: '0.2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0' }}>
                 <span style={{ fontSize: '0.82rem', color: 'var(--text2)' }}>✨ Dados dramáticos</span>
                 <button
                   onClick={() => { const v = !dadoDramatico; setDadoDramatico(v); localStorage.setItem('dadoDramatico', v) }}
                   style={{ background: dadoDramatico ? 'var(--accent)' : 'var(--bg3)', color: dadoDramatico ? '#000' : 'var(--text3)', border: 'none', borderRadius: '999px', padding: '0.15rem 0.7rem', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600, transition: 'background 0.2s' }}>
                   {dadoDramatico ? 'ON' : 'OFF'}
                 </button>
-              </div>
-            )}
-            <button className="modo-btn" onClick={exportarSesion} disabled={!sesionActiva}>📄 Exportar TXT</button>
-            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={exportarPDF} disabled={!sesionActiva}>📕 Exportar PDF</button>
-            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowStats(true)} disabled={!sesionActiva}>📊 Estadísticas</button>
-            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowDados(true)} disabled={!sesionActiva}>🎲 Historial de dados</button>
-            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowBusquedaGlobal(true)} disabled={!selectedUniverso}>🔍 Buscar en universo</button>
-            <button className="modo-btn notif-btn" style={{ marginTop: '0.4rem' }} onClick={() => { setShowChat(true); setTieneNoLeidos(false); setSidebarAbierto(false) }}>
-              🔒 Mensajes privados
-              {(tieneNoLeidos || notifsMenciones > 0) && <span className="notif-dot" />}
-              {notifsMenciones > 0 && <span style={{ background: '#e74c3c', color: 'white', borderRadius: '999px', fontSize: '0.65rem', padding: '0.1rem 0.4rem', fontWeight: 700, marginLeft: '0.2rem' }}>{notifsMenciones}</span>}
-            </button>
-            {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirInvitar}>✉️ Invitar jugador</button>}
-            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMusica(true)}>🎵 Música{musicaUrl ? ' ▶' : ''}</button>
-            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowInvestigacion(true)} disabled={!selectedUniverso}>🔍 Investigación</button>
-            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMisiones(true)} disabled={!selectedUniverso}>📋 Misiones</button>
-            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowGaleria(true)} disabled={!selectedUniverso}>🖼️ Galería</button>
-            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowDadoEvento(true)} disabled={!selectedUniverso}>🎲 Dado de evento</button>
-            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowObjetos(true)} disabled={!selectedUniverso}>🎒 Objetos</button>
-            {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirResumen} disabled={!sesionActiva}>📜 Resumen de sesión</button>}
-            {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowTimerConfig(true)} disabled={!selectedUniverso}>⏱️ Temporizador{timerDisplay ? ` · ${timerDisplay}` : ''}</button>}
-            {musicaUrl && (
-              <div style={{ marginTop: '0.6rem', borderRadius: 'var(--radius)', overflow: 'hidden', position: 'relative', background: '#000' }}>
-                {/* El div#yt-music-player es convertido en iframe por el YT IFrame API */}
-                <div id="yt-music-player" style={{ width: '100%', height: '52px' }} />
-                {esDueno && (
-                  <button onClick={quitarMusica}
-                    style={{ position: 'absolute', top: '2px', right: '2px', background: 'rgba(0,0,0,0.7)', border: 'none', color: 'white', borderRadius: '3px', padding: '1px 5px', fontSize: '0.7rem', cursor: 'pointer', lineHeight: 1.4 }}>✕</button>
-                )}
               </div>
             )}
           </>)}
@@ -2168,19 +2174,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <button type="button" className="formato-btn formato-btn-atajo" onClick={() => insertarFormato('grito')} title="Grito — /g/ texto /g/">📢</button>
             <button type="button" className="formato-btn formato-btn-atajo" onClick={() => insertarFormato('pensamiento')} title="Pensamiento — /p/ texto /p/">💭</button>
 
-            {personajeActivo && (
-              <>
-                <div className="tono-separador" />
-                <button
-                  id="btn-modo-accion"
-                  type="button"
-                  className={`tono-btn${modoEntrada === 'accion' ? ' activo' : ''}`}
-                  onClick={() => setModoEntrada(modoEntrada === 'accion' ? 'dialogo' : 'accion')}
-                  title={modoEntrada === 'accion' ? 'Modo: Acción (click para Diálogo)' : 'Cambiar a Acción'}
-                  style={{ fontSize: '1rem' }}
-                >⚡</button>
-              </>
-            )}
           </div>
 
           <div className="input-row" style={{ position: 'relative' }}>
