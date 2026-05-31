@@ -261,7 +261,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const canalFichaRef = useRef(null)
 
   const [sesionesConMiembros, setSesionesConMiembros] = useState([])
-  const [kickedFrom, setKickedFrom] = useState(null) // nombre de la sala de la que fuiste expulsado
+  const [kickedFrom, setKickedFrom] = useState(null)
+  const [tamanoFuente, setTamanoFuente] = useState(() => parseInt(localStorage.getItem('mesaFontSize') || '15', 10))
   const [seccionSesiones, setSeccionSesiones] = useState(true)
   const [seccionPersonajes, setSeccionPersonajes] = useState(true)
   const [seccionConectados, setSeccionConectados] = useState(true)
@@ -624,6 +625,58 @@ export default function Mesa({ navigate, selectedUniverso }) {
       window.removeEventListener('offline', goOffline)
     }
   }, [])
+
+  // ── ATAJOS DE TECLADO GLOBALES ──
+  useEffect(() => {
+    const handler = (e) => {
+      const ctrl = e.ctrlKey || e.metaKey
+
+      // Ctrl+B → búsqueda global
+      if (ctrl && e.key === 'b') {
+        e.preventDefault()
+        setShowBusquedaGlobal(true)
+        return
+      }
+      // Ctrl+M → música
+      if (ctrl && e.key === 'm') {
+        e.preventDefault()
+        setShowMusica(true)
+        return
+      }
+
+      // Escape → cerrar modales (no interceptar el textarea principal)
+      if (e.key === 'Escape' && document.activeElement !== inputRef.current) {
+        if (showBusquedaGlobal) { setShowBusquedaGlobal(false); setBusquedaGlobal(''); setResultadosGlobales([]) }
+        else if (showMusica) setShowMusica(false)
+        else if (showStats) setShowStats(false)
+        else if (showResumen) { setShowResumen(false); setCargandoResumen(false) }
+        else if (showDados) setShowDados(false)
+        else if (showVersiones) setShowVersiones(null)
+        else if (editandoEntrada) setEditandoEntrada(null)
+        else if (gestionarSesion) setGestionarSesion(null)
+        else if (confirmDeleteEntrada) setConfirmDeleteEntrada(null)
+        else if (confirmDeleteSesion) setConfirmDeleteSesion(null)
+        else if (showInvitar) { setShowInvitar(false); setMsgInvitar(null) }
+        else if (showNuevaSesion) setShowNuevaSesion(false)
+        else if (fichaPersonaje) setFichaPersonaje(null)
+        else if (fichaCompartida) setFichaCompartida(null)
+        else if (showTimerConfig) setShowTimerConfig(false)
+        else if (showChat) setShowChat(false)
+        else if (showInvestigacion) setShowInvestigacion(false)
+        else if (showGaleria) setShowGaleria(false)
+        else if (showMisiones) setShowMisiones(false)
+        else if (showDadoEvento) setShowDadoEvento(false)
+        else if (respondiendo) setRespondiendo(null)
+        else if (sidebarAbierto) setSidebarAbierto(false)
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [showBusquedaGlobal, showMusica, showStats, showResumen, showDados, showVersiones,
+      editandoEntrada, gestionarSesion, confirmDeleteEntrada, confirmDeleteSesion,
+      showInvitar, showNuevaSesion, fichaPersonaje, fichaCompartida, showTimerConfig,
+      showChat, showInvestigacion, showGaleria, showMisiones, showDadoEvento,
+      respondiendo, sidebarAbierto])
 
   // ── AUTO-SCROLL ──
   // Al cambiar de sesión: siempre ir al final usando useLayoutEffect
@@ -1650,6 +1703,19 @@ export default function Mesa({ navigate, selectedUniverso }) {
             {seccionOpciones ? '▾' : '▸'} Opciones
           </h4>
           {seccionOpciones && (<>
+            {/* Tamaño de fuente */}
+            <div style={{ marginBottom: '0.6rem', padding: '0.4rem 0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text2)' }}>🔤 Tamaño de texto</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--accent)', fontFamily: 'Cinzel, serif', fontWeight: 700 }}>{tamanoFuente}px</span>
+              </div>
+              <input type="range" min="12" max="20" step="1" value={tamanoFuente}
+                style={{ width: '100%', accentColor: 'var(--accent)', cursor: 'pointer' }}
+                onChange={e => { const v = Number(e.target.value); setTamanoFuente(v); localStorage.setItem('mesaFontSize', v) }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--text3)', marginTop: '0.1rem' }}>
+                <span>Pequeño</span><span>Grande</span>
+              </div>
+            </div>
             <button className="modo-btn" onClick={exportarSesion} disabled={!sesionActiva}>📄 Exportar TXT</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={exportarPDF} disabled={!sesionActiva}>📕 Exportar PDF</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowStats(true)} disabled={!sesionActiva}>📊 Estadísticas</button>
@@ -1759,7 +1825,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
           </div>
         )}
 
-        <div className="historial" ref={historialRef} onScroll={handleScroll}>
+        <div className="historial" ref={historialRef} onScroll={handleScroll} style={{ fontSize: tamanoFuente + 'px' }}>
           {!sesionActiva && (
             <div className="historial-empty">
               <p>Selecciona o crea una sesión en el panel lateral para empezar.</p>
@@ -2065,7 +2131,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
             />
             <button className="btn-enviar" onClick={enviar} disabled={!sesionActiva || !estaOnline}>↵</button>
           </div>
-          <span className="input-hint">Enter para enviar · Shift+Enter para nueva línea</span>
+          <span className="input-hint">Enter para enviar · Shift+Enter para nueva línea · Ctrl+B buscar · Ctrl+M música · Esc cerrar</span>
         </div>
       </main>
 

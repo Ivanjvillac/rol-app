@@ -606,7 +606,7 @@ input, textarea, select {
 }
 
 /* Entradas */
-.entrada { animation: fadeIn 0.2s ease; position: relative; }
+.entrada { animation: fadeIn 0.2s ease; position: relative; content-visibility: auto; contain-intrinsic-block-size: auto 120px; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
 .entrada-narrador {
