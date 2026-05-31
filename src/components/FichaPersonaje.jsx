@@ -2,8 +2,11 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import PanelJuramentos from './PanelJuramentos'
 
+const TIPO_ICON = { arma: '⚔️', armadura: '🛡️', artefacto: '✨', poción: '🧪', joya: '💎', herramienta: '🔧', objeto: '📦', otro: '🎁' }
+
 export default function FichaPersonaje({ personaje, userId, onCerrar, esDueno = false, onStatEdit }) {
   const [atributos, setAtributos] = useState([])
+  const [inventario, setInventario] = useState([])
   const [nuevoNombre, setNuevoNombre] = useState('')
   const [nuevoValor, setNuevoValor] = useState('')
   const [editando, setEditando] = useState(null)
@@ -15,6 +18,7 @@ export default function FichaPersonaje({ personaje, userId, onCerrar, esDueno = 
 
   useEffect(() => {
     cargarAtributos()
+    supabase.from('inventario').select('*, objeto:objetos(*)').eq('personaje_id', personaje.id).order('created_at').then(({ data }) => setInventario(data || []))
   }, [personaje.id])
 
   const cargarAtributos = async () => {
@@ -88,10 +92,28 @@ export default function FichaPersonaje({ personaje, userId, onCerrar, esDueno = 
         <div className="ficha-tabs">
           <button className={pestana === 'ficha' ? 'ficha-tab active' : 'ficha-tab'} onClick={() => setPestana('ficha')}>⚔️ Ficha</button>
           <button className={pestana === 'juramentos' ? 'ficha-tab active' : 'ficha-tab'} onClick={() => setPestana('juramentos')}>🕯️ Juramentos</button>
+          <button className={pestana === 'inventario' ? 'ficha-tab active' : 'ficha-tab'} onClick={() => setPestana('inventario')}>🎒{inventario.length > 0 ? ` ${inventario.length}` : ''}</button>
         </div>
         <div className="ficha-body">
           {pestana === 'juramentos' && (
             <PanelJuramentos personajeId={personaje.id} esMio={esMio} />
+          )}
+          {pestana === 'inventario' && (
+            inventario.length === 0
+              ? <p style={{ color: 'var(--text3)', fontStyle: 'italic', textAlign: 'center', padding: '1rem' }}>Sin objetos en el inventario.</p>
+              : inventario.map(item => (
+                <div key={item.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{TIPO_ICON[item.objeto?.tipo] || '📦'}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 600, color: 'var(--text)', fontSize: '0.88rem' }}>{item.objeto?.nombre}</span>
+                      {item.equipado && <span style={{ fontSize: '0.65rem', background: 'var(--accent)', color: '#000', borderRadius: '999px', padding: '0.05rem 0.4rem', fontWeight: 700 }}>Equipado</span>}
+                    </div>
+                    {item.objeto?.estadisticas && <p style={{ fontSize: '0.72rem', color: 'var(--accent)', margin: '0.1rem 0 0', fontFamily: 'Cinzel, serif' }}>{item.objeto.estadisticas}</p>}
+                    {item.objeto?.descripcion && <p style={{ fontSize: '0.78rem', color: 'var(--text3)', margin: '0.1rem 0 0', lineHeight: 1.4 }}>{item.objeto.descripcion}</p>}
+                  </div>
+                </div>
+              ))
           )}
           {pestana === 'ficha' && (cargando ? (
             <p style={{ color: 'var(--text3)', fontStyle: 'italic', textAlign: 'center', padding: '1rem' }}>Cargando...</p>

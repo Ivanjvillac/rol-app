@@ -8,6 +8,7 @@ const TIPO_ICON = { arma: '⚔️', armadura: '🛡️', artefacto: '✨', poci�
 
 export default function PanelObjetos({ universo, personajes, userId, esDueno, onCerrar }) {
   const [objetos, setObjetos] = useState([])
+  const [asignaciones, setAsignaciones] = useState([]) // [{objeto_id, personaje_id, id}]
   const [cargando, setCargando] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editando, setEditando] = useState(null)
@@ -19,8 +20,12 @@ export default function PanelObjetos({ universo, personajes, userId, esDueno, on
 
   const cargar = async () => {
     setCargando(true)
-    const { data } = await supabase.from('objetos').select('*').eq('universo_id', universo.id).order('created_at')
-    setObjetos(data || [])
+    const { data: obs } = await supabase.from('objetos').select('*').eq('universo_id', universo.id).order('created_at')
+    setObjetos(obs || [])
+    if (obs?.length > 0) {
+      const { data: inv } = await supabase.from('inventario').select('id, objeto_id, personaje_id').in('objeto_id', obs.map(o => o.id))
+      setAsignaciones(inv || [])
+    }
     setCargando(false)
   }
 
@@ -41,12 +46,21 @@ export default function PanelObjetos({ universo, personajes, userId, esDueno, on
   const borrar = async (id) => {
     await supabase.from('objetos').delete().eq('id', id)
     setObjetos(prev => prev.filter(o => o.id !== id))
+    setAsignaciones(prev => prev.filter(a => a.objeto_id !== id))
   }
 
   const asignarAPersonaje = async (objeto, personajeId) => {
     if (!personajeId) return
-    await supabase.from('inventario').insert({ personaje_id: personajeId, objeto_id: objeto.id })
+    const yaAsignado = asignaciones.some(a => a.objeto_id === objeto.id && a.personaje_id === personajeId)
+    if (yaAsignado) { setAsignando(null); return }
+    const { data } = await supabase.from('inventario').insert({ personaje_id: personajeId, objeto_id: objeto.id }).select('id, objeto_id, personaje_id').single()
+    if (data) setAsignaciones(prev => [...prev, data])
     setAsignando(null)
+  }
+
+  const quitarAsignacion = async (asignacionId) => {
+    await supabase.from('inventario').delete().eq('id', asignacionId)
+    setAsignaciones(prev => prev.filter(a => a.id !== asignacionId))
   }
 
   const generarIA = async () => {
@@ -76,34 +90,49 @@ export default function PanelObjetos({ universo, personajes, userId, esDueno, on
             {objetos.length === 0 && !showForm && (
               <div className="empty-state"><p>Sin objetos todavía.</p></div>
             )}
-            {objetos.map(o => (
-              <div key={o.id} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.6rem 0.8rem', marginBottom: '0.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: o.descripcion || o.estadisticas ? '0.4rem' : 0 }}>
-                  <span style={{ fontSize: '1rem' }}>{TIPO_ICON[o.tipo] || '📦'}</span>
-                  <span style={{ fontWeight: 600, color: 'var(--text)', flex: 1, fontSize: '0.92rem' }}>{o.nombre}</span>
-                  <span style={{ fontSize: '0.68rem', background: 'var(--bg3)', color: 'var(--text3)', borderRadius: '4px', padding: '0.1rem 0.4rem', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{o.tipo}</span>
-                  <div style={{ display: 'flex', gap: '0.3rem' }}>
-                    <button className="btn-sm" title="Asignar a personaje" onClick={() => setAsignando(asignando?.id === o.id ? null : o)}>👤</button>
-                    {(esDueno || o.user_id === userId) && (<>
-                      <button className="btn-sm" onClick={() => { setEditando(o); setForm({ nombre: o.nombre, tipo: o.tipo, descripcion: o.descripcion || '', estadisticas: o.estadisticas || '' }); setShowForm(true) }}>✏️</button>
-                      <button className="btn-sm danger" onClick={() => borrar(o.id)}>🗑</button>
-                    </>)}
+            {objetos.map(o => {
+              const propietarios = asignaciones.filter(a => a.objeto_id === o.id).map(a => ({ asigId: a.id, personaje: personajes.find(p => p.id === a.personaje_id) })).filter(x => x.personaje)
+              const disponibles = personajes.filter(p => !asignaciones.some(a => a.objeto_id === o.id && a.personaje_id === p.id))
+              return (
+                <div key={o.id} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.6rem 0.8rem', marginBottom: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
+                    <span style={{ fontSize: '1rem' }}>{TIPO_ICON[o.tipo] || '📦'}</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text)', flex: 1, fontSize: '0.92rem' }}>{o.nombre}</span>
+                    <span style={{ fontSize: '0.68rem', background: 'var(--bg3)', color: 'var(--text3)', borderRadius: '4px', padding: '0.1rem 0.4rem', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{o.tipo}</span>
+                    <div style={{ display: 'flex', gap: '0.3rem' }}>
+                      {esDueno && <button className="btn-sm" title="Asignar a personaje" onClick={() => setAsignando(asignando?.id === o.id ? null : o)}>👤+</button>}
+                      {(esDueno || o.user_id === userId) && (<>
+                        <button className="btn-sm" onClick={() => { setEditando(o); setForm({ nombre: o.nombre, tipo: o.tipo, descripcion: o.descripcion || '', estadisticas: o.estadisticas || '' }); setShowForm(true) }}>✏️</button>
+                        <button className="btn-sm danger" onClick={() => borrar(o.id)}>🗑</button>
+                      </>)}
+                    </div>
                   </div>
+                  {o.descripcion && <p style={{ fontSize: '0.82rem', color: 'var(--text2)', margin: '0 0 0.2rem', lineHeight: 1.4 }}>{o.descripcion}</p>}
+                  {o.estadisticas && <p style={{ fontSize: '0.75rem', color: 'var(--accent)', margin: '0 0 0.3rem', fontFamily: 'Cinzel, serif' }}>{o.estadisticas}</p>}
+                  {propietarios.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.2rem' }}>
+                      {propietarios.map(({ asigId, personaje: p }) => (
+                        <span key={asigId} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: 'var(--bg3)', borderRadius: '999px', padding: '0.1rem 0.5rem 0.1rem 0.35rem', fontSize: '0.72rem', color: 'var(--text2)' }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, display: 'inline-block', flexShrink: 0 }} />
+                          {p.nombre}
+                          {esDueno && <button onClick={() => quitarAsignacion(asigId)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: '0.65rem', padding: '0 0 0 0.2rem', lineHeight: 1 }}>✕</button>}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {asignando?.id === o.id && (
+                    <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                      <select defaultValue="" style={{ flex: 1, background: 'var(--bg3)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.3rem 0.5rem', fontSize: '0.82rem' }}
+                        onChange={e => asignarAPersonaje(o, e.target.value)}>
+                        <option value="">{disponibles.length ? 'Asignar a...' : 'Todos tienen este objeto'}</option>
+                        {disponibles.map(p => <option key={p.id} value={p.id}>{p.nombre} ({p.rol})</option>)}
+                      </select>
+                      <button className="btn-ghost btn-sm" onClick={() => setAsignando(null)}>✕</button>
+                    </div>
+                  )}
                 </div>
-                {o.descripcion && <p style={{ fontSize: '0.82rem', color: 'var(--text2)', margin: '0 0 0.2rem', lineHeight: 1.4 }}>{o.descripcion}</p>}
-                {o.estadisticas && <p style={{ fontSize: '0.75rem', color: 'var(--accent)', margin: 0, fontFamily: 'Cinzel, serif' }}>{o.estadisticas}</p>}
-                {asignando?.id === o.id && (
-                  <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
-                    <select defaultValue="" style={{ flex: 1, background: 'var(--bg3)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.3rem 0.5rem', fontSize: '0.82rem' }}
-                      onChange={e => asignarAPersonaje(o, e.target.value)}>
-                      <option value="">Asignar a...</option>
-                      {personajes.map(p => <option key={p.id} value={p.id}>{p.nombre} ({p.rol})</option>)}
-                    </select>
-                    <button className="btn-ghost btn-sm" onClick={() => setAsignando(null)}>✕</button>
-                  </div>
-                )}
-              </div>
-            ))}
+              )
+            })}
           </>)}
 
           {esDueno && !showForm && (<>
