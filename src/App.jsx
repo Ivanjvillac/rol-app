@@ -54,7 +54,7 @@ function AppInner({ page, navigate, selectedUniverso, setSelectedUniverso, cerra
       )}
 
       {page === 'admin' && <Admin />}
-      {page === 'home' && <Home navigate={navigate} />}
+      {page === 'home' && <Home navigate={navigate} selectedUniverso={selectedUniverso} />}
       {page === 'universos' && <Universos navigate={navigate} setSelectedUniverso={setSelectedUniverso} selectedUniverso={selectedUniverso} />}
       {page === 'personajes' && <Personajes navigate={navigate} selectedUniverso={selectedUniverso} />}
       {page === 'mesa' && <Mesa navigate={navigate} selectedUniverso={selectedUniverso} />}
