@@ -91,7 +91,7 @@ export default function FichaPersonaje({ personaje, userId, onCerrar, esDueno = 
         {/* Tabs */}
         <div className="ficha-tabs">
           <button className={pestana === 'ficha' ? 'ficha-tab active' : 'ficha-tab'} onClick={() => setPestana('ficha')}>⚔️ Ficha</button>
-          <button className={pestana === 'juramentos' ? 'ficha-tab active' : 'ficha-tab'} onClick={() => setPestana('juramentos')}>🕯️ Juramentos</button>
+          <button className={pestana === 'juramentos' ? 'ficha-tab active' : 'ficha-tab'} onClick={() => setPestana('juramentos')}>🕯️ Jur.</button>
           <button className={pestana === 'inventario' ? 'ficha-tab active' : 'ficha-tab'} onClick={() => setPestana('inventario')}>🎒 Inv.{inventario.length > 0 ? ` (${inventario.length})` : ''}</button>
         </div>
         <div className="ficha-body">

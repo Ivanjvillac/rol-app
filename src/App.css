@@ -1842,7 +1842,7 @@ input, textarea, select {
   position: fixed;
   top: 56px;
   left: 240px;
-  width: 260px;
+  width: 300px;
   background: var(--bg2);
   border: 1px solid var(--border2);
   border-radius: var(--radius-lg);
