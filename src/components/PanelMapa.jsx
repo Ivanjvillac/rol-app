@@ -33,7 +33,7 @@ export default function PanelMapa({ universo, userId, esDueno, onCerrar }) {
   const [hoverPin, setHoverPin]   = useState(null)
 
   const imgRef = useRef(null)
-  const { upload, uploading } = useImageUpload('mapas', { compressionType: 'npc' })
+  const { upload, uploading } = useImageUpload('mapas', { compressionType: 'mapa' })
 
   /* ── load maps ── */
   useEffect(() => {

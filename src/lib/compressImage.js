@@ -4,6 +4,12 @@ const LIMITS = {
   avatar: 0.05,  // 50 KB
   chat:   0.2,   // 200 KB
   npc:    0.2,   // 200 KB
+  mapa:   0.5,   // 500 KB
+}
+
+const MAX_DIM = {
+  avatar: 400,
+  mapa:   2048,
 }
 
 export async function compressImage(file, type = 'chat') {
@@ -11,7 +17,7 @@ export async function compressImage(file, type = 'chat') {
 
   const options = {
     maxSizeMB,
-    maxWidthOrHeight: type === 'avatar' ? 400 : 1024,
+    maxWidthOrHeight: MAX_DIM[type] ?? 1024,
     initialQuality: 0.7,
     useWebWorker: true,
     fileType: 'image/jpeg',
