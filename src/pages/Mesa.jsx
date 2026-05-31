@@ -300,6 +300,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [escenaTitulo, setEscenaTitulo] = useState('')
   const [escenaDescripcion, setEscenaDescripcion] = useState('')
   const [escenaImagenUrl, setEscenaImagenUrl] = useState('')
+  const [escenaLightbox, setEscenaLightbox] = useState(false)
   const canalEscenaRef = useRef(null)
 
   // Filtros de búsqueda global
@@ -2107,7 +2108,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
         {/* Tarjeta de escena activa */}
         {sesionActiva && escenaTitulo && (
           <div className="escena-banner" onClick={esDueno ? () => setShowEscenaEditor(true) : undefined} style={{ cursor: esDueno ? 'pointer' : 'default' }}>
-            {escenaImagenUrl && <img src={escenaImagenUrl} alt="escena" className="escena-banner-img" onClick={e => { e.stopPropagation(); abrirUrlSegura(escenaImagenUrl) }} style={{ cursor: 'zoom-in' }} />}
+            {escenaImagenUrl && <img src={escenaImagenUrl} alt="escena" className="escena-banner-img" onClick={e => { e.stopPropagation(); setEscenaLightbox(true) }} style={{ cursor: 'zoom-in' }} />}
             <div className="escena-banner-texto">
               <span className="escena-banner-titulo">{escenaTitulo}</span>
               {escenaDescripcion && <span className="escena-banner-desc">{escenaDescripcion}</span>}
@@ -2998,6 +2999,12 @@ export default function Mesa({ navigate, selectedUniverso }) {
               <button className="btn-primary" onClick={() => setShowVersiones(null)}>Cerrar</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {escenaLightbox && escenaImagenUrl && (
+        <div className="modal-overlay" onClick={() => setEscenaLightbox(false)} style={{ zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <img src={escenaImagenUrl} alt="escena" style={{ maxWidth: '95vw', maxHeight: '95vh', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', objectFit: 'contain' }} onClick={e => e.stopPropagation()} />
         </div>
       )}
 
