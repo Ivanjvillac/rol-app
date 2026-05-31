@@ -1347,7 +1347,7 @@ input, textarea, select {
 
   /* Grid personajes */
   .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.7rem; }
-  .page { padding: 1rem 0.8rem; }
+  .page { padding: 1rem 0.8rem; padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px) + 1rem); }
 }
 
 /* ===== SELECTOR IMAGEN/STICKER ===== */
