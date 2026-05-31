@@ -10,7 +10,11 @@ import PanelObjetos from '../components/PanelObjetos'
 import PanelDadoEvento from '../components/PanelDadoEvento'
 import { jsPDF } from 'jspdf'
 import { parseMessage } from '../lib/parseMessage'
-import { generarResumenConIA, generarDescripcionDado, generarDescripcionEscena, generarNPC, tieneApiKey } from '../lib/gemini'
+import { generarResumenConIA, generarDescripcionDado, generarDescripcionEscena, generarNPC, consultarNPC, tieneApiKey } from '../lib/gemini'
+import PanelMapaRelaciones from '../components/PanelMapaRelaciones'
+import PanelTimeline from '../components/PanelTimeline'
+import PanelMapa from '../components/PanelMapa'
+import PanelBestiario from '../components/PanelBestiario'
 import { useMesaTimer } from '../features/mesa/hooks/useMesaTimer'
 import { useMesaPresence } from '../features/mesa/hooks/useMesaPresence'
 import { useMesaMusic } from '../features/mesa/hooks/useMesaMusic'
@@ -279,6 +283,24 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [seccionAyuda, setSeccionAyuda] = useState(false)
   const [seccionArchivadas, setSeccionArchivadas] = useState(false)
   const [seccionDados, setSeccionDados] = useState(false)
+  const [showMapaRelaciones, setShowMapaRelaciones] = useState(false)
+  const [showTimeline, setShowTimeline] = useState(false)
+  const [npcMemoriaId, setNpcMemoriaId] = useState('')
+  const [npcPregunta, setNpcPregunta] = useState('')
+  const [npcRespuesta, setNpcRespuesta] = useState(null)
+  const [generandoNpcMemoria, setGenerandoNpcMemoria] = useState(false)
+  // Nuevas features
+  const [showMapa, setShowMapa] = useState(false)
+  const [showBestiario, setShowBestiario] = useState(false)
+  const [condicionesPorPersonaje, setCondicionesPorPersonaje] = useState({})
+  const [fechaJuego, setFechaJuego] = useState('')
+  const [fechaJuegoId, setFechaJuegoId] = useState(null)
+  const [editandoFecha, setEditandoFecha] = useState(false)
+  const [showEscenaEditor, setShowEscenaEditor] = useState(false)
+  const [escenaTitulo, setEscenaTitulo] = useState('')
+  const [escenaDescripcion, setEscenaDescripcion] = useState('')
+  const [escenaImagenUrl, setEscenaImagenUrl] = useState('')
+  const canalEscenaRef = useRef(null)
 
   // Filtros de búsqueda global
   const [filtroTipo, setFiltroTipo] = useState('')
@@ -673,6 +695,11 @@ export default function Mesa({ navigate, selectedUniverso }) {
         else if (showTimerConfig) setShowTimerConfig(false)
         else if (showChat) setShowChat(false)
         else if (showInvestigacion) setShowInvestigacion(false)
+        else if (showMapaRelaciones) setShowMapaRelaciones(false)
+        else if (showTimeline) setShowTimeline(false)
+        else if (showMapa) setShowMapa(false)
+        else if (showBestiario) setShowBestiario(false)
+        else if (showEscenaEditor) setShowEscenaEditor(false)
         else if (showGaleria) setShowGaleria(false)
         else if (showMisiones) setShowMisiones(false)
         else if (showDadoEvento) setShowDadoEvento(false)
@@ -686,7 +713,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   }, [showBusquedaGlobal, showMusica, showStats, showResumen, showDados, showVersiones,
       editandoEntrada, gestionarSesion, confirmDeleteEntrada, confirmDeleteSesion,
       showInvitar, showNuevaSesion, fichaPersonaje, fichaCompartida, showTimerConfig,
-      showChat, showInvestigacion, showGaleria, showMisiones, showDadoEvento, showObjetos,
+      showChat, showInvestigacion, showMapaRelaciones, showTimeline, showMapa, showBestiario, showEscenaEditor, showGaleria, showMisiones, showDadoEvento, showObjetos,
       respondiendo, sidebarAbierto])
 
   // ── AUTO-SCROLL ──
@@ -1148,6 +1175,63 @@ export default function Mesa({ navigate, selectedUniverso }) {
     })
   }
 
+  // Log en chat cuando cambia HP (owner o máster)
+  const handleHpChange = async (nombrePersonaje, nombreStat, valorAntes, valorDespues) => {
+    if (!sesionActiva) return
+    await supabase.from('entradas').insert({
+      universo_id: selectedUniverso.id,
+      user_id: userId,
+      tipo: 'narrador',
+      contenido: `❤️ ${nombrePersonaje} — ${nombreStat}: ${valorAntes} → ${valorDespues}`,
+      sesion_id: sesionActiva.id,
+      tono: 'normal',
+    })
+  }
+
+  const toggleCondicion = async (personaje, condicion) => {
+    const existing = (condicionesPorPersonaje[personaje.id] || []).find(c => c.nombre === condicion.nombre)
+    if (existing) {
+      await supabase.from('condiciones_personaje').delete().eq('id', existing.id)
+      setCondicionesPorPersonaje(prev => ({ ...prev, [personaje.id]: (prev[personaje.id] || []).filter(c => c.id !== existing.id) }))
+    } else {
+      const { data } = await supabase.from('condiciones_personaje').insert({
+        personaje_id: personaje.id,
+        universo_id: selectedUniverso.id,
+        nombre: condicion.nombre,
+        emoji: condicion.emoji,
+        color: condicion.color,
+      }).select().single()
+      if (data) setCondicionesPorPersonaje(prev => ({ ...prev, [personaje.id]: [...(prev[personaje.id] || []), data] }))
+    }
+  }
+
+  const guardarFechaJuego = async (nuevaFecha) => {
+    if (fechaJuegoId) {
+      await supabase.from('calendario_universo').update({ fecha_texto: nuevaFecha, updated_at: new Date().toISOString() }).eq('id', fechaJuegoId)
+    } else {
+      const { data } = await supabase.from('calendario_universo').insert({ universo_id: selectedUniverso.id, fecha_texto: nuevaFecha }).select().single()
+      if (data) setFechaJuegoId(data.id)
+    }
+    setFechaJuego(nuevaFecha)
+    setEditandoFecha(false)
+  }
+
+  const guardarEscena = async () => {
+    if (!sesionActiva) return
+    await supabase.from('sesiones').update({
+      escena_titulo: escenaTitulo || null,
+      escena_descripcion: escenaDescripcion || null,
+      escena_imagen_url: escenaImagenUrl || null,
+    }).eq('id', sesionActiva.id)
+    setShowEscenaEditor(false)
+  }
+
+  const limpiarEscena = async () => {
+    if (!sesionActiva) return
+    await supabase.from('sesiones').update({ escena_titulo: null, escena_descripcion: null, escena_imagen_url: null }).eq('id', sesionActiva.id)
+    setEscenaTitulo(''); setEscenaDescripcion(''); setEscenaImagenUrl('')
+  }
+
   const abrirInvitar = async () => {
     setShowInvitar(true)
     setMsgInvitar(null)
@@ -1461,6 +1545,73 @@ export default function Mesa({ navigate, selectedUniverso }) {
     return () => supabase.removeChannel(canal)
   }, [sesionActiva?.id])
 
+  // ── Condiciones de estado ──
+  useEffect(() => {
+    if (!selectedUniverso?.id) return
+    const cargarCondiciones = async () => {
+      const { data } = await supabase
+        .from('condiciones_personaje')
+        .select('*')
+        .eq('universo_id', selectedUniverso.id)
+      const mapa = {}
+      ;(data || []).forEach(c => {
+        if (!mapa[c.personaje_id]) mapa[c.personaje_id] = []
+        mapa[c.personaje_id].push(c)
+      })
+      setCondicionesPorPersonaje(mapa)
+    }
+    cargarCondiciones()
+    const canal = supabase
+      .channel(`condiciones-${selectedUniverso.id}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'condiciones_personaje',
+        filter: `universo_id=eq.${selectedUniverso.id}`
+      }, () => cargarCondiciones())
+      .subscribe()
+    return () => supabase.removeChannel(canal)
+  }, [selectedUniverso?.id])
+
+  // ── Calendario in-game ──
+  useEffect(() => {
+    if (!selectedUniverso?.id) return
+    supabase.from('calendario_universo').select('*').eq('universo_id', selectedUniverso.id).maybeSingle()
+      .then(({ data }) => { if (data) { setFechaJuego(data.fecha_texto || ''); setFechaJuegoId(data.id) } })
+    const canal = supabase
+      .channel(`calendario-${selectedUniverso.id}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'calendario_universo',
+        filter: `universo_id=eq.${selectedUniverso.id}`
+      }, ({ eventType, new: row }) => {
+        if (eventType !== 'DELETE' && row) { setFechaJuego(row.fecha_texto || ''); setFechaJuegoId(row.id) }
+      })
+      .subscribe()
+    return () => supabase.removeChannel(canal)
+  }, [selectedUniverso?.id])
+
+  // ── Tarjeta de escena activa ──
+  useEffect(() => {
+    if (!sesionActiva?.id) return
+    const { escena_titulo, escena_descripcion, escena_imagen_url } = sesionActiva
+    setEscenaTitulo(escena_titulo || '')
+    setEscenaDescripcion(escena_descripcion || '')
+    setEscenaImagenUrl(escena_imagen_url || '')
+    const canal = supabase
+      .channel(`escena-${sesionActiva.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'sesiones',
+        filter: `id=eq.${sesionActiva.id}`
+      }, ({ new: row }) => {
+        if (row) {
+          setEscenaTitulo(row.escena_titulo || '')
+          setEscenaDescripcion(row.escena_descripcion || '')
+          setEscenaImagenUrl(row.escena_imagen_url || '')
+        }
+      })
+      .subscribe()
+    canalEscenaRef.current = canal
+    return () => { supabase.removeChannel(canal); canalEscenaRef.current = null }
+  }, [sesionActiva?.id])
+
   // Limpiar notifs y cargar reacciones/fijadas al entrar a sesión
   useEffect(() => {
     if (!sesionActiva?.id) return
@@ -1580,7 +1731,15 @@ export default function Mesa({ navigate, selectedUniverso }) {
                     onClick={esMio ? () => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) } : undefined}
                     style={!esMio ? { opacity: 0.5, cursor: 'default' } : {}}>
                     {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
-                    <div style={{ flex: 1 }}><span>{p.nombre}</span><small>{p.rol}</small></div>
+                    <div style={{ flex: 1 }}>
+                      <span>{p.nombre}</span>
+                      {(condicionesPorPersonaje[p.id] || []).length > 0 && (
+                        <span style={{ marginLeft: '0.3rem', fontSize: '0.75rem' }}>
+                          {(condicionesPorPersonaje[p.id] || []).slice(0, 3).map(c => c.emoji).join('')}
+                        </span>
+                      )}
+                      <small>{p.rol}</small>
+                    </div>
                     {esMio && (
                       <div style={{ display: 'flex', gap: '0.15rem' }}>
                         <button className="ficha-btn" title={p.oculto ? 'Mostrar' : 'Ocultar'}
@@ -1613,7 +1772,15 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   {personajes.filter(p => p.es_npc).map(p => (
                     <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) }}>
                       {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
-                      <div style={{ flex: 1 }}><span>{p.nombre}</span><small>🤖 {p.rol}</small></div>
+                      <div style={{ flex: 1 }}>
+                        <span>{p.nombre}</span>
+                        {(condicionesPorPersonaje[p.id] || []).length > 0 && (
+                          <span style={{ marginLeft: '0.3rem', fontSize: '0.75rem' }}>
+                            {(condicionesPorPersonaje[p.id] || []).slice(0, 3).map(c => c.emoji).join('')}
+                          </span>
+                        )}
+                        <small>🤖 {p.rol}</small>
+                      </div>
                       {esDueno && <button className="ficha-btn" title="Mostrar ficha a todos" onClick={e => { e.stopPropagation(); compartirFicha(p) }}>👁</button>}
                       <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
                     </div>
@@ -1673,6 +1840,40 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowObjetos(true)} disabled={!selectedUniverso}>🎒 Objetos</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowDadoEvento(true)} disabled={!selectedUniverso}>🎲 Dado de evento</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowInvestigacion(true)} disabled={!selectedUniverso}>🔍 Investigación</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMapa(true)} disabled={!selectedUniverso}>🗺️ Mapa del mundo</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowBestiario(true)} disabled={!selectedUniverso}>📖 Bestiario</button>
+            {sesionActiva && esDueno && (
+              <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowEscenaEditor(true)}>
+                🎬 Tarjeta de escena{escenaTitulo ? ` · ${escenaTitulo.slice(0, 18)}…` : ''}
+              </button>
+            )}
+            {/* Calendario in-game */}
+            <div style={{ marginTop: '0.6rem', padding: '0.5rem 0.6rem', background: 'var(--bg3)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: editandoFecha ? '0.4rem' : 0 }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.05em' }}>📅 Fecha in-game</span>
+                {!editandoFecha && esDueno && (
+                  <button onClick={() => setEditandoFecha(true)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: '0.75rem', padding: '0 0.2rem' }}>✏️</button>
+                )}
+              </div>
+              {editandoFecha ? (
+                <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.2rem' }}>
+                  <input
+                    value={fechaJuego}
+                    onChange={e => setFechaJuego(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') guardarFechaJuego(fechaJuego); if (e.key === 'Escape') setEditandoFecha(false) }}
+                    placeholder="Día 3 de Vendimia..."
+                    autoFocus
+                    style={{ flex: 1, background: 'var(--bg2)', border: '1px solid var(--border2)', borderRadius: '4px', color: 'var(--text)', padding: '0.25rem 0.4rem', fontSize: '0.82rem' }}
+                  />
+                  <button onClick={() => guardarFechaJuego(fechaJuego)} style={{ background: 'var(--accent)', border: 'none', color: '#000', borderRadius: '4px', padding: '0.2rem 0.5rem', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700 }}>✓</button>
+                  <button onClick={() => setEditandoFecha(false)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '4px', color: 'var(--text3)', padding: '0.2rem 0.4rem', cursor: 'pointer', fontSize: '0.75rem' }}>✕</button>
+                </div>
+              ) : (
+                <p style={{ fontSize: '0.88rem', color: fechaJuego ? 'var(--text)' : 'var(--text3)', fontStyle: fechaJuego ? 'normal' : 'italic', marginTop: '0.2rem' }}>
+                  {fechaJuego || (esDueno ? 'Sin fecha — haz clic en ✏️' : 'Sin fecha establecida')}
+                </p>
+              )}
+            </div>
             {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowTimerConfig(true)} disabled={!selectedUniverso}>⏱️ Temporizador{timerDisplay ? ` · ${timerDisplay}` : ''}</button>}
             {musicaUrl && (
               <div style={{ marginTop: '0.6rem', borderRadius: 'var(--radius)', overflow: 'hidden', position: 'relative', background: '#000' }}>
@@ -1900,6 +2101,20 @@ export default function Mesa({ navigate, selectedUniverso }) {
           <div style={{ background: '#c0392b', color: 'white', padding: '0.4rem 1rem', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}>
             <span>📵</span>
             <span>Sin conexión — Los mensajes no se enviarán hasta que vuelva la conexión.</span>
+          </div>
+        )}
+
+        {/* Tarjeta de escena activa */}
+        {sesionActiva && escenaTitulo && (
+          <div className="escena-banner" onClick={esDueno ? () => setShowEscenaEditor(true) : undefined} style={{ cursor: esDueno ? 'pointer' : 'default' }}>
+            {escenaImagenUrl && <img src={escenaImagenUrl} alt="escena" className="escena-banner-img" />}
+            <div className="escena-banner-texto">
+              <span className="escena-banner-titulo">{escenaTitulo}</span>
+              {escenaDescripcion && <span className="escena-banner-desc">{escenaDescripcion}</span>}
+            </div>
+            {esDueno && (
+              <button className="escena-banner-limpiar" onClick={e => { e.stopPropagation(); limpiarEscena() }} title="Quitar escena">✕</button>
+            )}
           </div>
         )}
 
@@ -2602,6 +2817,9 @@ export default function Mesa({ navigate, selectedUniverso }) {
         onCerrar={() => setFichaPersonaje(null)}
         esDueno={esDueno}
         onStatEdit={handleStatEdit}
+        onHpChange={handleHpChange}
+        condiciones={condicionesPorPersonaje[fichaPersonaje?.id] || []}
+        onToggleCondicion={(condicion) => toggleCondicion(fichaPersonaje, condicion)}
       />}
 
       {fichaCompartida && (
@@ -2639,6 +2857,42 @@ export default function Mesa({ navigate, selectedUniverso }) {
 
       {showGaleria && selectedUniverso && (
         <PanelGaleria universoId={selectedUniverso.id} onCerrar={() => setShowGaleria(false)} />
+      )}
+
+      {showMapaRelaciones && selectedUniverso && (
+        <PanelMapaRelaciones
+          universoId={selectedUniverso.id}
+          personajes={personajes.filter(p => p.universo_id === selectedUniverso.id || p.universoId === selectedUniverso.id)}
+          onCerrar={() => setShowMapaRelaciones(false)}
+        />
+      )}
+
+      {showTimeline && selectedUniverso && (
+        <PanelTimeline
+          universoId={selectedUniverso.id}
+          sesiones={listaSesiones[selectedUniverso.id] || []}
+          onCerrar={() => setShowTimeline(false)}
+        />
+      )}
+
+      {showMapa && selectedUniverso && (
+        <PanelMapa
+          universo={selectedUniverso}
+          userId={userId}
+          esDueno={esDueno}
+          onCerrar={() => setShowMapa(false)}
+        />
+      )}
+
+      {showBestiario && selectedUniverso && (
+        <PanelBestiario
+          universo={selectedUniverso}
+          userId={userId}
+          esDueno={esDueno}
+          sesionActiva={sesionActiva}
+          onEnviarAlChat={(texto) => sesionActiva && addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: texto }, sesionActiva.id)}
+          onCerrar={() => setShowBestiario(false)}
+        />
       )}
 
       {showMisiones && selectedUniverso && (
@@ -2742,6 +2996,37 @@ export default function Mesa({ navigate, selectedUniverso }) {
             </div>
             <div className="modal-actions" style={{ marginTop: '1rem' }}>
               <button className="btn-primary" onClick={() => setShowVersiones(null)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEscenaEditor && sesionActiva && (
+        <div className="modal-overlay" onClick={() => setShowEscenaEditor(false)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>🎬 Tarjeta de escena</h3>
+              <button onClick={() => setShowEscenaEditor(false)}>✕</button>
+            </div>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text3)', marginBottom: '1rem', fontStyle: 'italic' }}>La tarjeta de escena es visible para todos los jugadores encima del historial.</p>
+            <div className="form-group">
+              <label>Título de la escena</label>
+              <input placeholder="La Fortaleza del Norte..." value={escenaTitulo} onChange={e => setEscenaTitulo(e.target.value)} autoFocus />
+            </div>
+            <div className="form-group">
+              <label>Descripción breve (opcional)</label>
+              <textarea placeholder="Una tormenta de nieve azota las murallas..." value={escenaDescripcion} onChange={e => setEscenaDescripcion(e.target.value)} rows={2} style={{ width: '100%', resize: 'vertical' }} />
+            </div>
+            <div className="form-group">
+              <label>URL de imagen (opcional)</label>
+              <input placeholder="https://..." value={escenaImagenUrl} onChange={e => setEscenaImagenUrl(e.target.value)} />
+            </div>
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setShowEscenaEditor(false)}>Cancelar</button>
+              {(escenaTitulo || escenaDescripcion || escenaImagenUrl) && (
+                <button className="btn-ghost" style={{ color: 'var(--danger)' }} onClick={limpiarEscena}>Limpiar</button>
+              )}
+              <button className="btn-primary" onClick={guardarEscena} disabled={!escenaTitulo.trim()}>Guardar</button>
             </div>
           </div>
         </div>

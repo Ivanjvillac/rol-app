@@ -105,4 +105,47 @@ export async function generarTrasfondo(nombre, rol, descripcion) {
   )
 }
 
+export async function describirImagen(imageUrl) {
+  if (!GROQ_API_KEY) return null
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+        messages: [{ role: 'user', content: [
+          { type: 'image_url', image_url: { url: imageUrl } },
+          { type: 'text', text: 'Describe esta imagen en español en 2-3 frases con estilo narrativo de fantasía. Solo la descripción, sin introducciones ni aclaraciones.' },
+        ]}],
+        max_tokens: 200,
+        temperature: 0.75,
+      }),
+    })
+    const data = await res.json()
+    return data.choices?.[0]?.message?.content?.trim() || null
+  } catch { return null }
+}
+
+export async function consultarNPC(npc, pregunta, entradasRecientes) {
+  const historial = (entradasRecientes || []).slice(-60)
+    .map(e => {
+      if (e.tipo === 'narrador') return `[NARRADOR]: ${e.contenido}`
+      if (e.tipo === 'dialogo') return `${e.personaje_nombre || 'Personaje'}: "${e.contenido}"`
+      if (e.tipo === 'accion') return `* ${e.personaje_nombre || 'Personaje'} ${e.contenido} *`
+      return null
+    })
+    .filter(Boolean).join('\n')
+
+  return llamarGroq(
+    `Eres ${npc.nombre}${npc.rol ? `, ${npc.rol}` : ''}.${npc.descripcion ? ` ${npc.descripcion}` : ''}
+
+Sabes lo que ha ocurrido en la sesión según este registro:
+${historial || '(Sin eventos registrados aún)'}
+
+Responde a la siguiente pregunta EN PRIMERA PERSONA como ${npc.nombre}, usando solo lo que tu personaje conoce y diría. Máximo 3 frases, en español. Sin introducciones:
+"${pregunta}"`,
+    220, 0.85
+  )
+}
+
 export const tieneApiKey = () => !!GROQ_API_KEY
