@@ -89,6 +89,14 @@ export async function generarMision(universoNombre) {
   )
 }
 
+export async function generarObjetoMagico(universoNombre) {
+  const ctx = universoNombre ? ` del universo "${universoNombre}"` : ''
+  return llamarGroq(
+    `Eres el creador de objetos de una partida de rol de fantasía${ctx}. Genera un objeto mágico o especial con este formato exacto:\nNombre: [nombre evocador]\nTipo: [arma/armadura/artefacto/poción/joya]\nDescripción: [una frase narrativa evocadora]\nPropiedades: [2-3 propiedades o bonificadores separados por coma]\nSolo el formato indicado, sin texto adicional.`,
+    150, 0.9
+  )
+}
+
 export async function generarTrasfondo(nombre, rol, descripcion) {
   const contexto = descripcion?.trim() ? ` Contexto: ${descripcion}` : ''
   return llamarGroq(

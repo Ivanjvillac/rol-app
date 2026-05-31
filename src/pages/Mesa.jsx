@@ -6,6 +6,7 @@ import FichaPersonaje from '../components/FichaPersonaje'
 import PanelInvestigacion from '../components/PanelInvestigacion'
 import PanelGaleria from '../components/PanelGaleria'
 import PanelMisiones from '../components/PanelMisiones'
+import PanelObjetos from '../components/PanelObjetos'
 import PanelDadoEvento from '../components/PanelDadoEvento'
 import { jsPDF } from 'jspdf'
 import { parseMessage } from '../lib/parseMessage'
@@ -235,6 +236,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [showGaleria, setShowGaleria] = useState(false)
   const [showMisiones, setShowMisiones] = useState(false)
   const [showDadoEvento, setShowDadoEvento] = useState(false)
+  const [showObjetos, setShowObjetos] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [showDados, setShowDados] = useState(false)
   const [fichaCompartida, setFichaCompartida] = useState(null)
@@ -671,6 +673,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
         else if (showGaleria) setShowGaleria(false)
         else if (showMisiones) setShowMisiones(false)
         else if (showDadoEvento) setShowDadoEvento(false)
+        else if (showObjetos) setShowObjetos(false)
         else if (respondiendo) setRespondiendo(null)
         else if (sidebarAbierto) setSidebarAbierto(false)
       }
@@ -680,7 +683,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   }, [showBusquedaGlobal, showMusica, showStats, showResumen, showDados, showVersiones,
       editandoEntrada, gestionarSesion, confirmDeleteEntrada, confirmDeleteSesion,
       showInvitar, showNuevaSesion, fichaPersonaje, fichaCompartida, showTimerConfig,
-      showChat, showInvestigacion, showGaleria, showMisiones, showDadoEvento,
+      showChat, showInvestigacion, showGaleria, showMisiones, showDadoEvento, showObjetos,
       respondiendo, sidebarAbierto])
 
   // ── AUTO-SCROLL ──
@@ -1800,6 +1803,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMisiones(true)} disabled={!selectedUniverso}>📋 Misiones</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowGaleria(true)} disabled={!selectedUniverso}>🖼️ Galería</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowDadoEvento(true)} disabled={!selectedUniverso}>🎲 Dado de evento</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowObjetos(true)} disabled={!selectedUniverso}>🎒 Objetos</button>
             {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={abrirResumen} disabled={!sesionActiva}>📜 Resumen de sesión</button>}
             {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowTimerConfig(true)} disabled={!selectedUniverso}>⏱️ Temporizador{timerDisplay ? ` · ${timerDisplay}` : ''}</button>}
             {musicaUrl && (
@@ -2648,6 +2652,9 @@ export default function Mesa({ navigate, selectedUniverso }) {
         <PanelMisiones universoId={selectedUniverso.id} userId={userId} esDueno={esDueno} onCerrar={() => setShowMisiones(false)} universoNombre={selectedUniverso.nombre} />
       )}
 
+      {showObjetos && selectedUniverso && (
+        <PanelObjetos universo={selectedUniverso} personajes={personajes} userId={userId} esDueno={esDueno} onCerrar={() => setShowObjetos(false)} />
+      )}
       {showDadoEvento && selectedUniverso && (
         <PanelDadoEvento
           universoId={selectedUniverso.id}
