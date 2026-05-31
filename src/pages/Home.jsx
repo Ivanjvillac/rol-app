@@ -13,7 +13,7 @@ export default function Home({ navigate, selectedUniverso }) {
       <div className="home-hero">
         <div className="home-hero-glow" />
         <h1 className="home-title">🎲 Tinta y Dados</h1>
-        <p className="home-subtitle">Tu mesa de rol escrita. Sin límites, sin IA. Solo tu historia.</p>
+        <p className="home-subtitle">Donde las historias cobran vida. Tu universo, tus reglas.</p>
         <button className="btn-primary btn-lg" onClick={() => navigate('universos')}>
           Comenzar →
         </button>
