@@ -2631,34 +2631,36 @@ export default function Mesa({ navigate, selectedUniverso }) {
               <>
                 {/* Presets por escena */}
                 <div style={{ marginBottom: '1rem' }}>
-                  <p style={{ fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>Presets de escena</p>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.3rem' }}>Buscar música por escena en YouTube</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text3)', fontStyle: 'italic', marginBottom: '0.5rem' }}>Haz click para buscar → copia la URL del vídeo que quieras → pégala abajo</p>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.35rem' }}>
                     {[
-                      { label: '⚔️ Combate épico', url: 'https://www.youtube.com/watch?v=m-kbFRpBNGg' },
-                      { label: '🌲 Exploración', url: 'https://www.youtube.com/watch?v=4EcgruWlXiQ' },
-                      { label: '🍺 Taberna', url: 'https://www.youtube.com/watch?v=PFhG9bDPLEo' },
-                      { label: '🏰 Mazmorra', url: 'https://www.youtube.com/watch?v=Ub_E9EBvMrE' },
-                      { label: '🌙 Misterio', url: 'https://www.youtube.com/watch?v=X4rA2KCjpuY' },
-                      { label: '🌊 Viaje / Mar', url: 'https://www.youtube.com/watch?v=7gdxFCX7fvs' },
-                      { label: '🏙️ Ciudad', url: 'https://www.youtube.com/watch?v=DRTsbFHQraE' },
-                      { label: '😢 Drama / Tensión', url: 'https://www.youtube.com/watch?v=lMqfXEhW5-M' },
+                      { label: '⚔️ Combate épico', q: 'epic battle RPG fantasy music' },
+                      { label: '🌲 Exploración', q: 'fantasy exploration ambient music DnD' },
+                      { label: '🍺 Taberna', q: 'tavern music medieval fantasy RPG' },
+                      { label: '🏰 Mazmorra', q: 'dungeon dark ambient RPG music' },
+                      { label: '🌙 Misterio', q: 'mystery suspense RPG ambient music' },
+                      { label: '🌊 Viaje / Mar', q: 'sea voyage adventure fantasy music' },
+                      { label: '🏙️ Ciudad medieval', q: 'medieval city ambient fantasy music' },
+                      { label: '😢 Drama / Tensión', q: 'dramatic tense fantasy RPG music' },
                     ].map(preset => (
                       <button key={preset.label}
                         style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.4rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text2)', textAlign: 'left', transition: 'border-color 0.15s' }}
-                        onClick={() => { setYoutubeUrl(preset.url); cargarYoutube(preset.url) }}>
-                        {preset.label}
+                        onClick={() => window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(preset.q)}`, '_blank', 'noopener,noreferrer')}>
+                        {preset.label} ↗
                       </button>
                     ))}
                   </div>
                 </div>
                 <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.8rem' }}>
-                  <p style={{ fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>O pega una URL propia</p>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>Pega la URL del vídeo elegido</p>
                   <div className="form-group">
                     <input
                       placeholder="https://www.youtube.com/watch?v=..."
                       value={youtubeUrl}
                       onChange={e => setYoutubeUrl(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && cargarYoutube(youtubeUrl)}
+                      autoFocus
                     />
                   </div>
                 </div>
