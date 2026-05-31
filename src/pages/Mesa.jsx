@@ -2107,7 +2107,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
         {/* Tarjeta de escena activa */}
         {sesionActiva && escenaTitulo && (
           <div className="escena-banner" onClick={esDueno ? () => setShowEscenaEditor(true) : undefined} style={{ cursor: esDueno ? 'pointer' : 'default' }}>
-            {escenaImagenUrl && <img src={escenaImagenUrl} alt="escena" className="escena-banner-img" />}
+            {escenaImagenUrl && <img src={escenaImagenUrl} alt="escena" className="escena-banner-img" onClick={e => { e.stopPropagation(); abrirUrlSegura(escenaImagenUrl) }} style={{ cursor: 'zoom-in' }} />}
             <div className="escena-banner-texto">
               <span className="escena-banner-titulo">{escenaTitulo}</span>
               {escenaDescripcion && <span className="escena-banner-desc">{escenaDescripcion}</span>}
