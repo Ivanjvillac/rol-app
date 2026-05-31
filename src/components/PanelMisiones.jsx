@@ -34,26 +34,32 @@ export default function PanelMisiones({ universoId, userId, esDueno, onCerrar, u
 
   const agregar = async () => {
     if (!nuevaTitulo.trim()) return
-    await supabase.from('misiones').insert({
+    const { data } = await supabase.from('misiones').insert({
       universo_id: universoId, user_id: userId,
       titulo: nuevaTitulo.trim(), descripcion: nuevaDesc.trim(),
       orden: misiones.length
-    })
+    }).select().single()
+    if (data) setMisiones(prev => [...prev, data])
     setNuevaTitulo(''); setNuevaDesc(''); setShowForm(false)
   }
 
   const guardarEdit = async () => {
     if (!editando || !nuevaTitulo.trim()) return
-    await supabase.from('misiones').update({ titulo: nuevaTitulo.trim(), descripcion: nuevaDesc.trim() }).eq('id', editando.id)
+    const updates = { titulo: nuevaTitulo.trim(), descripcion: nuevaDesc.trim() }
+    await supabase.from('misiones').update(updates).eq('id', editando.id)
+    setMisiones(prev => prev.map(m => m.id === editando.id ? { ...m, ...updates } : m))
     setEditando(null); setNuevaTitulo(''); setNuevaDesc('')
   }
 
   const toggleCompletada = async (mision) => {
-    await supabase.from('misiones').update({ completada: !mision.completada }).eq('id', mision.id)
+    const completada = !mision.completada
+    await supabase.from('misiones').update({ completada }).eq('id', mision.id)
+    setMisiones(prev => prev.map(m => m.id === mision.id ? { ...m, completada } : m))
   }
 
   const borrar = async (id) => {
     await supabase.from('misiones').delete().eq('id', id)
+    setMisiones(prev => prev.filter(m => m.id !== id))
   }
 
   const pendientes = misiones.filter(m => !m.completada)
@@ -143,7 +149,8 @@ export default function PanelMisiones({ universoId, userId, esDueno, onCerrar, u
                   const obstaculo = texto.match(/Obstáculo:\s*(.+)/i)?.[1]?.trim() || ''
                   const recompensa = texto.match(/Recompensa:\s*(.+)/i)?.[1]?.trim() || ''
                   const desc = [objetivo && `Objetivo: ${objetivo}`, obstaculo && `Obstáculo: ${obstaculo}`, recompensa && `Recompensa: ${recompensa}`].filter(Boolean).join('\n')
-                  await supabase.from('misiones').insert({ universo_id: universoId, user_id: userId, titulo, descripcion: desc, orden: misiones.length })
+                  const { data } = await supabase.from('misiones').insert({ universo_id: universoId, user_id: userId, titulo, descripcion: desc, orden: misiones.length }).select().single()
+                  if (data) setMisiones(prev => [...prev, data])
                 }
                 setGenerandoMision(false)
               }}>
