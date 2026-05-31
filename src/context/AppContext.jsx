@@ -90,14 +90,19 @@ export function AppProvider({ userId, children }) {
       supabase.from('sesiones').select('id').eq('universo_id', id),
     ])
 
-    // Imágenes de chat de todas las entradas del universo
+    // Imágenes de chat: entradas + mensajes privados del universo
     const sesionIds = (sess || []).map(s => s.id)
     let imagenesChat = []
-    if (sesionIds.length > 0) {
-      const { data: entr } = await supabase
-        .from('entradas').select('imagen_url').in('sesion_id', sesionIds).not('imagen_url', 'is', null)
-      imagenesChat = (entr || []).map(e => e.imagen_url.split('/imagenes-chat/')[1]).filter(Boolean)
-    }
+    const [entradasRes, mensajesRes] = await Promise.all([
+      sesionIds.length > 0
+        ? supabase.from('entradas').select('imagen_url').in('sesion_id', sesionIds).not('imagen_url', 'is', null)
+        : Promise.resolve({ data: [] }),
+      supabase.from('mensajes_privados').select('imagen_url').eq('universo_id', id).not('imagen_url', 'is', null),
+    ])
+    imagenesChat = [
+      ...(entradasRes.data || []).map(e => e.imagen_url.split('/imagenes-chat/')[1]),
+      ...(mensajesRes.data || []).map(m => m.imagen_url.split('/imagenes-chat/')[1]),
+    ].filter(Boolean)
 
     // Imágenes de galería de personajes
     const personajeIds = (pers || []).map(p => p.id).filter(Boolean)
@@ -179,6 +184,7 @@ export function AppProvider({ userId, children }) {
  // SESIONES (hilos)
 const [listaSesiones, setListaSesiones] = useState({})
 const [sesionActivaId, setSesionActivaId] = useState({})
+const [hayMasEntradas, setHayMasEntradas] = useState({})
 
 const cargarListaSesiones = async (universoId) => {
   const { data } = await supabase
@@ -224,8 +230,9 @@ const eliminarSesion = async (sesionId, universoId) => {
   return { error }
 }
 
+const PAGINA_ENTRADAS = 100
+
 const cargarSesion = async (sesionId) => {
-  // Obtener joined_at del usuario en esta sesión (si es privada)
   const { data: membresia } = await supabase
     .from('sesion_miembros')
     .select('joined_at')
@@ -237,16 +244,40 @@ const cargarSesion = async (sesionId) => {
     .from('entradas')
     .select('*')
     .eq('sesion_id', sesionId)
-    .order('created_at')
+    .order('created_at', { ascending: false })
+    .limit(PAGINA_ENTRADAS)
 
-  // Si tiene joined_at y no es desde el principio de los tiempos, filtrar
   if (membresia?.joined_at && membresia.joined_at > '2001-01-01') {
     query = query.gte('created_at', membresia.joined_at)
   }
 
   const { data } = await query
-  const formateadas = (data || []).map(formatearEntrada)
+  const formateadas = (data || []).reverse().map(formatearEntrada)
   setSesiones(prev => ({ ...prev, [sesionId]: formateadas }))
+  // Indicar si puede haber más entradas anteriores
+  setHayMasEntradas(prev => ({ ...prev, [sesionId]: (data || []).length === PAGINA_ENTRADAS }))
+}
+
+const cargarEntradasAnteriores = async (sesionId) => {
+  const actuales = sesiones[sesionId] || []
+  if (actuales.length === 0) return
+  const masVieja = actuales[0].created_at
+
+  const { data } = await supabase
+    .from('entradas')
+    .select('*')
+    .eq('sesion_id', sesionId)
+    .lt('created_at', masVieja)
+    .order('created_at', { ascending: false })
+    .limit(PAGINA_ENTRADAS)
+
+  if (!data || data.length === 0) {
+    setHayMasEntradas(prev => ({ ...prev, [sesionId]: false }))
+    return
+  }
+  const formateadas = data.reverse().map(formatearEntrada)
+  setSesiones(prev => ({ ...prev, [sesionId]: [...formateadas, ...(prev[sesionId] || [])] }))
+  setHayMasEntradas(prev => ({ ...prev, [sesionId]: data.length === PAGINA_ENTRADAS }))
 }
 
 const getSesion = (sesionId) => sesiones[sesionId] || []
@@ -370,6 +401,16 @@ const borrarEntrada = async (id) => {
     return { ok: true, universo: u }
   }
 
+  const limpiarInvitacionesAntiguas = async (universoId) => {
+    const hace30dias = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    await supabase
+      .from('invitaciones')
+      .delete()
+      .eq('universo_id', universoId)
+      .eq('estado', 'pendiente')
+      .lt('created_at', hace30dias)
+  }
+
   // TIEMPO REAL
 const suscribirMesa = (universoId, sesionId, onNuevaEntrada) => {
   const channel = supabase
@@ -437,10 +478,11 @@ const suscribirMesa = (universoId, sesionId, onNuevaEntrada) => {
       universos, personajes, sesiones, cargando, userId,
       addUniverso, addPersonaje, deleteUniverso, deletePersonaje,
       updateUniverso, updatePersonaje,
-      addEntrada, getPersonajesDeUniverso, getSesion, cargarSesion,
-      invitarUsuario, getInvitaciones, aceptarInvitacion,
+      addEntrada, getPersonajesDeUniverso, getSesion, cargarSesion, cargarEntradasAnteriores,
+      invitarUsuario, getInvitaciones, aceptarInvitacion, limpiarInvitacionesAntiguas,
       suscribirMesa, esPropietario,
       listaSesiones, sesionActivaId, setSesionActivaId,
+      hayMasEntradas,
 cargarListaSesiones, crearSesion, eliminarSesion,
 editarEntrada, borrarEntrada, getPerfil,
 backupUniverso, transferirPropiedad,

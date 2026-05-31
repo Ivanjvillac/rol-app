@@ -99,6 +99,15 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
     if (!miPersonaje || !destinatario) return
     await supabase.from('mensajes_privados').insert({ universo_id: universo.id, remitente_id: miPersonaje.id, destinatario_id: destinatario.id, remitente_user_id: userId, destinatario_user_id: destinatario.user_id, contenido: '', imagen_url: url })
   }
+  const borrarMensaje = async (m) => {
+    await supabase.from('mensajes_privados').delete().eq('id', m.id).eq('remitente_user_id', userId)
+    if (m.imagen_url) {
+      const path = m.imagen_url.split('/imagenes-chat/')[1]
+      if (path) supabase.storage.from('imagenes-chat').remove([path])
+    }
+    const key = claveConv(miPersonaje.id, destinatario.id)
+    setConversaciones(prev => ({ ...prev, [key]: (prev[key] || []).filter(x => x.id !== m.id) }))
+  }
   const handleKey = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }
   const formatHora = (ts) => { const d = new Date(ts); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` }
   const mensajesActuales = destinatario && miPersonaje ? (conversaciones[claveConv(miPersonaje.id, destinatario.id)] || []) : []
@@ -156,6 +165,7 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
                           {m.contenido && <p>{m.contenido}</p>}
                           {m.imagen_url && <img src={m.imagen_url} alt="imagen" style={{ maxWidth: '180px', borderRadius: '8px', cursor: 'pointer' }} onClick={() => abrirUrlSegura(m.imagen_url)} />}
                           <span className="entrada-hora">{formatHora(m.created_at)}</span>
+                          {esMio && <button onClick={() => borrarMensaje(m)} title="Borrar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: '0.7rem', padding: '0 0.2rem', opacity: 0.5 }}>🗑️</button>}
                         </div>
                         {esMio && (autor.avatar_url ? <img src={autor.avatar_url} alt={autor.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: autor.color }}>{autor.iniciales}</div>)}
                       </div>
@@ -179,7 +189,7 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
 }
 
 export default function Mesa({ navigate, selectedUniverso }) {
-  const { getPersonajesDeUniverso, addEntrada, getSesion, cargarSesion, suscribirMesa, invitarUsuario, getInvitaciones, esPropietario, userId, cargarListaSesiones, crearSesion, eliminarSesion, listaSesiones, editarEntrada, borrarEntrada, getPerfil, backupUniverso, transferirPropiedad, updatePersonaje } = useApp()
+  const { getPersonajesDeUniverso, addEntrada, getSesion, cargarSesion, cargarEntradasAnteriores, hayMasEntradas, suscribirMesa, invitarUsuario, getInvitaciones, limpiarInvitacionesAntiguas, aceptarInvitacion, esPropietario, userId, cargarListaSesiones, crearSesion, eliminarSesion, listaSesiones, editarEntrada, borrarEntrada, getPerfil, backupUniverso, transferirPropiedad, updatePersonaje } = useApp()
 
   const [personajeActivo, setPersonajeActivo] = useState(null)
   const [texto, setTexto] = useState('')
@@ -1030,6 +1040,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
     setShowInvitar(true)
     setMsgInvitar(null)
     setEmailInvitar('')
+    limpiarInvitacionesAntiguas(selectedUniverso.id)
     const invs = await getInvitaciones(selectedUniverso.id)
     setInvitaciones(invs)
     // Cargar miembros actuales del universo
@@ -1653,6 +1664,14 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <div className="historial-empty">
               <p>Selecciona o crea una sesión en el panel lateral para empezar.</p>
               <button className="btn-primary" style={{ marginTop: '1rem' }} onClick={() => setShowNuevaSesion(true)}>+ Nueva sesión</button>
+            </div>
+          )}
+          {sesionActiva && hayMasEntradas[sesionActiva.id] && !busquedaFiltro && (
+            <div style={{ textAlign: 'center', padding: '0.6rem 0' }}>
+              <button className="btn-ghost" style={{ fontSize: '0.82rem' }}
+                onClick={() => cargarEntradasAnteriores(sesionActiva.id)}>
+                ↑ Cargar mensajes anteriores
+              </button>
             </div>
           )}
           {sesionActiva && sesion.length === 0 && <div className="historial-empty"><p>{busqueda ? 'Sin resultados.' : '¡Empieza a escribir!'}</p></div>}

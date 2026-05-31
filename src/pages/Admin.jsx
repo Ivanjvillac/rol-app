@@ -79,11 +79,19 @@ export default function Admin() {
       }
       const LIMITE_STORAGE_GB = 1
       const LIMITE_DB_MB = 500
-      // Obtener tamaño de DB via RPC si existe, si no estimamos por entradas
-      const bytesEstimadosDB = (entr?.length || 0) * 500 + (pers?.length || 0) * 300 + (univs?.length || 0) * 200
+      // Tamaño real de BD via RPC; si no existe todavía, estimar
+      let bytesDB = null
+      let dbSizeReal = false
+      const { data: dbSize } = await supabase.rpc('get_db_size')
+      if (dbSize?.db_bytes) {
+        bytesDB = dbSize.db_bytes
+        dbSizeReal = true
+      } else {
+        bytesDB = (entr?.length || 0) * 500 + (pers?.length || 0) * 300 + (univs?.length || 0) * 200
+      }
       setAlmacenamiento({
         storage: { usado: totalBytes, limite: LIMITE_STORAGE_GB * 1024 * 1024 * 1024, buckets: detalleBuckets },
-        db: { usadoBytes: bytesEstimadosDB, limite: LIMITE_DB_MB * 1024 * 1024 }
+        db: { usadoBytes: bytesDB, limite: LIMITE_DB_MB * 1024 * 1024, real: dbSizeReal }
       })
     } catch (e) {
       console.warn('No se pudo calcular almacenamiento:', e)
@@ -367,7 +375,7 @@ export default function Admin() {
                   {/* Base de datos */}
                   <div style={{ marginBottom: '1rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                      <span style={{ fontSize: '0.88rem', color: 'var(--text2)' }}>🗄️ Base de datos (estimado)</span>
+                      <span style={{ fontSize: '0.88rem', color: 'var(--text2)' }}>🗄️ Base de datos {almacenamiento.db.real ? '' : '(estimado)'}</span>
                       <span style={{ fontSize: '0.88rem', color: pctDB > 80 ? '#e74c3c' : 'var(--text2)' }}>
                         {fmtBytes(almacenamiento.db.usadoBytes)} / 500 MB
                       </span>

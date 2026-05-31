@@ -31,13 +31,17 @@ export default function SelectorImagenSticker({ userId, onEnviarImagen, onEnviar
     if (!file) return
     if (file.size > 10 * 1024 * 1024) { alert('La imagen no puede superar 10MB'); return }
     setSubiendo(true)
-    const compressed = await compressImage(file, 'chat')
-    const path = `${userId}/${Date.now()}.jpg`
-    const { error } = await supabase.storage.from('imagenes-chat').upload(path, compressed)
-    if (!error) {
-      const { data } = supabase.storage.from('imagenes-chat').getPublicUrl(path)
-      onEnviarImagen(data.publicUrl)
-      onCerrar()
+    try {
+      const compressed = await compressImage(file, 'chat')
+      const path = `${userId}/${Date.now()}.jpg`
+      const { error } = await supabase.storage.from('imagenes-chat').upload(path, compressed)
+      if (!error) {
+        const { data } = supabase.storage.from('imagenes-chat').getPublicUrl(path)
+        onEnviarImagen(data.publicUrl)
+        onCerrar()
+      }
+    } catch (err) {
+      alert(err.message)
     }
     setSubiendo(false)
   }
@@ -46,6 +50,7 @@ export default function SelectorImagenSticker({ userId, onEnviarImagen, onEnviar
     const file = e.target.files[0]
     if (!file) return
     setSubiendo(true)
+    try {
     const compressed = await compressImage(file, 'chat')
     const path = `${userId}/${Date.now()}.jpg`
     const { error } = await supabase.storage.from('stickers').upload(path, compressed)
@@ -58,6 +63,9 @@ export default function SelectorImagenSticker({ userId, onEnviarImagen, onEnviar
         pack_id: packActivo || null
       })
       await cargarTodo()
+    }
+    } catch (err) {
+      alert(err.message)
     }
     setSubiendo(false)
   }

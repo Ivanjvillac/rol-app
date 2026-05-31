@@ -119,13 +119,17 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
 
   const subirImagenGaleria = async (file) => {
     setSubiendoImagen(true)
-    const compressed = await compressImage(file, 'npc')
-    const path = `${personaje.id}/${Date.now()}.jpg`
-    const { error } = await supabase.storage.from('personaje-imagenes').upload(path, compressed, { contentType: 'image/jpeg' })
-    if (!error) {
-      const { data: urlData } = supabase.storage.from('personaje-imagenes').getPublicUrl(path)
-      const { data: img } = await supabase.from('personaje_imagenes').insert({ personaje_id: personaje.id, url: urlData.publicUrl }).select().single()
-      if (img) setGaleria(prev => [...prev, img])
+    try {
+      const compressed = await compressImage(file, 'npc')
+      const path = `${personaje.id}/${Date.now()}.jpg`
+      const { error } = await supabase.storage.from('personaje-imagenes').upload(path, compressed, { contentType: 'image/jpeg' })
+      if (!error) {
+        const { data: urlData } = supabase.storage.from('personaje-imagenes').getPublicUrl(path)
+        const { data: img } = await supabase.from('personaje_imagenes').insert({ personaje_id: personaje.id, url: urlData.publicUrl }).select().single()
+        if (img) setGaleria(prev => [...prev, img])
+      }
+    } catch (err) {
+      alert(err.message)
     }
     setSubiendoImagen(false)
   }
