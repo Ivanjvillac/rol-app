@@ -21,6 +21,24 @@ const PLANTILLAS = [
 
 const TIPO_ICON = { arma: '⚔️', armadura: '🛡️', artefacto: '✨', poción: '🧪', joya: '💎', herramienta: '🔧', objeto: '📦', otro: '🎁' }
 
+function DescripcionTruncada({ texto }) {
+  const [expandida, setExpandida] = useState(false)
+  const limite = 120
+  if (!texto) return <p style={{ color: 'var(--text3)', fontStyle: 'italic' }}>Sin descripción</p>
+  if (texto.length <= limite) return <p>{texto}</p>
+  return (
+    <p>
+      {expandida ? texto : `${texto.slice(0, limite)}…`}
+      {' '}
+      <button
+        onClick={e => { e.stopPropagation(); setExpandida(v => !v) }}
+        style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.78rem', padding: 0, fontFamily: 'inherit' }}>
+        {expandida ? 'Ver menos' : 'Ver más'}
+      </button>
+    </p>
+  )
+}
+
 function FichaInline({ personajeId, userId, esMio }) {
   const [atributos, setAtributos] = useState([])
   const [nuevoNombre, setNuevoNombre] = useState('')
@@ -240,7 +258,7 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
             {personaje.descripcion && (
               <div className="detalle-seccion">
                 <h4>Descripción</h4>
-                <p style={{ color: 'var(--text2)', fontStyle: 'italic', lineHeight: '1.6' }}>{personaje.descripcion}</p>
+                <p style={{ color: 'var(--text2)', fontStyle: 'italic', lineHeight: '1.6', maxHeight: '8rem', overflowY: 'auto' }}>{personaje.descripcion}</p>
               </div>
             )}
             <div className="detalle-seccion">
@@ -548,7 +566,7 @@ export default function Personajes({ navigate, selectedUniverso }) {
             {p.oculto && <div className="card-badge" style={{ background: 'rgba(127,140,141,0.15)', borderColor: '#7f8c8d', color: '#7f8c8d' }}>🙈 Oculto</div>}
           </div>
           <h3>{p.nombre}</h3>
-          <p>{p.descripcion || 'Sin descripción'}</p>
+          <DescripcionTruncada texto={p.descripcion} />
           {universo && (
             <div className="personaje-universo">
               <span style={{ background: universo.color }} className="universo-dot" />
