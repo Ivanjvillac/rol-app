@@ -319,9 +319,15 @@ const getSesion = (sesionId) => sesiones[sesionId] || []
   }
 }
 const editarEntrada = async (id, contenido) => {
+  const entrada = Object.values(sesiones).flat().find(e => e.id === id)
+  const versionesActuales = entrada?.versiones || []
+  const nuevasVersiones = entrada?.contenido
+    ? [...versionesActuales, { contenido: entrada.contenido, ts: new Date().toISOString() }]
+    : versionesActuales
+
   const { data, error } = await supabase
     .from('entradas')
-    .update({ contenido, editado: true })
+    .update({ contenido, editado: true, versiones: nuevasVersiones })
     .eq('id', id)
     .eq('user_id', userId)
     .select()
@@ -329,11 +335,19 @@ const editarEntrada = async (id, contenido) => {
     setSesiones(prev => {
       const nuevo = {}
       for (const key in prev) {
-        nuevo[key] = prev[key].map(e => e.id === id ? { ...e, contenido, editado: true } : e)
+        nuevo[key] = prev[key].map(e => e.id === id ? { ...e, contenido, editado: true, versiones: nuevasVersiones } : e)
       }
       return nuevo
     })
   }
+}
+
+const archivarSesion = async (sesionId, archivar) => {
+  const { error } = await supabase
+    .from('sesiones')
+    .update({ archivada: archivar })
+    .eq('id', sesionId)
+  return { error }
 }
 
 const borrarEntrada = async (id) => {
@@ -485,7 +499,7 @@ const suscribirMesa = (universoId, sesionId, onNuevaEntrada) => {
       hayMasEntradas,
 cargarListaSesiones, crearSesion, eliminarSesion,
 editarEntrada, borrarEntrada, getPerfil,
-backupUniverso, transferirPropiedad,
+backupUniverso, transferirPropiedad, archivarSesion,
     }}>
       {children}
     </AppContext.Provider>
