@@ -51,9 +51,9 @@ export default function SelectorImagenSticker({ userId, onEnviarImagen, onEnviar
     if (!file) return
     setSubiendo(true)
     try {
-    const compressed = await compressImage(file, 'chat')
-    const path = `${userId}/${Date.now()}.jpg`
-    const { error } = await supabase.storage.from('stickers').upload(path, compressed)
+      const compressed = await compressImage(file, 'sticker')
+      const path = `${userId}/${Date.now()}.jpg`
+      const { error } = await supabase.storage.from('stickers').upload(path, compressed)
     if (!error) {
       const { data } = supabase.storage.from('stickers').getPublicUrl(path)
       await supabase.from('stickers').insert({
