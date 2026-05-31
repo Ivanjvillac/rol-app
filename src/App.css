@@ -474,7 +474,7 @@ input, textarea, select {
 
 .personaje-btn:hover { background: var(--bg3); }
 .personaje-btn.activo { background: var(--bg4); }
-.personaje-btn span { font-size: 0.95rem; color: var(--text); }
+.personaje-btn span { font-size: 0.95rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
 .personaje-btn small { display: block; font-size: 0.78rem; color: var(--text3); }
 
 .narrador-btn .narrador-avatar { background: var(--bg4) !important; border: 1px solid var(--border2); }
@@ -771,6 +771,10 @@ input, textarea, select {
   letter-spacing: 0.04em;
   color: var(--text3);
   text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
 }
 
 .input-row { display: flex; gap: 0.5rem; align-items: flex-end; }
@@ -1331,12 +1335,14 @@ input, textarea, select {
   .entrada-accion-texto { font-size: 0.92rem; }
 
   /* Input bar */
-  .mesa-input-bar { padding: 0.45rem 0.6rem; }
+  .mesa-input-bar { padding: 0.45rem 0.6rem; padding-bottom: calc(0.45rem + 52px + env(safe-area-inset-bottom, 0px)); }
   .input-contexto { margin-bottom: 0.25rem; }
   .input-modo { font-size: 0.68rem; }
   .mesa-textarea { font-size: 0.95rem; max-height: 80px; min-height: 34px; padding: 0.4rem 0.7rem; }
-  .btn-enviar { width: 36px; height: 36px; font-size: 0.95rem; }
+  .btn-enviar { width: 40px; height: 40px; font-size: 0.95rem; }
   .input-hint { display: none; }
+  .formato-bar { flex-wrap: wrap; gap: 0.25rem; }
+  .formato-btn { width: 32px; height: 32px; }
 
   /* Grid personajes */
   .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.7rem; }
@@ -1349,10 +1355,10 @@ input, textarea, select {
   border: 1px solid var(--border2);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  width: 320px;
+  width: min(320px, calc(100vw - 1rem));
   position: fixed;
-  bottom: 80px;
-  left: 60px;
+  bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  left: clamp(0.5rem, 60px, calc(100vw - 330px));
   z-index: 300;
   box-shadow: var(--shadow);
   max-height: min(460px, calc(100vh - 120px));
@@ -3344,8 +3350,6 @@ input, textarea, select {
 /* ===== BOTTOM NAV ===== */
 .bottom-nav { display: none; }
 
-/* En la Mesa la bottom nav se oculta — tiene su propio sidebar */
-.app-mesa .bottom-nav { display: none !important; }
 .app-mesa { padding-bottom: 0 !important; }
 
 @media (max-width: 768px) {
