@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { generarMision, tieneApiKey } from '../lib/gemini'
 
-export default function PanelMisiones({ universoId, userId, esDueno, onCerrar }) {
+export default function PanelMisiones({ universoId, userId, esDueno, onCerrar, universoNombre }) {
   const [misiones, setMisiones] = useState([])
   const [cargando, setCargando] = useState(true)
   const [nuevaTitulo, setNuevaTitulo] = useState('')
   const [nuevaDesc, setNuevaDesc] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editando, setEditando] = useState(null)
+  const [generandoMision, setGenerandoMision] = useState(false)
 
   useEffect(() => {
     cargar()
@@ -129,6 +131,26 @@ export default function PanelMisiones({ universoId, userId, esDueno, onCerrar })
           )}
 
           {/* Formulario nueva misión */}
+          {esDueno && !editando && tieneApiKey() && (
+            <button className="btn-ghost" style={{ marginTop: '0.5rem', width: '100%', opacity: generandoMision ? 0.6 : 1 }}
+              disabled={generandoMision}
+              onClick={async () => {
+                setGenerandoMision(true)
+                const texto = await generarMision(universoNombre)
+                if (texto) {
+                  const titulo = texto.match(/Título:\s*(.+)/i)?.[1]?.trim() || 'Misión generada'
+                  const objetivo = texto.match(/Objetivo:\s*(.+)/i)?.[1]?.trim() || ''
+                  const obstaculo = texto.match(/Obstáculo:\s*(.+)/i)?.[1]?.trim() || ''
+                  const recompensa = texto.match(/Recompensa:\s*(.+)/i)?.[1]?.trim() || ''
+                  const desc = [objetivo && `Objetivo: ${objetivo}`, obstaculo && `Obstáculo: ${obstaculo}`, recompensa && `Recompensa: ${recompensa}`].filter(Boolean).join('\n')
+                  await supabase.from('misiones').insert({ universo_id: universoId, user_id: userId, titulo, descripcion: desc, orden: misiones.length })
+                }
+                setGenerandoMision(false)
+              }}>
+              {generandoMision ? '✨ Generando...' : '✨ Generar misión con IA'}
+            </button>
+          )}
+
           {esDueno && !editando && (
             showForm ? (
               <div className="mision-form">

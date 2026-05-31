@@ -9,7 +9,7 @@ import PanelMisiones from '../components/PanelMisiones'
 import PanelDadoEvento from '../components/PanelDadoEvento'
 import { jsPDF } from 'jspdf'
 import { parseMessage } from '../lib/parseMessage'
-import { generarResumenConIA, generarDescripcionDado, tieneApiKey } from '../lib/gemini'
+import { generarResumenConIA, generarDescripcionDado, generarDescripcionEscena, generarNPC, tieneApiKey } from '../lib/gemini'
 import { useMesaTimer } from '../features/mesa/hooks/useMesaTimer'
 import { useMesaPresence } from '../features/mesa/hooks/useMesaPresence'
 import { useMesaMusic } from '../features/mesa/hooks/useMesaMusic'
@@ -264,6 +264,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [kickedFrom, setKickedFrom] = useState(null)
   const [tamanoFuente, setTamanoFuente] = useState(() => parseInt(localStorage.getItem('mesaFontSize') || '15', 10))
   const [dadoDramatico, setDadoDramatico] = useState(() => localStorage.getItem('dadoDramatico') !== 'false')
+  const [textoEscenaIA, setTextoEscenaIA] = useState('')
+  const [generandoEscena, setGenerandoEscena] = useState(false)
+  const [generandoNPC, setGenerandoNPC] = useState(false)
+  const [seccionIA, setSeccionIA] = useState(false)
   const [seccionSesiones, setSeccionSesiones] = useState(true)
   const [seccionPersonajes, setSeccionPersonajes] = useState(true)
   const [seccionConectados, setSeccionConectados] = useState(true)
@@ -1707,6 +1711,51 @@ export default function Mesa({ navigate, selectedUniverso }) {
           )}
         </div>
 
+        {tieneApiKey() && (
+          <div className="sidebar-section">
+            <h4 style={{ cursor: 'pointer', userSelect: 'none', marginBottom: seccionIA ? '0.6rem' : 0 }} onClick={() => setSeccionIA(p => !p)}>
+              {seccionIA ? '▾' : '▸'} ✨ IA
+            </h4>
+            {seccionIA && (<>
+              <div style={{ marginBottom: '0.7rem' }}>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '0.3rem' }}>Descripción de escena</p>
+                <textarea
+                  placeholder="Taberna oscura, lluvia intensa..."
+                  value={textoEscenaIA}
+                  onChange={e => setTextoEscenaIA(e.target.value)}
+                  rows={2}
+                  style={{ width: '100%', resize: 'none', fontSize: '0.82rem', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', padding: '0.4rem 0.6rem', boxSizing: 'border-box' }}
+                />
+                <button className="modo-btn" style={{ marginTop: '0.3rem' }}
+                  disabled={generandoEscena || !sesionActiva || !textoEscenaIA.trim()}
+                  onClick={async () => {
+                    setGenerandoEscena(true)
+                    const texto = await generarDescripcionEscena(textoEscenaIA, selectedUniverso?.nombre)
+                    if (texto && sesionActiva) {
+                      await addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: texto }, sesionActiva.id)
+                      setTextoEscenaIA('')
+                    }
+                    setGenerandoEscena(false)
+                  }}>
+                  {generandoEscena ? '✨ Generando...' : '✨ Describir escena'}
+                </button>
+              </div>
+              <button className="modo-btn"
+                disabled={generandoNPC || !sesionActiva}
+                onClick={async () => {
+                  setGenerandoNPC(true)
+                  const texto = await generarNPC(selectedUniverso?.nombre)
+                  if (texto && sesionActiva) {
+                    await addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: `🎭 PNJ generado:\n${texto}` }, sesionActiva.id)
+                  }
+                  setGenerandoNPC(false)
+                }}>
+                {generandoNPC ? '✨ Generando...' : '✨ Generar PNJ'}
+              </button>
+            </>)}
+          </div>
+        )}
+
         <div className="sidebar-section">
           <h4 style={{ cursor: 'pointer', userSelect: 'none', marginBottom: seccionOpciones ? '0.6rem' : 0 }} onClick={() => setSeccionOpciones(p => !p)}>
             {seccionOpciones ? '▾' : '▸'} Opciones
@@ -2596,7 +2645,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
       )}
 
       {showMisiones && selectedUniverso && (
-        <PanelMisiones universoId={selectedUniverso.id} userId={userId} esDueno={esDueno} onCerrar={() => setShowMisiones(false)} />
+        <PanelMisiones universoId={selectedUniverso.id} userId={userId} esDueno={esDueno} onCerrar={() => setShowMisiones(false)} universoNombre={selectedUniverso.nombre} />
       )}
 
       {showDadoEvento && selectedUniverso && (

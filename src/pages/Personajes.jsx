@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import PanelJuramentos from '../components/PanelJuramentos'
 import { useImageUpload } from '../hooks/useImageUpload'
-import { generarDescripcionPersonaje, tieneApiKey } from '../lib/gemini'
+import { generarDescripcionPersonaje, generarTrasfondo, tieneApiKey } from '../lib/gemini'
 
 const COLORES = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#1abc9c', '#3498db', '#9b59b6', '#e91e63']
 const ROLES = ['Guerrero', 'Mago', 'Pícaro', 'Clérigo', 'Explorador', 'Bardo', 'Narrador', 'Otro']
@@ -88,6 +88,7 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
   const [guardado, setGuardado] = useState(false)
   const [pestana, setPestana] = useState('notas')
   const [nombrePropietario, setNombrePropietario] = useState(null)
+  const [generandoTrasfondo, setGenerandoTrasfondo] = useState(false)
   const esMio = personaje.user_id === userId
 
   const [galeria, setGaleria] = useState([])
@@ -221,7 +222,21 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
               </div>
             )}
             <div className="detalle-seccion">
-              <h4>Notas privadas</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                <h4 style={{ margin: 0 }}>Notas privadas</h4>
+                {esMio && tieneApiKey() && (
+                  <button type="button" className="btn-ghost btn-sm"
+                    disabled={generandoTrasfondo}
+                    onClick={async () => {
+                      setGenerandoTrasfondo(true)
+                      const texto = await generarTrasfondo(personaje.nombre, personaje.rol, personaje.descripcion)
+                      if (texto) setNotas(prev => prev ? `${prev}\n\n${texto}` : texto)
+                      setGenerandoTrasfondo(false)
+                    }}>
+                    {generandoTrasfondo ? '✨ Generando...' : '✨ Generar trasfondo'}
+                  </button>
+                )}
+              </div>
               <p style={{ fontSize: '0.85rem', color: 'var(--text3)', marginBottom: '0.6rem' }}>Solo tú puedes ver estas notas.</p>
               <textarea className="notas-textarea" placeholder="Escribe aquí los secretos, motivaciones, historia personal..." value={notas} onChange={e => setNotas(e.target.value)} rows={10} />
             </div>

@@ -65,4 +65,36 @@ export async function generarDescripcionDado(caras, resultado, personajeNombre) 
   )
 }
 
+export async function generarDescripcionEscena(ubicacion, universoNombre) {
+  const ctx = universoNombre ? ` en el universo de "${universoNombre}"` : ''
+  return llamarGroq(
+    `Eres el narrador de una partida de rol de fantasía${ctx}. Expande esta descripción de escena en un párrafo atmosférico y evocador listo para leer a los jugadores: "${ubicacion}". Escribe en segunda persona del plural ("Os encontráis...", "Ante vosotros..."), máximo 4 frases. Solo el texto, sin introducción ni comillas.`,
+    200, 0.85
+  )
+}
+
+export async function generarNPC(universoNombre) {
+  const ctx = universoNombre ? ` del universo "${universoNombre}"` : ''
+  return llamarGroq(
+    `Eres el máster de una partida de rol de fantasía${ctx}. Genera un PNJ (personaje no jugador) con este formato exacto:\nNombre: [nombre]\nRol: [rol o profesión]\nRasgo: [un rasgo de personalidad distintivo]\nGancho: [un detalle narrativo que lo conecta con posibles aventuras]\nSolo el formato indicado, sin texto adicional.`,
+    120, 0.9
+  )
+}
+
+export async function generarMision(universoNombre) {
+  const ctx = universoNombre ? ` en el universo de "${universoNombre}"` : ''
+  return llamarGroq(
+    `Eres el máster de una partida de rol de fantasía${ctx}. Genera una misión con este formato exacto:\nTítulo: [título breve]\nObjetivo: [qué deben hacer]\nObstáculo: [qué lo complica]\nRecompensa: [qué obtienen]\nSolo el formato indicado, sin introducciones ni texto adicional.`,
+    150, 0.85
+  )
+}
+
+export async function generarTrasfondo(nombre, rol, descripcion) {
+  const contexto = descripcion?.trim() ? ` Contexto: ${descripcion}` : ''
+  return llamarGroq(
+    `Eres un escritor de juego de rol de fantasía. Genera el trasfondo de un personaje llamado "${nombre}" con el rol de "${rol}".${contexto} Incluye su origen, una motivación que lo impulsa y un secreto que guarda. Estilo literario en prosa, máximo 4 frases. Sin listas ni introducciones.`,
+    200, 0.85
+  )
+}
+
 export const tieneApiKey = () => !!GROQ_API_KEY
