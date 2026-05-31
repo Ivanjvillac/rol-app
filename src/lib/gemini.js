@@ -1,21 +1,23 @@
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY
 
-async function llamarGemini(prompt, maxTokens = 500, temperature = 0.7) {
-  if (!GEMINI_API_KEY) return null
+async function llamarGroq(prompt, maxTokens = 500, temperature = 0.7) {
+  if (!GROQ_API_KEY) return null
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: maxTokens, temperature },
-        }),
-      }
-    )
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: maxTokens,
+        temperature,
+      }),
+    })
     const data = await res.json()
-    return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null
+    return data.choices?.[0]?.message?.content?.trim() || null
   } catch {
     return null
   }
@@ -35,7 +37,7 @@ export async function generarResumenConIA(sesionNombre, entradas) {
 
   if (!transcripcion) return null
 
-  return llamarGemini(
+  return llamarGroq(
     `Eres un asistente de juego de rol de mesa. Genera un resumen narrativo conciso de esta sesión de rol llamada "${sesionNombre}". Escríbelo en pasado, estilo literario, máximo 300 palabras. No uses listas, escribe párrafos fluidos.\n\nTranscripción:\n${transcripcion}`,
     500, 0.7
   )
@@ -43,7 +45,7 @@ export async function generarResumenConIA(sesionNombre, entradas) {
 
 export async function generarDescripcionPersonaje(nombre, rol, descripcionActual) {
   const contexto = descripcionActual?.trim() ? ` Contexto adicional: ${descripcionActual}` : ''
-  return llamarGemini(
+  return llamarGroq(
     `Eres un escritor de juego de rol de fantasía. Genera una descripción narrativa y evocadora para un personaje llamado "${nombre}" con el rol de "${rol}".${contexto} Escríbela en tercera persona, estilo literario, máximo 3 frases. Sin introducción, solo la descripción.`,
     150, 0.85
   )
@@ -57,10 +59,10 @@ export async function generarDescripcionDado(caras, resultado, personajeNombre) 
     : resultado <= Math.ceil(caras * 0.3) ? 'resultado malo, casi un fallo'
     : 'resultado mediocre, incierto'
 
-  return llamarGemini(
+  return llamarGroq(
     `Eres el narrador de una partida de rol de fantasía. ${quien} acaba de tirar un dado de ${caras} caras y ha sacado un ${resultado} (${nivel}). Escribe UNA sola frase dramática y evocadora describiendo este momento. Solo la frase, sin comillas ni explicaciones.`,
     80, 0.9
   )
 }
 
-export const tieneApiKey = () => !!GEMINI_API_KEY
+export const tieneApiKey = () => !!GROQ_API_KEY
