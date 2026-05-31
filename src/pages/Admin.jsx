@@ -128,7 +128,7 @@ export default function Admin() {
   }
 
   const handleCambiarPassword = async () => {
-    if (!cambiandoPassword || !nuevaPassword || nuevaPassword.length < 6) return
+    if (!cambiandoPassword || !nuevaPassword || nuevaPassword.length < 8) return
     setMsgPassword(null)
     const { error } = await supabase.rpc('admin_change_password', {
       user_id: cambiandoPassword.id,
@@ -574,7 +574,7 @@ export default function Admin() {
               <label>Nueva contraseña</label>
               <input
                 type="password"
-                placeholder="Mínimo 6 caracteres"
+                placeholder="Mínimo 8 caracteres"
                 value={nuevaPassword}
                 onChange={e => setNuevaPassword(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleCambiarPassword()}
@@ -584,7 +584,7 @@ export default function Admin() {
             {msgPassword && <div className={msgPassword.tipo === 'ok' ? 'auth-mensaje' : 'auth-error'} style={{ marginBottom: '1rem' }}>{msgPassword.texto}</div>}
             <div className="modal-actions">
               <button className="btn-ghost" onClick={() => setCambiandoPassword(null)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleCambiarPassword} disabled={nuevaPassword.length < 6}>Cambiar</button>
+              <button className="btn-primary" onClick={handleCambiarPassword} disabled={nuevaPassword.length < 8}>Cambiar</button>
             </div>
           </div>
         </div>
