@@ -606,7 +606,7 @@ input, textarea, select {
 }
 
 /* Entradas */
-.entrada { animation: fadeIn 0.2s ease; position: relative; content-visibility: auto; contain-intrinsic-block-size: auto 120px; }
+.entrada { animation: fadeIn 0.2s ease; position: relative; }
 .entrada.entrada-dialogo, .entrada.entrada-accion { display: block; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
@@ -2013,9 +2013,9 @@ input, textarea, select {
   background: none;
   border: none;
   color: var(--text2);
-  padding: 0.6rem 0.75rem;
+  padding: 0.5rem 0.55rem;
   font-family: 'Crimson Pro', serif;
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.15s;
   border-bottom: 2px solid transparent;

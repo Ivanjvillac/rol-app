@@ -236,10 +236,10 @@ function DetallePersonaje({ personaje, onCerrar, onGuardarNotas, universo, userI
           <button className={pestana === 'notas' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('notas')}>📋 Notas</button>
           <button className={pestana === 'ficha' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('ficha')}>⚔️ Ficha</button>
           <button className={pestana === 'galeria' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('galeria')}>🖼️ Galería</button>
-          <button className={pestana === 'historial' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('historial')}>📜 Historial</button>
-          <button className={pestana === 'relaciones' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('relaciones')}>🔗 Relaciones</button>
-          <button className={pestana === 'juramentos' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('juramentos')}>🕯️ Juramentos</button>
-          <button className={pestana === 'inventario' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('inventario')}>🎒 Inventario{inventario.length > 0 ? ` (${inventario.length})` : ''}</button>
+          <button className={pestana === 'historial' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('historial')}>📜 Hist.</button>
+          <button className={pestana === 'relaciones' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('relaciones')}>🔗 Relac.</button>
+          <button className={pestana === 'juramentos' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('juramentos')}>🕯️ Jur.</button>
+          <button className={pestana === 'inventario' ? 'detalle-tab active' : 'detalle-tab'} onClick={() => setPestana('inventario')}>🎒 Inv.{inventario.length > 0 ? ` (${inventario.length})` : ''}</button>
         </div>
 
         {pestana === 'notas' && (
