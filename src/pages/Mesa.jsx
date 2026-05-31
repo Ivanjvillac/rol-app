@@ -2069,7 +2069,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   <div style={{ position: 'relative' }}>
                     <button onClick={() => setShowReacciones(showReacciones === e.id ? null : e.id)} title="Reaccionar">＋😊</button>
                     {showReacciones === e.id && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, background: 'var(--bg2)', border: '1px solid var(--border2)', borderRadius: 'var(--radius)', padding: '0.4rem', display: 'flex', gap: '0.3rem', zIndex: 200, boxShadow: 'var(--shadow)' }}>
+                      <div style={{ position: 'absolute', bottom: '100%', right: 0, background: 'var(--bg2)', border: '1px solid var(--border2)', borderRadius: 'var(--radius)', padding: '0.4rem', display: 'flex', flexWrap: 'wrap', gap: '0.3rem', zIndex: 200, boxShadow: 'var(--shadow)', maxWidth: '200px', marginBottom: '0.3rem' }}>
                         {EMOJIS_RAPIDOS.map(em => (
                           <button key={em} onClick={() => toggleReaccion(e.id, em)}
                             style={{ background: 'none', border: 'none', fontSize: '1.1rem', cursor: 'pointer', padding: '0.1rem', borderRadius: '4px' }}>{em}</button>

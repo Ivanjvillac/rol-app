@@ -1996,19 +1996,23 @@ input, textarea, select {
   display: flex;
   border-bottom: 1px solid var(--border);
   margin-bottom: 1rem;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.detalle-tabs::-webkit-scrollbar { display: none; }
 
 .detalle-tab {
-  flex: 1;
+  flex: 0 0 auto;
   background: none;
   border: none;
   color: var(--text2);
-  padding: 0.6rem;
+  padding: 0.6rem 0.75rem;
   font-family: 'Crimson Pro', serif;
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   cursor: pointer;
   transition: all 0.15s;
   border-bottom: 2px solid transparent;
+  white-space: nowrap;
 }
 
 .detalle-tab:hover { color: var(--text); }
@@ -2772,11 +2776,14 @@ input, textarea, select {
   display: flex;
   border-bottom: 1px solid var(--border);
   background: var(--bg2);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.ficha-tabs::-webkit-scrollbar { display: none; }
 
 .ficha-tab {
-  flex: 1;
-  padding: 0.5rem 0.6rem;
+  flex: 0 0 auto;
+  padding: 0.5rem 0.7rem;
   background: none;
   border: none;
   color: var(--text3);
