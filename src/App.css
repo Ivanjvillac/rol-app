@@ -470,6 +470,8 @@ input, textarea, select {
   cursor: pointer;
   transition: all 0.15s;
   margin-bottom: 0.2rem;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .personaje-btn:hover { background: var(--bg3); }
