@@ -8,6 +8,7 @@ import PanelGaleria from '../components/PanelGaleria'
 import PanelMisiones from '../components/PanelMisiones'
 import PanelObjetos from '../components/PanelObjetos'
 import PanelDadoEvento from '../components/PanelDadoEvento'
+import PanelNotasNarrador from '../components/PanelNotasNarrador'
 import { jsPDF } from 'jspdf'
 import { parseMessage } from '../lib/parseMessage'
 import { generarResumenConIA, generarDescripcionDado, generarDescripcionEscena, generarNPC, consultarNPC, tieneApiKey } from '../lib/gemini'
@@ -241,6 +242,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [showMisiones, setShowMisiones] = useState(false)
   const [showDadoEvento, setShowDadoEvento] = useState(false)
   const [showObjetos, setShowObjetos] = useState(false)
+  const [showNotas, setShowNotas] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [showDados, setShowDados] = useState(false)
   const [fichaCompartida, setFichaCompartida] = useState(null)
@@ -718,6 +720,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
         else if (showMisiones) setShowMisiones(false)
         else if (showDadoEvento) setShowDadoEvento(false)
         else if (showObjetos) setShowObjetos(false)
+        else if (showNotas) setShowNotas(false)
         else if (respondiendo) setRespondiendo(null)
         else if (sidebarAbierto) setSidebarAbierto(false)
       }
@@ -1856,6 +1859,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowGaleria(true)} disabled={!selectedUniverso}>🖼️ Galería</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowObjetos(true)} disabled={!selectedUniverso}>🎒 Objetos</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowDadoEvento(true)} disabled={!selectedUniverso}>🎲 Dado de evento</button>
+            {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowNotas(true)} disabled={!selectedUniverso}>📝 Notas privadas</button>}
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowInvestigacion(true)} disabled={!selectedUniverso}>🔍 Investigación</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMapa(true)} disabled={!selectedUniverso}>🗺️ Mapa del mundo</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowBestiario(true)} disabled={!selectedUniverso}>📖 Bestiario</button>
@@ -2920,6 +2924,9 @@ export default function Mesa({ navigate, selectedUniverso }) {
         <PanelMisiones universoId={selectedUniverso.id} userId={userId} esDueno={esDueno} onCerrar={() => setShowMisiones(false)} universoNombre={selectedUniverso.nombre} />
       )}
 
+      {showNotas && selectedUniverso && esDueno && (
+        <PanelNotasNarrador universoId={selectedUniverso.id} userId={userId} onCerrar={() => setShowNotas(false)} />
+      )}
       {showObjetos && selectedUniverso && (
         <PanelObjetos universo={selectedUniverso} personajes={personajes} userId={userId} esDueno={esDueno} onCerrar={() => setShowObjetos(false)} />
       )}
