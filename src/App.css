@@ -472,6 +472,7 @@ input, textarea, select {
   margin-bottom: 0.2rem;
   overflow: hidden;
   min-width: 0;
+  position: relative;
 }
 
 .personaje-btn:hover { background: var(--bg3); }
@@ -1990,25 +1991,33 @@ input, textarea, select {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 0.8rem;
-  padding: 0.2rem;
+  font-size: 0.85rem;
+  padding: 0.15rem 0.2rem;
   color: var(--text3);
   transition: color 0.15s;
+  line-height: 1;
 }
 .ficha-btn:hover { color: var(--accent); }
 
 .ficha-actions {
+  position: absolute;
+  right: 0.4rem;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
-  gap: 0.15rem;
-  flex-shrink: 0;
-  max-width: 0;
-  overflow: hidden;
+  gap: 0.1rem;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.1rem 0.2rem;
   opacity: 0;
-  transition: max-width 0.2s, opacity 0.15s;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  z-index: 2;
 }
 .personaje-btn:hover .ficha-actions {
-  max-width: 5rem;
   opacity: 1;
+  pointer-events: auto;
 }
 
 .detalle-tabs {
