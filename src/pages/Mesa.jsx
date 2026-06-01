@@ -301,6 +301,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [escenaDescripcion, setEscenaDescripcion] = useState('')
   const [escenaImagenUrl, setEscenaImagenUrl] = useState('')
   const [escenaLightbox, setEscenaLightbox] = useState(false)
+  const [escenaBannerOculto, setEscenaBannerOculto] = useState(false)
   const canalEscenaRef = useRef(null)
 
   // Filtros de búsqueda global
@@ -1606,6 +1607,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
           setEscenaTitulo(row.escena_titulo || '')
           setEscenaDescripcion(row.escena_descripcion || '')
           setEscenaImagenUrl(row.escena_imagen_url || '')
+          if (row.escena_titulo) setEscenaBannerOculto(false)
         }
       })
       .subscribe()
@@ -2106,17 +2108,20 @@ export default function Mesa({ navigate, selectedUniverso }) {
         )}
 
         {/* Tarjeta de escena activa */}
-        {sesionActiva && escenaTitulo && (
+        {sesionActiva && escenaTitulo && !escenaBannerOculto && (
           <div className="escena-banner" onClick={esDueno ? () => setShowEscenaEditor(true) : undefined} style={{ cursor: esDueno ? 'pointer' : 'default' }}>
             {escenaImagenUrl && <img src={escenaImagenUrl} alt="escena" className="escena-banner-img" onClick={e => { e.stopPropagation(); setEscenaLightbox(true) }} style={{ cursor: 'zoom-in' }} />}
             <div className="escena-banner-texto">
               <span className="escena-banner-titulo">{escenaTitulo}</span>
               {escenaDescripcion && <span className="escena-banner-desc">{escenaDescripcion}</span>}
             </div>
-            {esDueno && (
-              <button className="escena-banner-limpiar" onClick={e => { e.stopPropagation(); limpiarEscena() }} title="Quitar escena">✕</button>
-            )}
+            <button className="escena-banner-limpiar" onClick={e => { e.stopPropagation(); setEscenaBannerOculto(true) }} title="Ocultar">✕</button>
           </div>
+        )}
+        {sesionActiva && escenaTitulo && escenaBannerOculto && (
+          <button className="escena-banner-mostrar" onClick={() => setEscenaBannerOculto(false)} title="Mostrar escena activa">
+            🎬 {escenaTitulo}
+          </button>
         )}
 
         <div className="historial" ref={historialRef} onScroll={handleScroll} style={{ fontSize: tamanoFuente + 'px' }}>

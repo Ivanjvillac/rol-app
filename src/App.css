@@ -3759,6 +3759,29 @@ input, textarea, select {
 }
 .escena-banner-limpiar:hover { opacity: 1; }
 
+.escena-banner-mostrar {
+  background: rgba(180,140,60,0.08);
+  border: none;
+  border-bottom: 1px solid rgba(180,140,60,0.2);
+  color: var(--accent);
+  font-family: 'Cinzel', serif;
+  font-size: 0.78rem;
+  padding: 0.3rem 1rem;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  letter-spacing: 0.03em;
+  transition: background 0.15s;
+}
+.escena-banner-mostrar:hover { background: rgba(180,140,60,0.14); }
+
+@media (max-width: 768px) {
+  .escena-banner { padding: 0.35rem 0.7rem; gap: 0.5rem; }
+  .escena-banner-img { width: 36px; height: 36px; }
+  .escena-banner-titulo { font-size: 0.8rem; }
+  .escena-banner-desc { display: none; }
+}
+
 /* ===== CONDICIÓN BADGES ===== */
 .condicion-badge {
   display: inline-flex;
