@@ -40,6 +40,7 @@ export default function PanelNotasNarrador({ universoId, userId, onCerrar }) {
         .from('notas_narrador')
         .update({ titulo: nota.titulo, contenido: nota.contenido, updated_at: new Date().toISOString() })
         .eq('id', nota.id)
+      if (error) console.error('[notas] UPDATE error:', error)
       setEstado(error ? 'error' : 'ok')
       dirtyRef.current = false
       if (!error) {
@@ -67,7 +68,8 @@ export default function PanelNotasNarrador({ universoId, userId, onCerrar }) {
       .insert({ universo_id: universoId, user_id: userId, titulo: 'Nueva nota', contenido: '' })
       .select('id, titulo, contenido, updated_at')
       .single()
-    if (!error && data) {
+    if (error) { console.error('[notas] INSERT error:', error); alert('Error al crear nota: ' + error.message); return }
+    if (data) {
       setNotas(prev => [data, ...prev])
       setNotaActual(data)
     }
