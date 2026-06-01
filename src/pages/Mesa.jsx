@@ -1,24 +1,21 @@
-import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, lazy, Suspense } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import SelectorImagenSticker from '../components/SelectorImagenSticker'
 import FichaPersonaje from '../components/FichaPersonaje'
-import PanelInvestigacion from '../components/PanelInvestigacion'
-import PanelGaleria from '../components/PanelGaleria'
-import PanelMisiones from '../components/PanelMisiones'
-import PanelObjetos from '../components/PanelObjetos'
-import PanelDadoEvento from '../components/PanelDadoEvento'
-import PanelNotasNarrador from '../components/PanelNotasNarrador'
-import { jsPDF } from 'jspdf'
-import { parseMessage } from '../lib/parseMessage'
-import { generarResumenConIA, generarDescripcionDado, generarDescripcionEscena, generarNPC, consultarNPC, tieneApiKey } from '../lib/gemini'
-import PanelMapaRelaciones from '../components/PanelMapaRelaciones'
-import PanelTimeline from '../components/PanelTimeline'
-import PanelMapa from '../components/PanelMapa'
-import PanelBestiario from '../components/PanelBestiario'
-import { useMesaTimer } from '../features/mesa/hooks/useMesaTimer'
-import { useMesaPresence } from '../features/mesa/hooks/useMesaPresence'
-import { useMesaMusic } from '../features/mesa/hooks/useMesaMusic'
+import MensajeItem from '../components/MensajeItem'
+
+const PanelInvestigacion  = lazy(() => import('../components/PanelInvestigacion'))
+const PanelGaleria        = lazy(() => import('../components/PanelGaleria'))
+const PanelMisiones       = lazy(() => import('../components/PanelMisiones'))
+const PanelObjetos        = lazy(() => import('../components/PanelObjetos'))
+const PanelDadoEvento     = lazy(() => import('../components/PanelDadoEvento'))
+const PanelNotasNarrador  = lazy(() => import('../components/PanelNotasNarrador'))
+const PanelMapaRelaciones = lazy(() => import('../components/PanelMapaRelaciones'))
+const PanelTimeline       = lazy(() => import('../components/PanelTimeline'))
+const PanelMapa           = lazy(() => import('../components/PanelMapa'))
+const PanelBestiario      = lazy(() => import('../components/PanelBestiario'))
 
 const abrirUrlSegura = (url) => {
   if (!url || !url.startsWith('https://')) return
@@ -733,20 +730,32 @@ export default function Mesa({ navigate, selectedUniverso }) {
       showChat, showInvestigacion, showMapaRelaciones, showTimeline, showMapa, showBestiario, showEscenaEditor, showGaleria, showMisiones, showDadoEvento, showObjetos,
       respondiendo, sidebarAbierto])
 
+  // ── VIRTUALIZADOR ──
+  const virtualizer = useVirtualizer({
+    count: sesion.length,
+    getScrollElement: () => historialRef.current,
+    estimateSize: () => 90,
+    overscan: 8,
+  })
+
+  const scrollToEntrada = useCallback((id) => {
+    const idx = sesion.findIndex(e => e.id === id)
+    if (idx >= 0) virtualizer.scrollToIndex(idx, { behavior: 'smooth', align: 'center' })
+  }, [sesion, virtualizer])
+
   // ── AUTO-SCROLL ──
-  // Al cambiar de sesión: siempre ir al final usando useLayoutEffect
-  // (garantiza que el DOM ya pintó antes de scrollear)
+  // Al cambiar de sesión: siempre ir al final
   useLayoutEffect(() => {
-    if (!sesionActiva || !endRef.current) return
-    endRef.current.scrollIntoView({ behavior: 'instant' })
+    if (!sesionActiva || !sesion.length) return
+    virtualizer.scrollToIndex(sesion.length - 1, { align: 'end', behavior: 'auto' })
     isAtBottomRef.current = true
   }, [sesionActiva?.id])
 
   // Cuando llegan nuevos mensajes: solo scrollear si el usuario ya está abajo
   useLayoutEffect(() => {
-    if (!sesionActiva || !endRef.current) return
+    if (!sesionActiva || !sesion.length) return
     if (isAtBottomRef.current) {
-      endRef.current.scrollIntoView({ behavior: 'smooth' })
+      virtualizer.scrollToIndex(sesion.length - 1, { align: 'end', behavior: 'smooth' })
     }
   }, [sesion.length])
 
@@ -765,7 +774,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   }
 
   const irAbajo = () => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (sesion.length) virtualizer.scrollToIndex(sesion.length - 1, { align: 'end', behavior: 'smooth' })
     isAtBottomRef.current = true
   }
 
@@ -997,7 +1006,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
     a.click()
   }
 
-  const exportarPDF = () => {
+  const exportarPDF = async () => {
+    const { jsPDF } = await import('jspdf')
     if (!sesionActiva || !sesionCompleta.length) return
 
     const doc = new jsPDF({ unit: 'mm', format: 'a4' })
@@ -1410,7 +1420,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
     setReacciones(agrupadas)
   }
 
-  const toggleReaccion = async (entradaId, emoji) => {
+  const toggleReaccion = useCallback(async (entradaId, emoji) => {
     const existente = (reacciones[entradaId] || []).find(r => r.user_id === userId && r.emoji === emoji)
     if (existente) {
       await supabase.from('reacciones').delete().eq('id', existente.id)
@@ -1420,7 +1430,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
       if (data) setReacciones(prev => ({ ...prev, [entradaId]: [...(prev[entradaId] || []), data] }))
     }
     setShowReacciones(null)
-  }
+  }, [reacciones, userId])
 
   const agruparReacciones = useMemo(() => {
     const result = {}
@@ -1442,11 +1452,11 @@ export default function Mesa({ navigate, selectedUniverso }) {
     setFijadas(mapa)
   }
 
-  const toggleFijar = async (entrada) => {
+  const toggleFijar = useCallback(async (entrada) => {
     const nuevoValor = !fijadas[entrada.id]
     await supabase.from('entradas').update({ fijada: nuevoValor }).eq('id', entrada.id)
     setFijadas(prev => ({ ...prev, [entrada.id]: nuevoValor }))
-  }
+  }, [fijadas])
 
   // ── BUSCADOR GLOBAL ──
   const buscarGlobal = async () => {
@@ -2165,7 +2175,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
               <p style={{ fontSize: '0.72rem', color: 'var(--accent)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>📌 Fijadas</p>
               {entradasFijadas.map(e => (
                 <div key={e.id} style={{ fontSize: '0.85rem', color: 'var(--text2)', padding: '0.25rem 0', borderBottom: '1px solid rgba(180,140,60,0.1)', cursor: 'pointer' }}
-                  onClick={() => document.getElementById(`entrada-${e.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+                  onClick={() => scrollToEntrada(e.id)}>
                   {e.personaje_nombre && <span style={{ color: e.personaje_color, fontFamily: 'Cinzel, serif', fontSize: '0.78rem', marginRight: '0.4rem' }}>{e.personaje_nombre}:</span>}
                   <span style={{ fontStyle: 'italic' }}>{e.contenido?.slice(0, 80)}{e.contenido?.length > 80 ? '…' : ''}</span>
                 </div>
@@ -2173,185 +2183,40 @@ export default function Mesa({ navigate, selectedUniverso }) {
             </div>
           )}
 
-          {sesion.map(e => (
-            <div key={e.id} id={`entrada-${e.id}`} className={`entrada entrada-${e.tipo}${fijadas[e.id] ? ' entrada-fijada' : ''}`}>
-              {e.responder_a_id && (() => {
-                const ref = entradaMap.get(e.responder_a_id)
-                if (!ref) return null
-                return (
-                  <div style={{ margin: '0.3rem 0.8rem 0', padding: '0.3rem 0.6rem', background: 'rgba(180,140,60,0.08)', borderLeft: '3px solid var(--accent)', borderRadius: '0 4px 4px 0', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--text3)' }}
-                    onClick={() => document.getElementById(`entrada-${ref.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
-                    {ref.personaje_nombre && <span style={{ color: ref.personaje_color, fontFamily: 'Cinzel, serif', marginRight: '0.3rem' }}>{ref.personaje_nombre}:</span>}
-                    <span style={{ fontStyle: 'italic' }}>{ref.contenido?.slice(0, 60)}{ref.contenido?.length > 60 ? '…' : ''}</span>
-                  </div>
-                )
-              })()}
-              {e.tipo === 'narrador' && (
-                <div className="entrada-narrador">
-                  <span className="entrada-label">📖 Narrador</span>
-                  {e.contenido && <p className={e.tono && e.tono !== 'normal' ? `entrada-tono-${e.tono}` : ''}>{renderMensaje(e.contenido, miNombrePerfil)}</p>}
-                  {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '240px', borderRadius: '8px', marginTop: '0.4rem', cursor: 'pointer' }} onClick={() => abrirUrlSegura(e.imagen_url)} />}
-                  <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && (e.versiones?.length > 0
-  ? <span className="entrada-editado" style={{ cursor: 'pointer', textDecoration: 'underline dotted' }} onClick={ev => { ev.stopPropagation(); setShowVersiones(e) }}> · editado ({e.versiones.length})</span>
-  : <span className="entrada-editado"> · editado</span>
-)}</span>
-                  {e.user_id === userId && (
-                    <div className="entrada-acciones">
-                      {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
-                      <button onClick={() => setConfirmDeleteEntrada(e)}>🗑️</button>
-                    </div>
-                  )}
+          {/* Virtual list */}
+          <div style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+            {virtualizer.getVirtualItems().map(virtualItem => {
+              const e = sesion[virtualItem.index]
+              return (
+                <div
+                  key={e.id}
+                  data-index={virtualItem.index}
+                  ref={virtualizer.measureElement}
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${virtualItem.start}px)` }}
+                >
+                  <MensajeItem
+                    e={e}
+                    userId={userId}
+                    esDueno={esDueno}
+                    miNombrePerfil={miNombrePerfil}
+                    esFijada={!!fijadas[e.id]}
+                    reacciones={agruparReacciones[e.id] || []}
+                    isReactionOpen={showReacciones === e.id}
+                    entradaMap={entradaMap}
+                    setEditandoEntrada={setEditandoEntrada}
+                    setConfirmDeleteEntrada={setConfirmDeleteEntrada}
+                    toggleFijar={toggleFijar}
+                    setShowReacciones={setShowReacciones}
+                    toggleReaccion={toggleReaccion}
+                    setRespondiendo={setRespondiendo}
+                    setShowVersiones={setShowVersiones}
+                    scrollToEntrada={scrollToEntrada}
+                    inputRef={inputRef}
+                  />
                 </div>
-              )}
-              {(e.tipo === 'dialogo' || e.tipo === 'accion') && (() => {
-                const chunks = e.contenido ? parseMessage(e.contenido, miNombrePerfil) : []
-                const esTipoDialogo = e.tipo === 'dialogo'
-                const containerClass = esTipoDialogo
-                  ? `entrada-dialogo${e.tono && e.tono !== 'normal' ? ` entrada-tono-${e.tono}` : ''}`
-                  : `entrada-accion${e.tono && e.tono !== 'normal' ? ` entrada-tono-${e.tono}` : ''}`
-
-                const avatar = e.personaje?.avatar_url
-                  ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" />
-                  : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>
-
-                // Render the content blocks (diálogo + inline-action dentro de una sola burbuja)
-                const renderChunks = (
-                  <div className="burbuja-bloques">
-                    {chunks.map((chunk, ci) => {
-                      const inner = chunk.segments.map((seg, si) => (
-                        <span key={si} className={seg.classes.join(' ') || undefined}>{seg.text}</span>
-                      ))
-                      if (chunk.type === 'inline-action') {
-                        return (
-                          <div key={ci} className="burbuja-inline-accion">
-                            <span className="burbuja-inline-accion-icono">⚡</span>
-                            <span>{inner}</span>
-                          </div>
-                        )
-                      }
-                      return (
-                        <span key={ci} className="burbuja-dialogo-texto">{inner}</span>
-                      )
-                    })}
-                  </div>
-                )
-
-                const acciones = e.user_id === userId && (
-                  <div className="entrada-acciones">
-                    {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
-                    <button onClick={() => setConfirmDeleteEntrada(e)}>🗑️</button>
-                  </div>
-                )
-                const hora = (
-                  <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && (e.versiones?.length > 0
-  ? <span className="entrada-editado" style={{ cursor: 'pointer', textDecoration: 'underline dotted' }} onClick={ev => { ev.stopPropagation(); setShowVersiones(e) }}> · editado ({e.versiones.length})</span>
-  : <span className="entrada-editado"> · editado</span>
-)}</span>
-                )
-
-                if (esTipoDialogo) {
-                  return (
-                    <div className={containerClass}>
-                      {avatar}
-                      <div className="entrada-burbuja">
-                        <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
-                        {e.contenido && renderChunks}
-                        {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => abrirUrlSegura(e.imagen_url)} />}
-                        {hora}
-                        {acciones}
-                      </div>
-                    </div>
-                  )
-                }
-
-                // Tipo acción — también en burbuja, pero con estilo de acción (cursiva, borde diferente)
-                return (
-                  <div className="entrada-dialogo">
-                    {avatar}
-                    <div className="entrada-burbuja entrada-burbuja-accion">
-                      <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
-                      {e.contenido && (
-                        <div className="burbuja-bloques">
-                          {chunks.map((chunk, ci) => {
-                            const inner = chunk.segments.map((seg, si) => (
-                              <span key={si} className={seg.classes.join(' ') || undefined}>{seg.text}</span>
-                            ))
-                            if (chunk.type === 'inline-action') {
-                              return (
-                                <div key={ci} className="burbuja-inline-accion">
-                                  <span className="burbuja-inline-accion-icono">⚡</span>
-                                  <span>{inner}</span>
-                                </div>
-                              )
-                            }
-                            return (
-                              <span key={ci} className="burbuja-accion-texto">{inner}</span>
-                            )
-                          })}
-                        </div>
-                      )}
-                      {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => abrirUrlSegura(e.imagen_url)} />}
-                      {hora}
-                      {acciones}
-                    </div>
-                  </div>
-                )
-              })()}
-              {e.tipo === 'dado' && (
-                <div className="entrada-dado">
-                  <span className="entrada-dado-icono">🎲</span>
-                  <div className="entrada-dado-contenido">
-                    {e.personaje_nombre && <span style={{ color: e.personaje_color, fontFamily: 'Cinzel, serif', fontSize: '0.8rem' }}>{e.personaje_nombre}</span>}
-                    <span>{e.contenido}</span>
-                  </div>
-                  <span className="entrada-hora">{formatHora(e.timestamp)}</span>
-                </div>
-              )}
-
-              {/* Botones hover — fuera de burbujas, posición absoluta respecto a .entrada */}
-              {e.tipo !== 'dado' && (
-                <div className="entrada-acciones-hover">
-                  <div style={{ position: 'relative' }}>
-                    <button onClick={() => setShowReacciones(showReacciones === e.id ? null : e.id)} title="Reaccionar">＋😊</button>
-                    {showReacciones === e.id && (
-                      <div style={{ position: 'absolute', bottom: '100%', right: 0, background: 'var(--bg2)', border: '1px solid var(--border2)', borderRadius: 'var(--radius)', padding: '0.4rem', display: 'flex', flexWrap: 'wrap', gap: '0.3rem', zIndex: 200, boxShadow: 'var(--shadow)', maxWidth: '200px', marginBottom: '0.3rem' }}>
-                        {EMOJIS_RAPIDOS.map(em => (
-                          <button key={em} onClick={() => toggleReaccion(e.id, em)}
-                            style={{ background: 'none', border: 'none', fontSize: '1.1rem', cursor: 'pointer', padding: '0.1rem', borderRadius: '4px' }}>{em}</button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <button onClick={() => { setRespondiendo(e); inputRef.current?.focus() }} title="Responder">↩️</button>
-                  {(e.user_id === userId || esDueno) && (
-                    <button onClick={() => toggleFijar(e)} title={fijadas[e.id] ? 'Desfijar' : 'Fijar'}
-                      style={{ color: fijadas[e.id] ? 'var(--accent)' : undefined }}>
-                      {fijadas[e.id] ? '📌' : '📍'}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Reacciones */}
-              {e.tipo !== 'dado' && (
-                <>
-                  {/* Pills de reacciones existentes — siempre visibles */}
-                  {(agruparReacciones[e.id] || []).length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', padding: '0.1rem 0.8rem 0.3rem' }}>
-                      {(agruparReacciones[e.id] || []).map(({ emoji, count, mia }) => (
-                        <button key={emoji} onClick={() => toggleReaccion(e.id, emoji)}
-                          style={{ background: mia ? 'rgba(180,140,60,0.15)' : 'var(--bg3)', border: `1px solid ${mia ? 'var(--accent)' : 'var(--border)'}`, borderRadius: '999px', padding: '0.1rem 0.5rem', fontSize: '0.82rem', cursor: 'pointer', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                          {emoji} <span style={{ fontSize: '0.75rem', color: mia ? 'var(--accent)' : 'var(--text3)' }}>{count}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          ))}
-          {/* Div centinela: marca el final del historial para scrollIntoView */}
-          <div ref={endRef} style={{ height: 0 }} />
+              )
+            })}
+          </div>
         </div>
 
         {comandoSugerido && (
@@ -2868,77 +2733,81 @@ export default function Mesa({ navigate, selectedUniverso }) {
       )}
       {showChat && <ChatPrivado universo={selectedUniverso} personajes={personajes} userId={userId} onCerrar={() => setShowChat(false)} />}
 
-      {showInvestigacion && selectedUniverso && (
-        <PanelInvestigacion
-          universoId={selectedUniverso.id}
-          sesionId={sesionActiva?.id}
-          userId={userId}
-          esDueno={esDueno}
-          miembrosUniverso={miembrosUniverso}
-          onCerrar={() => setShowInvestigacion(false)}
-        />
-      )}
+      <Suspense fallback={null}>
+        {showInvestigacion && selectedUniverso && (
+          <PanelInvestigacion
+            universoId={selectedUniverso.id}
+            sesionId={sesionActiva?.id}
+            userId={userId}
+            esDueno={esDueno}
+            miembrosUniverso={miembrosUniverso}
+            onCerrar={() => setShowInvestigacion(false)}
+          />
+        )}
 
-      {showGaleria && selectedUniverso && (
-        <PanelGaleria universoId={selectedUniverso.id} onCerrar={() => setShowGaleria(false)} />
-      )}
+        {showGaleria && selectedUniverso && (
+          <PanelGaleria universoId={selectedUniverso.id} onCerrar={() => setShowGaleria(false)} />
+        )}
 
-      {showMapaRelaciones && selectedUniverso && (
-        <PanelMapaRelaciones
-          universoId={selectedUniverso.id}
-          personajes={personajes.filter(p => p.universo_id === selectedUniverso.id || p.universoId === selectedUniverso.id)}
-          onCerrar={() => setShowMapaRelaciones(false)}
-        />
-      )}
+        {showMapaRelaciones && selectedUniverso && (
+          <PanelMapaRelaciones
+            universoId={selectedUniverso.id}
+            personajes={personajes.filter(p => p.universo_id === selectedUniverso.id || p.universoId === selectedUniverso.id)}
+            onCerrar={() => setShowMapaRelaciones(false)}
+          />
+        )}
 
-      {showTimeline && selectedUniverso && (
-        <PanelTimeline
-          universoId={selectedUniverso.id}
-          sesiones={listaSesiones[selectedUniverso.id] || []}
-          onCerrar={() => setShowTimeline(false)}
-        />
-      )}
+        {showTimeline && selectedUniverso && (
+          <PanelTimeline
+            universoId={selectedUniverso.id}
+            sesiones={listaSesiones[selectedUniverso.id] || []}
+            onCerrar={() => setShowTimeline(false)}
+          />
+        )}
 
-      {showMapa && selectedUniverso && (
-        <PanelMapa
-          universo={selectedUniverso}
-          userId={userId}
-          esDueno={esDueno}
-          onCerrar={() => setShowMapa(false)}
-          personajes={personajes}
-        />
-      )}
+        {showMapa && selectedUniverso && (
+          <PanelMapa
+            universo={selectedUniverso}
+            userId={userId}
+            esDueno={esDueno}
+            onCerrar={() => setShowMapa(false)}
+            personajes={personajes}
+          />
+        )}
 
-      {showBestiario && selectedUniverso && (
-        <PanelBestiario
-          universo={selectedUniverso}
-          userId={userId}
-          esDueno={esDueno}
-          sesionActiva={sesionActiva}
-          onEnviarAlChat={(texto) => sesionActiva && addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: texto }, sesionActiva.id)}
-          onCerrar={() => setShowBestiario(false)}
-        />
-      )}
+        {showBestiario && selectedUniverso && (
+          <PanelBestiario
+            universo={selectedUniverso}
+            userId={userId}
+            esDueno={esDueno}
+            sesionActiva={sesionActiva}
+            onEnviarAlChat={(texto) => sesionActiva && addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: texto }, sesionActiva.id)}
+            onCerrar={() => setShowBestiario(false)}
+          />
+        )}
 
-      {showMisiones && selectedUniverso && (
-        <PanelMisiones universoId={selectedUniverso.id} userId={userId} esDueno={esDueno} onCerrar={() => setShowMisiones(false)} universoNombre={selectedUniverso.nombre} />
-      )}
+        {showMisiones && selectedUniverso && (
+          <PanelMisiones universoId={selectedUniverso.id} userId={userId} esDueno={esDueno} onCerrar={() => setShowMisiones(false)} universoNombre={selectedUniverso.nombre} />
+        )}
 
-      {showNotas && selectedUniverso && esDueno && (
-        <PanelNotasNarrador universoId={selectedUniverso.id} userId={userId} onCerrar={() => setShowNotas(false)} />
-      )}
-      {showObjetos && selectedUniverso && (
-        <PanelObjetos universo={selectedUniverso} personajes={personajes} userId={userId} esDueno={esDueno} onCerrar={() => setShowObjetos(false)} />
-      )}
-      {showDadoEvento && selectedUniverso && (
-        <PanelDadoEvento
-          universoId={selectedUniverso.id}
-          userId={userId}
-          esDueno={esDueno}
-          onPublicarResultado={(texto) => { addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: texto }, sesionActiva?.id); setShowDadoEvento(false) }}
-          onCerrar={() => setShowDadoEvento(false)}
-        />
-      )}
+        {showNotas && selectedUniverso && esDueno && (
+          <PanelNotasNarrador universoId={selectedUniverso.id} userId={userId} onCerrar={() => setShowNotas(false)} />
+        )}
+
+        {showObjetos && selectedUniverso && (
+          <PanelObjetos universo={selectedUniverso} personajes={personajes} userId={userId} esDueno={esDueno} onCerrar={() => setShowObjetos(false)} />
+        )}
+
+        {showDadoEvento && selectedUniverso && (
+          <PanelDadoEvento
+            universoId={selectedUniverso.id}
+            userId={userId}
+            esDueno={esDueno}
+            onPublicarResultado={(texto) => { addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: texto }, sesionActiva?.id); setShowDadoEvento(false) }}
+            onCerrar={() => setShowDadoEvento(false)}
+          />
+        )}
+      </Suspense>
 
       {showTimerConfig && esDueno && selectedUniverso && (
         <div className="modal-overlay" onClick={() => setShowTimerConfig(false)}>
