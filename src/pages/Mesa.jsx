@@ -1754,7 +1754,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
                       )}
                     </div>
                     {esMio && (
-                      <div style={{ display: 'flex', gap: '0.15rem', flexShrink: 0 }}>
+                      <div className="ficha-actions">
                         <button className="ficha-btn" title={p.oculto ? 'Mostrar' : 'Ocultar'}
                           onClick={e => { e.stopPropagation(); updatePersonaje(p.id, { oculto: !p.oculto }) }}>
                           {p.oculto ? '👁️' : '🙈'}
@@ -1766,7 +1766,11 @@ export default function Mesa({ navigate, selectedUniverso }) {
                         <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
                       </div>
                     )}
-                    {!esMio && <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>}
+                    {!esMio && (
+                      <div className="ficha-actions">
+                        <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
+                      </div>
+                    )}
                     {showColorPicker === p.id && (
                       <div style={{ position: 'absolute', right: '2.5rem', background: 'var(--bg2)', border: '1px solid var(--border2)', borderRadius: 'var(--radius)', padding: '0.4rem', display: 'flex', gap: '0.3rem', zIndex: 50, boxShadow: 'var(--shadow)' }}
                         onClick={e => e.stopPropagation()}>
@@ -1792,8 +1796,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
                           <span style={{ display: 'block', fontSize: '0.75rem', lineHeight: 1.2 }}>{(condicionesPorPersonaje[p.id] || []).slice(0, 3).map(c => c.emoji).join(' ')}</span>
                         )}
                       </div>
-                      {esDueno && <button className="ficha-btn" title="Mostrar ficha a todos" onClick={e => { e.stopPropagation(); compartirFicha(p) }}>👁</button>}
-                      <button className="ficha-btn" style={{ flexShrink: 0 }} onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
+                      <div className="ficha-actions">
+                        {esDueno && <button className="ficha-btn" title="Mostrar ficha a todos" onClick={e => { e.stopPropagation(); compartirFicha(p) }}>👁</button>}
+                        <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
+                      </div>
                     </div>
                   ))}
                 </>
