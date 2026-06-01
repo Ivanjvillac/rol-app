@@ -2901,6 +2901,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
           userId={userId}
           esDueno={esDueno}
           onCerrar={() => setShowMapa(false)}
+          personajes={personajes}
         />
       )}
 
