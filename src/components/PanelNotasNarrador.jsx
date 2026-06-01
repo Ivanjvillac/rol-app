@@ -8,6 +8,7 @@ export default function PanelNotasNarrador({ universoId, userId, onCerrar }) {
   const [notaActual, setNotaActual] = useState(null) // { id, titulo, contenido }
   const [estado, setEstado]       = useState('ok') // 'ok' | 'guardando' | 'error'
   const [cargando, setCargando]   = useState(true)
+  const [errorMsg, setErrorMsg]   = useState('')
   const timerRef  = useRef(null)
   const dirtyRef  = useRef(false)
 
@@ -18,12 +19,13 @@ export default function PanelNotasNarrador({ universoId, userId, onCerrar }) {
 
   const cargar = async () => {
     setCargando(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('notas_narrador')
       .select('id, titulo, contenido, updated_at')
       .eq('universo_id', universoId)
       .eq('user_id', userId)
       .order('updated_at', { ascending: false })
+    if (error) { setErrorMsg('SELECT: ' + error.message); setCargando(false); return }
     const lista = data || []
     setNotas(lista)
     setNotaActual(lista[0] || null)
@@ -40,7 +42,7 @@ export default function PanelNotasNarrador({ universoId, userId, onCerrar }) {
         .from('notas_narrador')
         .update({ titulo: nota.titulo, contenido: nota.contenido, updated_at: new Date().toISOString() })
         .eq('id', nota.id)
-      if (error) console.error('[notas] UPDATE error:', error)
+      if (error) setErrorMsg('UPDATE: ' + error.message)
       setEstado(error ? 'error' : 'ok')
       dirtyRef.current = false
       if (!error) {
@@ -63,16 +65,16 @@ export default function PanelNotasNarrador({ universoId, userId, onCerrar }) {
 
   /* ── Nueva nota ── */
   const nuevaNota = async () => {
+    setErrorMsg('')
     const { data, error } = await supabase
       .from('notas_narrador')
       .insert({ universo_id: universoId, user_id: userId, titulo: 'Nueva nota', contenido: '' })
       .select('id, titulo, contenido, updated_at')
       .single()
-    if (error) { console.error('[notas] INSERT error:', error); alert('Error al crear nota: ' + error.message); return }
-    if (data) {
-      setNotas(prev => [data, ...prev])
-      setNotaActual(data)
-    }
+    if (error) { setErrorMsg('INSERT: ' + error.message + ' | uid:' + userId + ' | univ:' + universoId); return }
+    if (!data) { setErrorMsg('INSERT: sin datos devueltos'); return }
+    setNotas(prev => [data, ...prev])
+    setNotaActual(data)
   }
 
   /* ── Eliminar nota ── */
@@ -148,6 +150,13 @@ export default function PanelNotasNarrador({ universoId, userId, onCerrar }) {
           <button onClick={onCerrar}
             style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: '1.1rem', cursor: 'pointer', lineHeight: 1 }}>✕</button>
         </div>
+
+        {/* Error debug */}
+        {errorMsg && (
+          <div style={{ background: '#e74c3c22', border: '1px solid #e74c3c', color: '#e74c3c', fontSize: '0.78rem', padding: '0.5rem 1rem', flexShrink: 0, wordBreak: 'break-all' }}>
+            ⚠️ {errorMsg}
+          </div>
+        )}
 
         {/* Body */}
         {cargando ? (
