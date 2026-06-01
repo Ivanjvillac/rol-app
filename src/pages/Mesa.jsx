@@ -1734,16 +1734,14 @@ export default function Mesa({ navigate, selectedUniverso }) {
                     onClick={esMio ? () => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) } : undefined}
                     style={!esMio ? { opacity: 0.5, cursor: 'default' } : {}}>
                     {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
-                    <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 0 }}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre}</span>
+                      <small style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.rol}</span>
                         {(condicionesPorPersonaje[p.id] || []).length > 0 && (
-                          <span style={{ fontSize: '0.72rem', flexShrink: 0 }}>
-                            {(condicionesPorPersonaje[p.id] || []).slice(0, 3).map(c => c.emoji).join('')}
-                          </span>
+                          <span style={{ fontSize: '0.75rem', flexShrink: 0 }}>{(condicionesPorPersonaje[p.id] || []).slice(0, 3).map(c => c.emoji).join('')}</span>
                         )}
-                      </div>
-                      <small>{p.rol}</small>
+                      </small>
                     </div>
                     {esMio && (
                       <div style={{ display: 'flex', gap: '0.15rem', flexShrink: 0 }}>
@@ -1777,16 +1775,14 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   {personajes.filter(p => p.es_npc).map(p => (
                     <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) }}>
                       {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
-                      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 0 }}>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre}</span>
+                        <small style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🤖 {p.rol}</span>
                           {(condicionesPorPersonaje[p.id] || []).length > 0 && (
-                            <span style={{ fontSize: '0.72rem', flexShrink: 0 }}>
-                              {(condicionesPorPersonaje[p.id] || []).slice(0, 3).map(c => c.emoji).join('')}
-                            </span>
+                            <span style={{ fontSize: '0.75rem', flexShrink: 0 }}>{(condicionesPorPersonaje[p.id] || []).slice(0, 3).map(c => c.emoji).join('')}</span>
                           )}
-                        </div>
-                        <small>🤖 {p.rol}</small>
+                        </small>
                       </div>
                       {esDueno && <button className="ficha-btn" title="Mostrar ficha a todos" onClick={e => { e.stopPropagation(); compartirFicha(p) }}>👁</button>}
                       <button className="ficha-btn" style={{ flexShrink: 0 }} onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
