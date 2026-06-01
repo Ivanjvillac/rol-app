@@ -115,6 +115,30 @@ export default function PanelNotasNarrador({ universoId, userId, onCerrar }) {
     setEstado('ok')
   }
 
+  /* ── Guardar manual ── */
+  const guardarAhora = async () => {
+    if (!notaActual) return
+    setErrorMsg('')
+    setEstado('guardando')
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
+    const { data, error } = await supabase
+      .from('notas_narrador')
+      .update({ titulo: notaActual.titulo, contenido: notaActual.contenido, updated_at: new Date().toISOString() })
+      .eq('id', notaActual.id)
+      .select()
+    if (error) {
+      setErrorMsg('UPDATE error: ' + error.message + ' (code:' + error.code + ')')
+      setEstado('error')
+    } else if (!data || data.length === 0) {
+      setErrorMsg('UPDATE: sin filas afectadas — RLS puede estar bloqueando. id=' + notaActual.id + ' uid=' + userId)
+      setEstado('error')
+    } else {
+      setEstado('ok')
+      setNotas(prev => prev.map(n => n.id === notaActual.id ? { ...n, titulo: notaActual.titulo, contenido: notaActual.contenido } : n))
+    }
+    dirtyRef.current = false
+  }
+
   const fechaCorta = (iso) => {
     if (!iso) return ''
     const d = new Date(iso)
@@ -235,18 +259,27 @@ export default function PanelNotasNarrador({ universoId, userId, onCerrar }) {
                 </div>
               ) : (
                 <>
-                  {/* Título */}
-                  <div style={{ padding: '0.75rem 1rem 0', flexShrink: 0 }}>
+                  {/* Título + botón guardar */}
+                  <div style={{ padding: '0.75rem 1rem 0', flexShrink: 0, display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
                     <input
                       value={notaActual.titulo}
                       onChange={e => setTitulo(e.target.value)}
                       placeholder="Título de la nota…"
                       style={{
-                        width: '100%', background: 'none', border: 'none', borderBottom: '1px solid var(--border)',
+                        flex: 1, background: 'none', border: 'none', borderBottom: '1px solid var(--border)',
                         color: 'var(--text)', fontSize: '1rem', fontFamily: "'Cinzel', serif",
                         fontWeight: 600, padding: '0 0 0.4rem', outline: 'none', boxSizing: 'border-box',
                       }}
                     />
+                    <button
+                      onClick={guardarAhora}
+                      style={{
+                        background: 'var(--accent)', color: '#fff', border: 'none',
+                        borderRadius: 'var(--radius)', padding: '0.25rem 0.7rem',
+                        cursor: 'pointer', fontSize: '0.78rem', flexShrink: 0,
+                        boxShadow: 'var(--accent-glow)',
+                      }}
+                    >💾 Guardar</button>
                   </div>
                   {/* Contenido */}
                   <textarea
