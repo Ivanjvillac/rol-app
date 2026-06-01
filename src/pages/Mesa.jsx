@@ -273,16 +273,28 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [textoEscenaIA, setTextoEscenaIA] = useState('')
   const [generandoEscena, setGenerandoEscena] = useState(false)
   const [generandoNPC, setGenerandoNPC] = useState(false)
-  const [seccionIA, setSeccionIA] = useState(false)
-  const [seccionSesiones, setSeccionSesiones] = useState(true)
-  const [seccionPersonajes, setSeccionPersonajes] = useState(true)
-  const [seccionConectados, setSeccionConectados] = useState(true)
-  const [seccionOpciones, setSeccionOpciones] = useState(false)
-  const [seccionHerramientas, setSeccionHerramientas] = useState(false)
-  const [seccionPersonalizacion, setSeccionPersonalizacion] = useState(false)
-  const [seccionAyuda, setSeccionAyuda] = useState(false)
-  const [seccionArchivadas, setSeccionArchivadas] = useState(false)
-  const [seccionDados, setSeccionDados] = useState(false)
+  const lsSec = (key, def) => { try { const v = localStorage.getItem(`sidebar_${key}`); return v === null ? def : v === '1' } catch { return def } }
+  const setSec = (setter, key) => (fn) => setter(prev => { const next = typeof fn === 'function' ? fn(prev) : fn; try { localStorage.setItem(`sidebar_${key}`, next ? '1' : '0') } catch {} return next })
+  const [seccionIA, setSeccionIARaw] = useState(() => lsSec('ia', false))
+  const [seccionSesiones, setSeccionSesionesRaw] = useState(() => lsSec('sesiones', true))
+  const [seccionPersonajes, setSeccionPersonajesRaw] = useState(() => lsSec('personajes', true))
+  const [seccionConectados, setSeccionConectadosRaw] = useState(() => lsSec('conectados', false))
+  const [seccionOpciones, setSeccionOpcionesRaw] = useState(() => lsSec('opciones', false))
+  const [seccionHerramientas, setSeccionHerramientasRaw] = useState(() => lsSec('herramientas', false))
+  const [seccionPersonalizacion, setSeccionPersonalizacionRaw] = useState(() => lsSec('personalizacion', false))
+  const [seccionAyuda, setSeccionAyudaRaw] = useState(() => lsSec('ayuda', false))
+  const [seccionArchivadas, setSeccionArchivadasRaw] = useState(() => lsSec('archivadas', false))
+  const [seccionDados, setSeccionDadosRaw] = useState(() => lsSec('dados', false))
+  const setSeccionIA = setSec(setSeccionIARaw, 'ia')
+  const setSeccionSesiones = setSec(setSeccionSesionesRaw, 'sesiones')
+  const setSeccionPersonajes = setSec(setSeccionPersonajesRaw, 'personajes')
+  const setSeccionConectados = setSec(setSeccionConectadosRaw, 'conectados')
+  const setSeccionOpciones = setSec(setSeccionOpcionesRaw, 'opciones')
+  const setSeccionHerramientas = setSec(setSeccionHerramientasRaw, 'herramientas')
+  const setSeccionPersonalizacion = setSec(setSeccionPersonalizacionRaw, 'personalizacion')
+  const setSeccionAyuda = setSec(setSeccionAyudaRaw, 'ayuda')
+  const setSeccionArchivadas = setSec(setSeccionArchivadasRaw, 'archivadas')
+  const setSeccionDados = setSec(setSeccionDadosRaw, 'dados')
   const [showMapaRelaciones, setShowMapaRelaciones] = useState(false)
   const [showTimeline, setShowTimeline] = useState(false)
   const [npcMemoriaId, setNpcMemoriaId] = useState('')
@@ -1736,12 +1748,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
                     {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre}</span>
-                      <small style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.rol}</span>
-                        {(condicionesPorPersonaje[p.id] || []).length > 0 && (
-                          <span style={{ fontSize: '0.75rem', flexShrink: 0 }}>{(condicionesPorPersonaje[p.id] || []).slice(0, 3).map(c => c.emoji).join('')}</span>
-                        )}
-                      </small>
+                      <small style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.rol}</small>
+                      {(condicionesPorPersonaje[p.id] || []).length > 0 && (
+                        <span style={{ display: 'block', fontSize: '0.75rem', lineHeight: 1.2 }}>{(condicionesPorPersonaje[p.id] || []).slice(0, 3).map(c => c.emoji).join(' ')}</span>
+                      )}
                     </div>
                     {esMio && (
                       <div style={{ display: 'flex', gap: '0.15rem', flexShrink: 0 }}>
@@ -1777,12 +1787,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
                       {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre}</span>
-                        <small style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🤖 {p.rol}</span>
-                          {(condicionesPorPersonaje[p.id] || []).length > 0 && (
-                            <span style={{ fontSize: '0.75rem', flexShrink: 0 }}>{(condicionesPorPersonaje[p.id] || []).slice(0, 3).map(c => c.emoji).join('')}</span>
-                          )}
-                        </small>
+                        <small style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🤖 {p.rol}</small>
+                        {(condicionesPorPersonaje[p.id] || []).length > 0 && (
+                          <span style={{ display: 'block', fontSize: '0.75rem', lineHeight: 1.2 }}>{(condicionesPorPersonaje[p.id] || []).slice(0, 3).map(c => c.emoji).join(' ')}</span>
+                        )}
                       </div>
                       {esDueno && <button className="ficha-btn" title="Mostrar ficha a todos" onClick={e => { e.stopPropagation(); compartirFicha(p) }}>👁</button>}
                       <button className="ficha-btn" style={{ flexShrink: 0 }} onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
