@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, laz
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { parseMessage } from '../lib/parseMessage'
 import SelectorImagenSticker from '../components/SelectorImagenSticker'
 import FichaPersonaje from '../components/FichaPersonaje'
 import MensajeItem from '../components/MensajeItem'
