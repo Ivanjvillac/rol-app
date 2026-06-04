@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Component } from 'react'
 import { supabase } from './lib/supabase'
 import { AppProvider, useApp } from './context/AppContext'
 import Auth from './pages/Auth'
@@ -9,6 +9,24 @@ import Mesa from './pages/Mesa'
 import './App.css'
 import Admin from './pages/Admin'
 import Perfil from './pages/Perfil'
+
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null } }
+  static getDerivedStateFromError(error) { return { error } }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: '2rem', color: '#e74c3c', fontFamily: 'monospace', background: '#0d0d0f', minHeight: '100vh' }}>
+          <h2 style={{ color: '#c9a84c', fontFamily: 'Cinzel, serif', marginBottom: '1rem' }}>Error en Mesa de Rol</h2>
+          <pre style={{ whiteSpace: 'pre-wrap', fontSize: '0.85rem', color: '#e8e4d9' }}>{this.state.error?.message}</pre>
+          <pre style={{ whiteSpace: 'pre-wrap', fontSize: '0.75rem', color: '#6a6080', marginTop: '1rem' }}>{this.state.error?.stack}</pre>
+          <button onClick={() => this.setState({ error: null })} style={{ marginTop: '1rem', background: '#c9a84c', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer' }}>Reintentar</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 function AppInner({ page, navigate, selectedUniverso, setSelectedUniverso, cerrarSesion, invitacionToken, setInvitacionToken, userEmail }) {  const { aceptarInvitacion, userId } = useApp()
   const [msgInvitacion, setMsgInvitacion] = useState(null)
@@ -57,7 +75,7 @@ function AppInner({ page, navigate, selectedUniverso, setSelectedUniverso, cerra
       {page === 'home' && <Home navigate={navigate} selectedUniverso={selectedUniverso} />}
       {page === 'universos' && <Universos navigate={navigate} setSelectedUniverso={setSelectedUniverso} selectedUniverso={selectedUniverso} />}
       {page === 'personajes' && <Personajes navigate={navigate} selectedUniverso={selectedUniverso} />}
-      {page === 'mesa' && <Mesa navigate={navigate} selectedUniverso={selectedUniverso} />}
+      {page === 'mesa' && <ErrorBoundary><Mesa navigate={navigate} selectedUniverso={selectedUniverso} /></ErrorBoundary>}
       {page === 'perfil' && <Perfil userId={userId} userEmail={userEmail} />}
 
       {/* Barra de navegación inferior — solo móvil */}
