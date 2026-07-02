@@ -101,7 +101,6 @@ Deno.serve(async (req) => {
   const vapidPrivateKey = Deno.env.get("VAPID_PRIVATE_KEY") ?? ""
   const vapidSubject = Deno.env.get("VAPID_SUBJECT") ?? "mailto:ccontrolsoul@gmail.com"
 
-
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
   let body: Record<string, unknown>
@@ -111,30 +110,55 @@ Deno.serve(async (req) => {
     return new Response("Invalid JSON", { status: 400 })
   }
 
-  // Determinar tipo de evento y usuario destinatario
-  const type = body.type as string
+  // Supabase webhook payload: { type: "INSERT", table: "...", schema: "public", record: {...} }
+  const table = body.table as string
   const record = body.record as Record<string, unknown>
-  if (!record) return new Response("No record", { status: 400 })
+  if (!record || !table) return new Response("No record", { status: 400 })
 
-  // Construir el payload de notificacion
-  let targetUserId: string | null = null
-  let notifPayload: object | null = null
+  // ── MENSAJE PRIVADO ─────────────────────────────────────────────────────────
+  if (table === "mensajes_privados") {
+    const targetUserId = record.destinatario_user_id as string
+    if (!targetUserId) return new Response("OK", { status: 200 })
 
-  if (type === "mensajes_privados") {
-    targetUserId = record.destinatario_user_id as string
-    const remNombre = (record.remitente_nombre as string) || "Alguien"
-    notifPayload = {
-      title: `🔒 Mensaje de ${remNombre}`,
+    // Buscar el nombre del remitente
+    const { data: remitente } = await supabase
+      .from("personajes")
+      .select("nombre")
+      .eq("id", record.remitente_id)
+      .single()
+    const remNombre = remitente?.nombre || "Alguien"
+
+    const notifPayload = {
+      title: `🔒 Mensaje privado de ${remNombre}`,
       body: ((record.contenido as string) || "Mensaje privado").slice(0, 100),
       tag: `privado-${record.id}`,
       url: "/",
     }
-  } else if (type === "entradas") {
-    // Notificar a todos los miembros de la sesion excepto al autor
+
+    const { data: subs } = await supabase
+      .from("push_subscriptions")
+      .select("subscription")
+      .eq("user_id", targetUserId)
+
+    if (subs) {
+      for (const s of subs) {
+        try {
+          await sendPush(s.subscription, notifPayload, vapidPublicKey, vapidPrivateKey, vapidSubject)
+        } catch (e) {
+          console.error("[send-push] Error enviando push privado:", e)
+        }
+      }
+    }
+    return new Response("OK", { status: 200 })
+  }
+
+  // ── ENTRADA DE SESION ────────────────────────────────────────────────────────
+  if (table === "entradas") {
     const sesionId = record.sesion_id as string
     const autorId = record.user_id as string
     if (!sesionId) return new Response("OK", { status: 200 })
 
+    // Obtener miembros de la sesion excepto el autor
     const { data: miembros } = await supabase
       .from("sesion_miembros")
       .select("user_id")
@@ -159,7 +183,7 @@ Deno.serve(async (req) => {
           await sendPush(
             s.subscription,
             {
-              title: `💬 ${quien} en #${sesion?.nombre || "la sesion"}`,
+              title: `💬 ${quien} en #${sesion?.nombre || "la sesión"}`,
               body: contenido || "Ha escrito algo nuevo",
               tag: `sesion-${sesionId}`,
               url: "/",
@@ -167,29 +191,11 @@ Deno.serve(async (req) => {
             vapidPublicKey, vapidPrivateKey, vapidSubject,
           )
         } catch (e) {
-          console.error("[send-push] Error enviando push:", e)
+          console.error("[send-push] Error enviando push sesion:", e)
         }
       }
     }
     return new Response("OK", { status: 200 })
-  }
-
-  // Para mensajes privados: notificar solo al destinatario
-  if (targetUserId && notifPayload) {
-    const { data: subs } = await supabase
-      .from("push_subscriptions")
-      .select("subscription")
-      .eq("user_id", targetUserId)
-
-    if (subs) {
-      for (const s of subs) {
-        try {
-          await sendPush(s.subscription, notifPayload, vapidPublicKey, vapidPrivateKey, vapidSubject)
-        } catch (e) {
-          console.error("[send-push] Error enviando push:", e)
-        }
-      }
-    }
   }
 
   return new Response("OK", { status: 200 })
