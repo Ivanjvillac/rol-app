@@ -6,12 +6,14 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico'],
-      workbox: {
-        skipWaiting: true,
-        clientsClaim: true,
-        cleanupOutdatedCaches: true,
+      injectManifest: {
+        swSrc: 'src/sw.js',
+        swDest: 'dist/sw.js',
       },
       manifest: {
         name: 'Tinta y Dados',
@@ -38,4 +40,4 @@ export default defineConfig({
       }
     })
   ],
-})
+})

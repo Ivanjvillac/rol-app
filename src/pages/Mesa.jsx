@@ -10,6 +10,7 @@ import { useMesaMusic } from '../features/mesa/hooks/useMesaMusic'
 import SelectorImagenSticker from '../components/SelectorImagenSticker'
 import FichaPersonaje from '../components/FichaPersonaje'
 import MensajeItem from '../components/MensajeItem'
+import { suscribirPush, limpiarNotificaciones } from '../lib/pushNotifications'
 
 const PanelInvestigacion  = lazy(() => import('../components/PanelInvestigacion'))
 const PanelGaleria        = lazy(() => import('../components/PanelGaleria'))
@@ -729,13 +730,32 @@ export default function Mesa({ navigate, selectedUniverso }) {
     return () => { supabase.removeChannel(canal); canalFichaRef.current = null }
   }, [selectedUniverso?.id])
 
-  // Solicitar permiso para notificaciones del navegador al entrar a Mesa
+  // Solicitar permiso de notificaciones y registrar suscripcion Web Push
   useEffect(() => {
     if (!userId) return
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission()
+    const solicitarYSuscribir = async () => {
+      if (!('Notification' in window)) return
+      let perm = Notification.permission
+      if (perm === 'default') {
+        perm = await Notification.requestPermission()
+      }
+      if (perm === 'granted') {
+        // Suscribir al Web Push (si el navegador lo soporta)
+        await suscribirPush(userId)
+      }
     }
+    solicitarYSuscribir()
   }, [userId])
+
+  // Limpiar notificaciones push cuando el usuario vuelve a la app
+  useEffect(() => {
+    const onFocus = () => limpiarNotificaciones()
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) limpiarNotificaciones()
+    })
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
 
   // Detección de conexión offline
   useEffect(() => {
