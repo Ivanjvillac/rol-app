@@ -72,7 +72,33 @@ export function AppProvider({ userId, children }) {
     cargar()
   }, [userId])
 
-  // UNIVERSOS
+  // Realtime: sincronizar cambios de personajes (stats, colores, etc.) para todos
+  useEffect(() => {
+    if (!userId) return
+    const channel = supabase
+      .channel(`personajes-sync-${userId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'personajes',
+      }, (payload) => {
+        const updated = payload.new
+        if (!updated?.id) return
+        setPersonajes(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p))
+      })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'personajes',
+      }, (payload) => {
+        const nuevo = payload.new
+        if (!nuevo?.id) return
+        setPersonajes(prev => prev.some(p => p.id === nuevo.id) ? prev : [...prev, nuevo])
+      })
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [userId])
+
   const addUniverso = async (u) => {
     const { data, error } = await supabase
       .from('universos')
@@ -174,6 +200,18 @@ export function AppProvider({ userId, children }) {
       .update(cambios)
       .eq('id', id)
       .eq('user_id', userId)
+      .select()
+      .single()
+    if (!error) setPersonajes(prev => prev.map(p => p.id === id ? data : p))
+    return { data, error }
+  }
+
+  // Actualización de personaje por el dueño del universo (sin restricción de user_id)
+  const updatePersonajeDueno = async (id, cambios) => {
+    const { data, error } = await supabase
+      .from('personajes')
+      .update(cambios)
+      .eq('id', id)
       .select()
       .single()
     if (!error) setPersonajes(prev => prev.map(p => p.id === id ? data : p))
@@ -445,9 +483,43 @@ const suscribirMesa = (universoId, sesionId, onNuevaEntrada) => {
       })
       if (onNuevaEntrada) onNuevaEntrada(nueva)
     })
+    .on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'entradas',
+      filter: `universo_id=eq.${universoId}`
+    }, (payload) => {
+      const actualizada = formatearEntrada(payload.new)
+      if (sesionId && actualizada.sesion_id !== sesionId) return
+      const key = sesionId || universoId
+      setSesiones(prev => {
+        if (!prev[key]) return prev
+        return {
+          ...prev,
+          [key]: prev[key].map(e => e.id === actualizada.id ? { ...e, ...actualizada } : e)
+        }
+      })
+    })
+    .on('postgres_changes', {
+      event: 'DELETE',
+      schema: 'public',
+      table: 'entradas',
+      filter: `universo_id=eq.${universoId}`
+    }, (payload) => {
+      const id = payload.old?.id
+      if (!id) return
+      setSesiones(prev => {
+        const nuevo = {}
+        for (const key in prev) {
+          nuevo[key] = prev[key].filter(e => e.id !== id)
+        }
+        return nuevo
+      })
+    })
     .subscribe()
   return () => supabase.removeChannel(channel)
 }
+
 
   const getPersonajesDeUniverso = (universoId) =>
     personajes.filter(p => (p.universo_id || p.universoId) === universoId)
@@ -497,9 +569,10 @@ const suscribirMesa = (universoId, sesionId, onNuevaEntrada) => {
       suscribirMesa, esPropietario,
       listaSesiones, sesionActivaId, setSesionActivaId,
       hayMasEntradas,
-cargarListaSesiones, crearSesion, eliminarSesion,
-editarEntrada, borrarEntrada, getPerfil,
-backupUniverso, transferirPropiedad, archivarSesion,
+      cargarListaSesiones, crearSesion, eliminarSesion,
+      editarEntrada, borrarEntrada, getPerfil,
+      backupUniverso, transferirPropiedad, archivarSesion,
+      updatePersonajeDueno,
     }}>
       {children}
     </AppContext.Provider>

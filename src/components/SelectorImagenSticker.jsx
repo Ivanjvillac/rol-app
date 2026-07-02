@@ -47,28 +47,40 @@ export default function SelectorImagenSticker({ userId, onEnviarImagen, onEnviar
   }
 
   const handleSubirSticker = async (e) => {
-    const file = e.target.files[0]
-    if (!file) return
+    const files = Array.from(e.target.files)
+    if (!files.length) return
     setSubiendo(true)
-    try {
-    const compressed = await compressImage(file, 'chat')
-    const path = `${userId}/${Date.now()}.jpg`
-    const { error } = await supabase.storage.from('stickers').upload(path, compressed)
-    if (!error) {
-      const { data } = supabase.storage.from('stickers').getPublicUrl(path)
-      await supabase.from('stickers').insert({
-        user_id: userId,
-        url: data.publicUrl,
-        nombre: file.name,
-        pack_id: packActivo || null
-      })
-      await cargarTodo()
+    let subidos = 0
+    for (const file of files) {
+      // Deduplicación: omitir si ya existe un sticker con mismo nombre en este pack/todos
+      const existe = stickers.some(s =>
+        s.nombre === file.name && (packActivo ? s.pack_id === packActivo : true)
+      )
+      if (existe) continue
+      try {
+        const compressed = await compressImage(file, 'chat')
+        const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+        const { error } = await supabase.storage.from('stickers').upload(path, compressed)
+        if (!error) {
+          const { data } = supabase.storage.from('stickers').getPublicUrl(path)
+          await supabase.from('stickers').insert({
+            user_id: userId,
+            url: data.publicUrl,
+            nombre: file.name,
+            pack_id: packActivo || null
+          })
+          subidos++
+        }
+      } catch (err) {
+        console.warn('Error subiendo sticker:', file.name, err)
+      }
     }
-    } catch (err) {
-      alert(err.message)
-    }
+    if (subidos > 0) await cargarTodo()
+    // Resetear input para permitir volver a seleccionar los mismos archivos
+    e.target.value = ''
     setSubiendo(false)
   }
+
 
   const handleEliminarSticker = async (sticker) => {
     const path = sticker.url.split('/stickers/')[1]
@@ -186,7 +198,8 @@ export default function SelectorImagenSticker({ userId, onEnviarImagen, onEnviar
             )}
           </div>
 
-          <input ref={stickerInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleSubirSticker} />
+          <input ref={stickerInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleSubirSticker} />
+
           <button className="btn-ghost" style={{ width: '100%', marginTop: '0.8rem' }} onClick={() => stickerInputRef.current?.click()} disabled={subiendo}>
             {subiendo ? 'Subiendo...' : `+ Añadir sticker${packActivo ? ' al pack' : ''}`}
           </button>

@@ -86,6 +86,41 @@ export default function FichaPersonaje({ personaje, userId, onCerrar, esDueno = 
     setCargando(false)
   }
 
+  // Realtime: sincronizar cambios de atributos en tiempo real (para que el jugador vea el cambio del narrador)
+  useEffect(() => {
+    const channel = supabase
+      .channel(`atributos-${personaje.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'atributos',
+        filter: `personaje_id=eq.${personaje.id}`
+      }, (payload) => {
+        const updated = payload.new
+        setAtributos(prev => prev.map(a => a.id === updated.id ? { ...a, ...updated } : a))
+      })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'atributos',
+        filter: `personaje_id=eq.${personaje.id}`
+      }, (payload) => {
+        const nuevo = payload.new
+        setAtributos(prev => prev.some(a => a.id === nuevo.id) ? prev : [...prev, nuevo])
+      })
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'atributos',
+        filter: `personaje_id=eq.${personaje.id}`
+      }, (payload) => {
+        const id = payload.old?.id
+        if (id) setAtributos(prev => prev.filter(a => a.id !== id))
+      })
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [personaje.id])
+
   const agregarAtributo = async () => {
     if (!nuevoNombre.trim() || !nuevoValor.trim()) return
     const { data, error } = await supabase.from('atributos')

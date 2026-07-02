@@ -43,10 +43,53 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
   const [texto, setTexto] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [showSelector, setShowSelector] = useState(false)
+  const [noLeidosPor, setNoLeidosPor] = useState({}) // { remitente_id: count }
+  const [ultimoMensajePor, setUltimoMensajePor] = useState({}) // { contacto_id: timestamp }
   const historialRef = useRef(null)
 
   const misPersonajes = personajes.filter(p => p.user_id === userId)
   const personajesOtros = personajes.filter(p => p.user_id !== userId)
+
+  // Ordenar contactos: primero los que tienen mensajes no leídos, luego por último mensaje reciente
+  const personajesOrdenados = [...personajesOtros].sort((a, b) => {
+    const aNoLeidos = noLeidosPor[a.id] || 0
+    const bNoLeidos = noLeidosPor[b.id] || 0
+    if (aNoLeidos !== bNoLeidos) return bNoLeidos - aNoLeidos
+    const aUltimo = ultimoMensajePor[a.id] || '0'
+    const bUltimo = ultimoMensajePor[b.id] || '0'
+    return bUltimo.localeCompare(aUltimo)
+  })
+
+  // Cargar todos los no-leídos dirigidos a este usuario al montar
+  useEffect(() => {
+    if (!miPersonaje) return
+    const cargarNoLeidos = async () => {
+      const { data } = await supabase
+        .from('mensajes_privados')
+        .select('remitente_id, destinatario_id, created_at, leido')
+        .eq('universo_id', universo.id)
+        .or(`destinatario_user_id.eq.${userId},remitente_user_id.eq.${userId}`)
+        .order('created_at', { ascending: false })
+      if (!data) return
+      const counts = {}
+      const ultimos = {}
+      for (const m of data) {
+        // Calcular qué personaje "otro" es el interlocutor
+        const otroId = misPersonajes.some(p => p.id === m.remitente_id)
+          ? m.destinatario_id
+          : m.remitente_id
+        // No leídos para mí
+        if (!m.leido && m.destinatario_id !== miPersonaje.id && misPersonajes.some(p => p.id === m.destinatario_id)) {
+          counts[m.remitente_id] = (counts[m.remitente_id] || 0) + 1
+        }
+        // Último mensaje por interlocutor
+        if (!ultimos[otroId]) ultimos[otroId] = m.created_at
+      }
+      setNoLeidosPor(counts)
+      setUltimoMensajePor(ultimos)
+    }
+    cargarNoLeidos()
+  }, [miPersonaje?.id])
 
   useEffect(() => {
     if (!miPersonaje || !destinatario) return
@@ -62,9 +105,28 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
             if (actual.some(x => x.id === m.id)) return prev
             return { ...prev, [key]: [...actual, m] }
           })
-          if (m.destinatario_user_id === userId) marcarLeido(m.id)
+          if (m.destinatario_user_id === userId) {
+            marcarLeido(m.id)
+            // Quitar el badge de no-leído para este remitente
+            setNoLeidosPor(prev => {
+              const next = { ...prev }
+              delete next[m.remitente_id]
+              return next
+            })
+          }
+          // Actualizar último mensaje
+          setUltimoMensajePor(prev => ({ ...prev, [destinatario.id]: m.created_at }))
         }
-      }).subscribe()
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'mensajes_privados', filter: `universo_id=eq.${universo.id}` }, (payload) => {
+        const id = payload.old?.id
+        if (!id) return
+        setConversaciones(prev => {
+          const key = claveConv(miPersonaje.id, destinatario.id)
+          return { ...prev, [key]: (prev[key] || []).filter(x => x.id !== id) }
+        })
+      })
+      .subscribe()
     return () => supabase.removeChannel(channel)
   }, [miPersonaje?.id, destinatario?.id])
 
@@ -72,13 +134,11 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
     if (!historialRef.current) return
     const key = miPersonaje && destinatario ? claveConv(miPersonaje.id, destinatario.id) : null
     const msgs = key ? (conversaciones[key] || []) : []
-    // Buscar primer mensaje no leído dirigido a mí
     const primerNoLeido = msgs.find(m => m.destinatario_user_id === userId && !m.leido)
     if (primerNoLeido) {
       const el = document.getElementById(`msg-${primerNoLeido.id}`)
       if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return }
     }
-    // Si no hay no leídos, ir al final
     historialRef.current.scrollTop = historialRef.current.scrollHeight
   }, [conversaciones, destinatario])
 
@@ -91,6 +151,8 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
     setConversaciones(prev => ({ ...prev, [key]: data || [] }))
     const noLeidos = (data || []).filter(m => m.destinatario_user_id === userId && !m.leido)
     for (const m of noLeidos) marcarLeido(m.id)
+    // Limpiar badges del destinatario actual
+    setNoLeidosPor(prev => { const next = { ...prev }; delete next[destinatario.id]; return next })
   }
   const marcarLeido = async (id) => await supabase.from('mensajes_privados').update({ leido: true }).eq('id', id).eq('destinatario_user_id', userId)
   const enviar = async () => {
@@ -113,7 +175,7 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
     setConversaciones(prev => ({ ...prev, [key]: (prev[key] || []).filter(x => x.id !== m.id) }))
   }
   const handleKey = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }
-  const formatHora = (ts) => { const d = new Date(ts); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` }
+  const formatHora = (ts) => { const d = new Date(typeof ts === 'string' && !ts.endsWith('Z') ? ts + 'Z' : ts); return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) }
   const mensajesActuales = destinatario && miPersonaje ? (conversaciones[claveConv(miPersonaje.id, destinatario.id)] || []) : []
 
   return (
@@ -132,13 +194,23 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
               </div>
               {miPersonaje && <div className="chat-lista">
                 <p style={{ fontSize: '0.75rem', color: 'var(--text3)', padding: '0.6rem 0.8rem', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Personajes</p>
-                {personajesOtros.length === 0 && <p style={{ color: 'var(--text3)', fontSize: '0.9rem', padding: '0 0.8rem', fontStyle: 'italic' }}>No hay otros personajes.</p>}
-                {personajesOtros.map(p => (
-                  <div key={p.id} className={`chat-contacto ${destinatario?.id === p.id ? 'activo' : ''}`} onClick={() => setDestinatario(p)}>
-                    {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
-                    <div><span>{p.nombre}</span><small>{p.rol}</small></div>
-                  </div>
-                ))}
+                {personajesOrdenados.length === 0 && <p style={{ color: 'var(--text3)', fontSize: '0.9rem', padding: '0 0.8rem', fontStyle: 'italic' }}>No hay otros personajes.</p>}
+                {personajesOrdenados.map(p => {
+                  const badge = noLeidosPor[p.id] || 0
+                  return (
+                    <div key={p.id} className={`chat-contacto ${destinatario?.id === p.id ? 'activo' : ''}`} onClick={() => setDestinatario(p)} style={{ position: 'relative' }}>
+                      {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
+                      <div><span>{p.nombre}</span><small>{p.rol}</small></div>
+                      {badge > 0 && (
+                        <span style={{
+                          position: 'absolute', right: '0.6rem', top: '50%', transform: 'translateY(-50%)',
+                          background: 'hsl(0,70%,50%)', color: '#fff', borderRadius: '999px',
+                          fontSize: '0.65rem', padding: '0.1rem 0.4rem', fontWeight: 700, minWidth: '18px', textAlign: 'center'
+                        }}>{badge}</span>
+                      )}
+                    </div>
+                  )
+                })}
               </div>}
             </div>
             <div className="chat-main">
@@ -193,7 +265,8 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
 }
 
 export default function Mesa({ navigate, selectedUniverso }) {
-  const { getPersonajesDeUniverso, addEntrada, getSesion, cargarSesion, cargarEntradasAnteriores, hayMasEntradas, suscribirMesa, invitarUsuario, getInvitaciones, limpiarInvitacionesAntiguas, aceptarInvitacion, esPropietario, userId, cargarListaSesiones, crearSesion, eliminarSesion, listaSesiones, editarEntrada, borrarEntrada, getPerfil, backupUniverso, transferirPropiedad, updatePersonaje, archivarSesion } = useApp()
+  const { getPersonajesDeUniverso, addEntrada, getSesion, cargarSesion, cargarEntradasAnteriores, hayMasEntradas, suscribirMesa, invitarUsuario, getInvitaciones, limpiarInvitacionesAntiguas, aceptarInvitacion, esPropietario, userId, cargarListaSesiones, crearSesion, eliminarSesion, listaSesiones, editarEntrada, borrarEntrada, getPerfil, backupUniverso, transferirPropiedad, updatePersonaje, updatePersonajeDueno, archivarSesion } = useApp()
+
 
   const [personajeActivo, setPersonajeActivo] = useState(null)
   const [texto, setTexto] = useState('')
@@ -712,9 +785,10 @@ export default function Mesa({ navigate, selectedUniverso }) {
   useLayoutEffect(() => {
     if (!sesionActiva || !endRef.current) return
     if (isAtBottomRef.current) {
-      endRef.current.scrollIntoView({ behavior: 'smooth' })
+      endRef.current.scrollIntoView({ behavior: 'instant' })
     }
   }, [sesion.length])
+
 
   const isAtBottom = () => {
     if (!historialRef.current) return true
@@ -886,7 +960,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
     setEditandoEntrada(null)
   }
 
-  const formatHora = (ts) => { const d = new Date(ts); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` }
+  const formatHora = (ts) => { const d = new Date(typeof ts === 'string' && !ts.endsWith('Z') ? ts + 'Z' : ts); return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) }
 
   const compartirFicha = (personaje) => {
     canalFichaRef.current?.send({ type: 'broadcast', event: 'mostrar_ficha', payload: { personaje } })
