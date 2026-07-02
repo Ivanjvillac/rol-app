@@ -12,8 +12,12 @@ const renderMensaje = (texto, miNombre) => {
 }
 
 const formatHora = (ts) => {
-  const d = new Date(ts)
-  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+  if (!ts) return ''
+  let dStr = String(ts)
+  if (!dStr.endsWith('Z') && !dStr.includes('+')) dStr += 'Z'
+  const d = new Date(dStr)
+  if (isNaN(d)) return ''
+  return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
 }
 
 function MensajeItem({
