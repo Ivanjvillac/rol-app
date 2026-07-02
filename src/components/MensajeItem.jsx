@@ -16,8 +16,8 @@ const formatHora = (ts) => {
   let dStr = String(ts)
   if (!dStr.endsWith('Z') && !dStr.includes('+')) dStr += 'Z'
   const d = new Date(dStr)
-  if (isNaN(d)) return `[NaN: ${ts}]`
-  return `${d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })} [${ts}]`
+  if (isNaN(d)) return ''
+  return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
 }
 
 function MensajeItem({
