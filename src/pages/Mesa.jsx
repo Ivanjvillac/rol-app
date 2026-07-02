@@ -1,21 +1,26 @@
-import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, lazy, Suspense } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
-import SelectorImagenSticker from '../components/SelectorImagenSticker'
-import FichaPersonaje from '../components/FichaPersonaje'
-import PanelInvestigacion from '../components/PanelInvestigacion'
-import PanelGaleria from '../components/PanelGaleria'
-import PanelMisiones from '../components/PanelMisiones'
-import PanelObjetos from '../components/PanelObjetos'
-import PanelDadoEvento from '../components/PanelDadoEvento'
-import { jsPDF } from 'jspdf'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { parseMessage } from '../lib/parseMessage'
-import { generarResumenConIA, generarDescripcionDado, generarDescripcionEscena, generarNPC, consultarNPC, tieneApiKey } from '../lib/gemini'
-import PanelMapaRelaciones from '../components/PanelMapaRelaciones'
-import PanelTimeline from '../components/PanelTimeline'
+import { tieneApiKey, generarResumenConIA, generarDescripcionDado, generarDescripcionEscena, generarNPC } from '../lib/gemini'
 import { useMesaTimer } from '../features/mesa/hooks/useMesaTimer'
 import { useMesaPresence } from '../features/mesa/hooks/useMesaPresence'
 import { useMesaMusic } from '../features/mesa/hooks/useMesaMusic'
+import SelectorImagenSticker from '../components/SelectorImagenSticker'
+import FichaPersonaje from '../components/FichaPersonaje'
+import MensajeItem from '../components/MensajeItem'
+
+const PanelInvestigacion  = lazy(() => import('../components/PanelInvestigacion'))
+const PanelGaleria        = lazy(() => import('../components/PanelGaleria'))
+const PanelMisiones       = lazy(() => import('../components/PanelMisiones'))
+const PanelObjetos        = lazy(() => import('../components/PanelObjetos'))
+const PanelDadoEvento     = lazy(() => import('../components/PanelDadoEvento'))
+const PanelNotasNarrador  = lazy(() => import('../components/PanelNotasNarrador'))
+const PanelMapaRelaciones = lazy(() => import('../components/PanelMapaRelaciones'))
+const PanelTimeline       = lazy(() => import('../components/PanelTimeline'))
+const PanelMapa           = lazy(() => import('../components/PanelMapa'))
+const PanelBestiario      = lazy(() => import('../components/PanelBestiario'))
 
 const abrirUrlSegura = (url) => {
   if (!url || !url.startsWith('https://')) return
@@ -312,6 +317,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [showMisiones, setShowMisiones] = useState(false)
   const [showDadoEvento, setShowDadoEvento] = useState(false)
   const [showObjetos, setShowObjetos] = useState(false)
+  const [showNotas, setShowNotas] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [showDados, setShowDados] = useState(false)
   const [fichaCompartida, setFichaCompartida] = useState(null)
@@ -344,22 +350,48 @@ export default function Mesa({ navigate, selectedUniverso }) {
   const [textoEscenaIA, setTextoEscenaIA] = useState('')
   const [generandoEscena, setGenerandoEscena] = useState(false)
   const [generandoNPC, setGenerandoNPC] = useState(false)
-  const [seccionIA, setSeccionIA] = useState(false)
-  const [seccionSesiones, setSeccionSesiones] = useState(true)
-  const [seccionPersonajes, setSeccionPersonajes] = useState(true)
-  const [seccionConectados, setSeccionConectados] = useState(true)
-  const [seccionOpciones, setSeccionOpciones] = useState(false)
-  const [seccionHerramientas, setSeccionHerramientas] = useState(false)
-  const [seccionPersonalizacion, setSeccionPersonalizacion] = useState(false)
-  const [seccionAyuda, setSeccionAyuda] = useState(false)
-  const [seccionArchivadas, setSeccionArchivadas] = useState(false)
-  const [seccionDados, setSeccionDados] = useState(false)
+  const lsSec = (key, def) => { try { const v = localStorage.getItem(`sidebar_${key}`); return v === null ? def : v === '1' } catch { return def } }
+  const setSec = (setter, key) => (fn) => setter(prev => { const next = typeof fn === 'function' ? fn(prev) : fn; try { localStorage.setItem(`sidebar_${key}`, next ? '1' : '0') } catch {} return next })
+  const [seccionIA, setSeccionIARaw] = useState(() => lsSec('ia', false))
+  const [seccionSesiones, setSeccionSesionesRaw] = useState(() => lsSec('sesiones', true))
+  const [seccionPersonajes, setSeccionPersonajesRaw] = useState(() => lsSec('personajes', true))
+  const [seccionConectados, setSeccionConectadosRaw] = useState(() => lsSec('conectados', false))
+  const [seccionOpciones, setSeccionOpcionesRaw] = useState(() => lsSec('opciones', false))
+  const [seccionHerramientas, setSeccionHerramientasRaw] = useState(() => lsSec('herramientas', false))
+  const [seccionPersonalizacion, setSeccionPersonalizacionRaw] = useState(() => lsSec('personalizacion', false))
+  const [seccionAyuda, setSeccionAyudaRaw] = useState(() => lsSec('ayuda', false))
+  const [seccionArchivadas, setSeccionArchivadasRaw] = useState(() => lsSec('archivadas', false))
+  const [seccionDados, setSeccionDadosRaw] = useState(() => lsSec('dados', false))
+  const setSeccionIA = setSec(setSeccionIARaw, 'ia')
+  const setSeccionSesiones = setSec(setSeccionSesionesRaw, 'sesiones')
+  const setSeccionPersonajes = setSec(setSeccionPersonajesRaw, 'personajes')
+  const setSeccionConectados = setSec(setSeccionConectadosRaw, 'conectados')
+  const setSeccionOpciones = setSec(setSeccionOpcionesRaw, 'opciones')
+  const setSeccionHerramientas = setSec(setSeccionHerramientasRaw, 'herramientas')
+  const setSeccionPersonalizacion = setSec(setSeccionPersonalizacionRaw, 'personalizacion')
+  const setSeccionAyuda = setSec(setSeccionAyudaRaw, 'ayuda')
+  const setSeccionArchivadas = setSec(setSeccionArchivadasRaw, 'archivadas')
+  const setSeccionDados = setSec(setSeccionDadosRaw, 'dados')
   const [showMapaRelaciones, setShowMapaRelaciones] = useState(false)
   const [showTimeline, setShowTimeline] = useState(false)
   const [npcMemoriaId, setNpcMemoriaId] = useState('')
   const [npcPregunta, setNpcPregunta] = useState('')
   const [npcRespuesta, setNpcRespuesta] = useState(null)
   const [generandoNpcMemoria, setGenerandoNpcMemoria] = useState(false)
+  // Nuevas features
+  const [showMapa, setShowMapa] = useState(false)
+  const [showBestiario, setShowBestiario] = useState(false)
+  const [condicionesPorPersonaje, setCondicionesPorPersonaje] = useState({})
+  const [fechaJuego, setFechaJuego] = useState('')
+  const [fechaJuegoId, setFechaJuegoId] = useState(null)
+  const [editandoFecha, setEditandoFecha] = useState(false)
+  const [showEscenaEditor, setShowEscenaEditor] = useState(false)
+  const [escenaTitulo, setEscenaTitulo] = useState('')
+  const [escenaDescripcion, setEscenaDescripcion] = useState('')
+  const [escenaImagenUrl, setEscenaImagenUrl] = useState('')
+  const [escenaLightbox, setEscenaLightbox] = useState(false)
+  const [escenaBannerOculto, setEscenaBannerOculto] = useState(false)
+  const canalEscenaRef = useRef(null)
 
   // Filtros de búsqueda global
   const [filtroTipo, setFiltroTipo] = useState('')
@@ -756,10 +788,14 @@ export default function Mesa({ navigate, selectedUniverso }) {
         else if (showInvestigacion) setShowInvestigacion(false)
         else if (showMapaRelaciones) setShowMapaRelaciones(false)
         else if (showTimeline) setShowTimeline(false)
+        else if (showMapa) setShowMapa(false)
+        else if (showBestiario) setShowBestiario(false)
+        else if (showEscenaEditor) setShowEscenaEditor(false)
         else if (showGaleria) setShowGaleria(false)
         else if (showMisiones) setShowMisiones(false)
         else if (showDadoEvento) setShowDadoEvento(false)
         else if (showObjetos) setShowObjetos(false)
+        else if (showNotas) setShowNotas(false)
         else if (respondiendo) setRespondiendo(null)
         else if (sidebarAbierto) setSidebarAbierto(false)
       }
@@ -769,23 +805,36 @@ export default function Mesa({ navigate, selectedUniverso }) {
   }, [showBusquedaGlobal, showMusica, showStats, showResumen, showDados, showVersiones,
       editandoEntrada, gestionarSesion, confirmDeleteEntrada, confirmDeleteSesion,
       showInvitar, showNuevaSesion, fichaPersonaje, fichaCompartida, showTimerConfig,
-      showChat, showInvestigacion, showMapaRelaciones, showTimeline, showGaleria, showMisiones, showDadoEvento, showObjetos,
+      showChat, showInvestigacion, showMapaRelaciones, showTimeline, showMapa, showBestiario, showEscenaEditor, showGaleria, showMisiones, showDadoEvento, showObjetos,
       respondiendo, sidebarAbierto])
 
+  // ── VIRTUALIZADOR ──
+  const virtualizer = useVirtualizer({
+    count: sesion.length,
+    getScrollElement: () => historialRef.current,
+    estimateSize: () => 90,
+    overscan: 8,
+  })
+
+  const scrollToEntrada = useCallback((id) => {
+    const idx = sesion.findIndex(e => e.id === id)
+    if (idx >= 0) virtualizer.scrollToIndex(idx, { behavior: 'smooth', align: 'center' })
+  }, [sesion, virtualizer])
+
   // ── AUTO-SCROLL ──
-  // Al cambiar de sesión: siempre ir al final usando useLayoutEffect
-  // (garantiza que el DOM ya pintó antes de scrollear)
+  // Al cambiar de sesión: siempre ir al final
   useLayoutEffect(() => {
-    if (!sesionActiva || !endRef.current) return
-    endRef.current.scrollIntoView({ behavior: 'instant' })
+    if (!sesionActiva || !sesion.length) return
+    virtualizer.scrollToIndex(sesion.length - 1, { align: 'end', behavior: 'auto' })
     isAtBottomRef.current = true
   }, [sesionActiva?.id])
 
   // Cuando llegan nuevos mensajes: solo scrollear si el usuario ya está abajo
   useLayoutEffect(() => {
-    if (!sesionActiva || !endRef.current) return
+    if (!sesionActiva || !sesion.length) return
     if (isAtBottomRef.current) {
-      endRef.current.scrollIntoView({ behavior: 'instant' })
+      virtualizer.scrollToIndex(sesion.length - 1, { align: 'end', behavior: 'instant' })
+
     }
   }, [sesion.length])
 
@@ -805,7 +854,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
   }
 
   const irAbajo = () => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (sesion.length) virtualizer.scrollToIndex(sesion.length - 1, { align: 'end', behavior: 'smooth' })
     isAtBottomRef.current = true
   }
 
@@ -1037,7 +1086,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
     a.click()
   }
 
-  const exportarPDF = () => {
+  const exportarPDF = async () => {
+    const { jsPDF } = await import('jspdf')
     if (!sesionActiva || !sesionCompleta.length) return
 
     const doc = new jsPDF({ unit: 'mm', format: 'a4' })
@@ -1245,6 +1295,50 @@ export default function Mesa({ navigate, selectedUniverso }) {
     })
   }
 
+  const toggleCondicion = async (personaje, condicion) => {
+    const existing = (condicionesPorPersonaje[personaje.id] || []).find(c => c.nombre === condicion.nombre)
+    if (existing) {
+      await supabase.from('condiciones_personaje').delete().eq('id', existing.id)
+      setCondicionesPorPersonaje(prev => ({ ...prev, [personaje.id]: (prev[personaje.id] || []).filter(c => c.id !== existing.id) }))
+    } else {
+      const { data } = await supabase.from('condiciones_personaje').insert({
+        personaje_id: personaje.id,
+        universo_id: selectedUniverso.id,
+        nombre: condicion.nombre,
+        emoji: condicion.emoji,
+        color: condicion.color,
+      }).select().single()
+      if (data) setCondicionesPorPersonaje(prev => ({ ...prev, [personaje.id]: [...(prev[personaje.id] || []), data] }))
+    }
+  }
+
+  const guardarFechaJuego = async (nuevaFecha) => {
+    if (fechaJuegoId) {
+      await supabase.from('calendario_universo').update({ fecha_texto: nuevaFecha, updated_at: new Date().toISOString() }).eq('id', fechaJuegoId)
+    } else {
+      const { data } = await supabase.from('calendario_universo').insert({ universo_id: selectedUniverso.id, fecha_texto: nuevaFecha }).select().single()
+      if (data) setFechaJuegoId(data.id)
+    }
+    setFechaJuego(nuevaFecha)
+    setEditandoFecha(false)
+  }
+
+  const guardarEscena = async () => {
+    if (!sesionActiva) return
+    await supabase.from('sesiones').update({
+      escena_titulo: escenaTitulo || null,
+      escena_descripcion: escenaDescripcion || null,
+      escena_imagen_url: escenaImagenUrl || null,
+    }).eq('id', sesionActiva.id)
+    setShowEscenaEditor(false)
+  }
+
+  const limpiarEscena = async () => {
+    if (!sesionActiva) return
+    await supabase.from('sesiones').update({ escena_titulo: null, escena_descripcion: null, escena_imagen_url: null }).eq('id', sesionActiva.id)
+    setEscenaTitulo(''); setEscenaDescripcion(''); setEscenaImagenUrl('')
+  }
+
   const abrirInvitar = async () => {
     setShowInvitar(true)
     setMsgInvitar(null)
@@ -1406,7 +1500,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
     setReacciones(agrupadas)
   }
 
-  const toggleReaccion = async (entradaId, emoji) => {
+  const toggleReaccion = useCallback(async (entradaId, emoji) => {
     const existente = (reacciones[entradaId] || []).find(r => r.user_id === userId && r.emoji === emoji)
     if (existente) {
       await supabase.from('reacciones').delete().eq('id', existente.id)
@@ -1416,7 +1510,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
       if (data) setReacciones(prev => ({ ...prev, [entradaId]: [...(prev[entradaId] || []), data] }))
     }
     setShowReacciones(null)
-  }
+  }, [reacciones, userId])
 
   const agruparReacciones = useMemo(() => {
     const result = {}
@@ -1438,11 +1532,11 @@ export default function Mesa({ navigate, selectedUniverso }) {
     setFijadas(mapa)
   }
 
-  const toggleFijar = async (entrada) => {
+  const toggleFijar = useCallback(async (entrada) => {
     const nuevoValor = !fijadas[entrada.id]
     await supabase.from('entradas').update({ fijada: nuevoValor }).eq('id', entrada.id)
     setFijadas(prev => ({ ...prev, [entrada.id]: nuevoValor }))
-  }
+  }, [fijadas])
 
   // ── BUSCADOR GLOBAL ──
   const buscarGlobal = async () => {
@@ -1558,6 +1652,74 @@ export default function Mesa({ navigate, selectedUniverso }) {
     return () => supabase.removeChannel(canal)
   }, [sesionActiva?.id])
 
+  // ── Condiciones de estado ──
+  useEffect(() => {
+    if (!selectedUniverso?.id) return
+    const cargarCondiciones = async () => {
+      const { data } = await supabase
+        .from('condiciones_personaje')
+        .select('*')
+        .eq('universo_id', selectedUniverso.id)
+      const mapa = {}
+      ;(data || []).forEach(c => {
+        if (!mapa[c.personaje_id]) mapa[c.personaje_id] = []
+        mapa[c.personaje_id].push(c)
+      })
+      setCondicionesPorPersonaje(mapa)
+    }
+    cargarCondiciones()
+    const canal = supabase
+      .channel(`condiciones-${selectedUniverso.id}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'condiciones_personaje',
+        filter: `universo_id=eq.${selectedUniverso.id}`
+      }, () => cargarCondiciones())
+      .subscribe()
+    return () => supabase.removeChannel(canal)
+  }, [selectedUniverso?.id])
+
+  // ── Calendario in-game ──
+  useEffect(() => {
+    if (!selectedUniverso?.id) return
+    supabase.from('calendario_universo').select('*').eq('universo_id', selectedUniverso.id).maybeSingle()
+      .then(({ data }) => { if (data) { setFechaJuego(data.fecha_texto || ''); setFechaJuegoId(data.id) } })
+    const canal = supabase
+      .channel(`calendario-${selectedUniverso.id}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'calendario_universo',
+        filter: `universo_id=eq.${selectedUniverso.id}`
+      }, ({ eventType, new: row }) => {
+        if (eventType !== 'DELETE' && row) { setFechaJuego(row.fecha_texto || ''); setFechaJuegoId(row.id) }
+      })
+      .subscribe()
+    return () => supabase.removeChannel(canal)
+  }, [selectedUniverso?.id])
+
+  // ── Tarjeta de escena activa ──
+  useEffect(() => {
+    if (!sesionActiva?.id) return
+    const { escena_titulo, escena_descripcion, escena_imagen_url } = sesionActiva
+    setEscenaTitulo(escena_titulo || '')
+    setEscenaDescripcion(escena_descripcion || '')
+    setEscenaImagenUrl(escena_imagen_url || '')
+    const canal = supabase
+      .channel(`escena-${sesionActiva.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'sesiones',
+        filter: `id=eq.${sesionActiva.id}`
+      }, ({ new: row }) => {
+        if (row) {
+          setEscenaTitulo(row.escena_titulo || '')
+          setEscenaDescripcion(row.escena_descripcion || '')
+          setEscenaImagenUrl(row.escena_imagen_url || '')
+          if (row.escena_titulo) setEscenaBannerOculto(false)
+        }
+      })
+      .subscribe()
+    canalEscenaRef.current = canal
+    return () => { supabase.removeChannel(canal); canalEscenaRef.current = null }
+  }, [sesionActiva?.id])
+
   // Limpiar notifs y cargar reacciones/fijadas al entrar a sesión
   useEffect(() => {
     if (!sesionActiva?.id) return
@@ -1663,11 +1825,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
           <h4 style={{ cursor: 'pointer', userSelect: 'none', marginBottom: seccionPersonajes ? '0.6rem' : 0 }} onClick={() => setSeccionPersonajes(p => !p)}>
             {seccionPersonajes ? '▾' : '▸'} 👥 Personajes
           </h4>
-          {seccionPersonajes && selectedUniverso && (
-            <button className="modo-btn" style={{ marginBottom: '0.5rem' }} onClick={() => setShowMapaRelaciones(true)}>
-              🗺️ Ver mapa de relaciones
-            </button>
-          )}
           {seccionPersonajes && (
             <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
               <div className={`personaje-btn narrador-btn ${modoEntrada === 'narrador' && !personajeActivo ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(null); setModoEntrada('narrador'); setSidebarAbierto(false) }}>
@@ -1682,9 +1839,15 @@ export default function Mesa({ navigate, selectedUniverso }) {
                     onClick={esMio ? () => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) } : undefined}
                     style={!esMio ? { opacity: 0.5, cursor: 'default' } : {}}>
                     {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
-                    <div style={{ flex: 1 }}><span>{p.nombre}</span><small>{p.rol}</small></div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre}</span>
+                      <small style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.rol}</small>
+                      {(condicionesPorPersonaje[p.id] || []).length > 0 && (
+                        <span style={{ display: 'block', fontSize: '0.75rem', lineHeight: 1.2 }}>{(condicionesPorPersonaje[p.id] || []).slice(0, 3).map(c => c.emoji).join(' ')}</span>
+                      )}
+                    </div>
                     {esMio && (
-                      <div style={{ display: 'flex', gap: '0.15rem' }}>
+                      <div className="ficha-actions">
                         <button className="ficha-btn" title={p.oculto ? 'Mostrar' : 'Ocultar'}
                           onClick={e => { e.stopPropagation(); updatePersonaje(p.id, { oculto: !p.oculto }) }}>
                           {p.oculto ? '👁️' : '🙈'}
@@ -1696,7 +1859,11 @@ export default function Mesa({ navigate, selectedUniverso }) {
                         <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
                       </div>
                     )}
-                    {!esMio && <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>}
+                    {!esMio && (
+                      <div className="ficha-actions">
+                        <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
+                      </div>
+                    )}
                     {showColorPicker === p.id && (
                       <div style={{ position: 'absolute', right: '2.5rem', background: 'var(--bg2)', border: '1px solid var(--border2)', borderRadius: 'var(--radius)', padding: '0.4rem', display: 'flex', gap: '0.3rem', zIndex: 50, boxShadow: 'var(--shadow)' }}
                         onClick={e => e.stopPropagation()}>
@@ -1715,9 +1882,17 @@ export default function Mesa({ navigate, selectedUniverso }) {
                   {personajes.filter(p => p.es_npc).map(p => (
                     <div key={p.id} className={`personaje-btn ${personajeActivo?.id === p.id ? 'activo' : ''}`} onClick={() => { setPersonajeActivo(p); setModoEntrada('dialogo'); setSidebarAbierto(false) }}>
                       {p.avatar_url ? <img src={p.avatar_url} alt={p.nombre} className="personaje-avatar-sm avatar-img" /> : <div className="personaje-avatar-sm" style={{ background: p.color }}>{p.iniciales}</div>}
-                      <div style={{ flex: 1 }}><span>{p.nombre}</span><small>🤖 {p.rol}</small></div>
-                      {esDueno && <button className="ficha-btn" title="Mostrar ficha a todos" onClick={e => { e.stopPropagation(); compartirFicha(p) }}>👁</button>}
-                      <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre}</span>
+                        <small style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🤖 {p.rol}</small>
+                        {(condicionesPorPersonaje[p.id] || []).length > 0 && (
+                          <span style={{ display: 'block', fontSize: '0.75rem', lineHeight: 1.2 }}>{(condicionesPorPersonaje[p.id] || []).slice(0, 3).map(c => c.emoji).join(' ')}</span>
+                        )}
+                      </div>
+                      <div className="ficha-actions">
+                        {esDueno && <button className="ficha-btn" title="Mostrar ficha a todos" onClick={e => { e.stopPropagation(); compartirFicha(p) }}>👁</button>}
+                        <button className="ficha-btn" onClick={e => { e.stopPropagation(); setFichaPersonaje(p) }}>📋</button>
+                      </div>
                     </div>
                   ))}
                 </>
@@ -1774,7 +1949,42 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowGaleria(true)} disabled={!selectedUniverso}>🖼️ Galería</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowObjetos(true)} disabled={!selectedUniverso}>🎒 Objetos</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowDadoEvento(true)} disabled={!selectedUniverso}>🎲 Dado de evento</button>
+            {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowNotas(true)} disabled={!selectedUniverso}>📝 Notas privadas</button>}
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowInvestigacion(true)} disabled={!selectedUniverso}>🔍 Investigación</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowMapa(true)} disabled={!selectedUniverso}>🗺️ Mapa del mundo</button>
+            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowBestiario(true)} disabled={!selectedUniverso}>📖 Bestiario</button>
+            {sesionActiva && esDueno && (
+              <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowEscenaEditor(true)}>
+                🎬 Tarjeta de escena{escenaTitulo ? ` · ${escenaTitulo.slice(0, 18)}…` : ''}
+              </button>
+            )}
+            {/* Calendario in-game */}
+            <div style={{ marginTop: '0.6rem', padding: '0.5rem 0.6rem', background: 'var(--bg3)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: editandoFecha ? '0.4rem' : 0 }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.05em' }}>📅 Fecha in-game</span>
+                {!editandoFecha && esDueno && (
+                  <button onClick={() => setEditandoFecha(true)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: '0.75rem', padding: '0 0.2rem' }}>✏️</button>
+                )}
+              </div>
+              {editandoFecha ? (
+                <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.2rem' }}>
+                  <input
+                    value={fechaJuego}
+                    onChange={e => setFechaJuego(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') guardarFechaJuego(fechaJuego); if (e.key === 'Escape') setEditandoFecha(false) }}
+                    placeholder="Día 3 de Vendimia..."
+                    autoFocus
+                    style={{ flex: 1, background: 'var(--bg2)', border: '1px solid var(--border2)', borderRadius: '4px', color: 'var(--text)', padding: '0.25rem 0.4rem', fontSize: '0.82rem' }}
+                  />
+                  <button onClick={() => guardarFechaJuego(fechaJuego)} style={{ background: 'var(--accent)', border: 'none', color: '#000', borderRadius: '4px', padding: '0.2rem 0.5rem', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700 }}>✓</button>
+                  <button onClick={() => setEditandoFecha(false)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '4px', color: 'var(--text3)', padding: '0.2rem 0.4rem', cursor: 'pointer', fontSize: '0.75rem' }}>✕</button>
+                </div>
+              ) : (
+                <p style={{ fontSize: '0.88rem', color: fechaJuego ? 'var(--text)' : 'var(--text3)', fontStyle: fechaJuego ? 'normal' : 'italic', marginTop: '0.2rem' }}>
+                  {fechaJuego || (esDueno ? 'Sin fecha — haz clic en ✏️' : 'Sin fecha establecida')}
+                </p>
+              )}
+            </div>
             {esDueno && <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowTimerConfig(true)} disabled={!selectedUniverso}>⏱️ Temporizador{timerDisplay ? ` · ${timerDisplay}` : ''}</button>}
             {musicaUrl && (
               <div style={{ marginTop: '0.6rem', borderRadius: 'var(--radius)', overflow: 'hidden', position: 'relative', background: '#000' }}>
@@ -1886,54 +2096,6 @@ export default function Mesa({ navigate, selectedUniverso }) {
                 }}>
                 {generandoNPC ? '✨ Generando...' : '✨ Generar PNJ'}
               </button>
-
-              {/* NPC con memoria */}
-              {personajes.filter(p => p.es_npc && (p.universo_id === selectedUniverso?.id || p.universoId === selectedUniverso?.id)).length > 0 && (
-                <div style={{ marginTop: '0.7rem', borderTop: '1px solid var(--border)', paddingTop: '0.7rem' }}>
-                  <p style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '0.4rem' }}>🧠 NPC con memoria</p>
-                  <select value={npcMemoriaId} onChange={e => { setNpcMemoriaId(e.target.value); setNpcRespuesta(null) }}
-                    style={{ width: '100%', background: 'var(--bg3)', color: npcMemoriaId ? 'var(--text)' : 'var(--text3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '0.35rem 0.5rem', fontSize: '0.82rem', marginBottom: '0.3rem' }}>
-                    <option value="">Seleccionar NPC...</option>
-                    {personajes.filter(p => p.es_npc && (p.universo_id === selectedUniverso?.id || p.universoId === selectedUniverso?.id)).map(p => (
-                      <option key={p.id} value={p.id}>{p.nombre}</option>
-                    ))}
-                  </select>
-                  {npcMemoriaId && (<>
-                    <textarea placeholder="¿Qué sabe sobre...?" value={npcPregunta} onChange={e => setNpcPregunta(e.target.value)}
-                      rows={2} style={{ width: '100%', resize: 'none', fontSize: '0.82rem', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', padding: '0.4rem 0.6rem', boxSizing: 'border-box', marginBottom: '0.3rem' }} />
-                    <button className="modo-btn" disabled={generandoNpcMemoria || !npcPregunta.trim()}
-                      onClick={async () => {
-                        const npc = personajes.find(p => p.id === npcMemoriaId)
-                        if (!npc) return
-                        setGenerandoNpcMemoria(true)
-                        const resp = await consultarNPC(npc, npcPregunta, sesionCompleta.slice(-60))
-                        setNpcRespuesta(resp || 'Sin respuesta.')
-                        setGenerandoNpcMemoria(false)
-                      }}>
-                      {generandoNpcMemoria ? '🧠 Consultando...' : '🧠 Consultar NPC'}
-                    </button>
-                    {npcRespuesta && (
-                      <div style={{ marginTop: '0.5rem', background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: '0.6rem 0.8rem', fontSize: '0.82rem', color: 'var(--text2)', lineHeight: 1.5, borderLeft: '3px solid var(--accent)', fontStyle: 'italic' }}>
-                        <span style={{ fontFamily: 'Cinzel, serif', color: 'var(--accent)', fontSize: '0.78rem', display: 'block', marginBottom: '0.3rem', fontStyle: 'normal' }}>
-                          {personajes.find(p => p.id === npcMemoriaId)?.nombre}:
-                        </span>
-                        "{npcRespuesta}"
-                        <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.5rem' }}>
-                          <button className="modo-btn" style={{ flex: 1, fontSize: '0.72rem', padding: '0.2rem 0.4rem' }}
-                            disabled={!sesionActiva}
-                            onClick={async () => {
-                              const npc = personajes.find(p => p.id === npcMemoriaId)
-                              if (!npc || !sesionActiva) return
-                              await addEntrada(selectedUniverso.id, { tipo: 'dialogo', contenido: npcRespuesta, personaje: npc }, sesionActiva.id)
-                              setNpcRespuesta(null); setNpcPregunta('')
-                            }}>📨 Enviar al chat</button>
-                          <button className="modo-btn" style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }} onClick={() => setNpcRespuesta(null)}>✕</button>
-                        </div>
-                      </div>
-                    )}
-                  </>)}
-                </div>
-              )}
             </>)}
           </div>
         )}
@@ -1965,8 +2127,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
             {seccionHerramientas ? '▾' : '▸'} 🛠️ Herramientas
           </h4>
           {seccionHerramientas && (<>
-            <button className="modo-btn" onClick={() => setShowTimeline(true)} disabled={!selectedUniverso}>📅 Línea de tiempo</button>
-            <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={exportarSesion} disabled={!sesionActiva}>📄 Exportar TXT</button>
+            <button className="modo-btn" onClick={exportarSesion} disabled={!sesionActiva}>📄 Exportar TXT</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={exportarPDF} disabled={!sesionActiva}>📕 Exportar PDF</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowStats(true)} disabled={!sesionActiva}>📊 Estadísticas</button>
             <button className="modo-btn" style={{ marginTop: '0.4rem' }} onClick={() => setShowDados(true)} disabled={!sesionActiva}>🎲 Historial de dados</button>
@@ -2054,6 +2215,23 @@ export default function Mesa({ navigate, selectedUniverso }) {
           </div>
         )}
 
+        {/* Tarjeta de escena activa */}
+        {sesionActiva && escenaTitulo && !escenaBannerOculto && (
+          <div className="escena-banner" onClick={esDueno ? () => setShowEscenaEditor(true) : undefined} style={{ cursor: esDueno ? 'pointer' : 'default' }}>
+            {escenaImagenUrl && <img src={escenaImagenUrl} alt="escena" className="escena-banner-img" onClick={e => { e.stopPropagation(); setEscenaLightbox(true) }} style={{ cursor: 'zoom-in' }} />}
+            <div className="escena-banner-texto">
+              <span className="escena-banner-titulo">{escenaTitulo}</span>
+              {escenaDescripcion && <span className="escena-banner-desc">{escenaDescripcion}</span>}
+            </div>
+            <button className="escena-banner-limpiar" onClick={e => { e.stopPropagation(); setEscenaBannerOculto(true) }} title="Ocultar">✕</button>
+          </div>
+        )}
+        {sesionActiva && escenaTitulo && escenaBannerOculto && (
+          <button className="escena-banner-mostrar" onClick={() => setEscenaBannerOculto(false)} title="Mostrar escena activa">
+            🎬 {escenaTitulo}
+          </button>
+        )}
+
         <div className="historial" ref={historialRef} onScroll={handleScroll} style={{ fontSize: tamanoFuente + 'px' }}>
           {!sesionActiva && (
             <div className="historial-empty">
@@ -2077,7 +2255,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
               <p style={{ fontSize: '0.72rem', color: 'var(--accent)', fontFamily: 'Cinzel, serif', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>📌 Fijadas</p>
               {entradasFijadas.map(e => (
                 <div key={e.id} style={{ fontSize: '0.85rem', color: 'var(--text2)', padding: '0.25rem 0', borderBottom: '1px solid rgba(180,140,60,0.1)', cursor: 'pointer' }}
-                  onClick={() => document.getElementById(`entrada-${e.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+                  onClick={() => scrollToEntrada(e.id)}>
                   {e.personaje_nombre && <span style={{ color: e.personaje_color, fontFamily: 'Cinzel, serif', fontSize: '0.78rem', marginRight: '0.4rem' }}>{e.personaje_nombre}:</span>}
                   <span style={{ fontStyle: 'italic' }}>{e.contenido?.slice(0, 80)}{e.contenido?.length > 80 ? '…' : ''}</span>
                 </div>
@@ -2085,185 +2263,40 @@ export default function Mesa({ navigate, selectedUniverso }) {
             </div>
           )}
 
-          {sesion.map(e => (
-            <div key={e.id} id={`entrada-${e.id}`} className={`entrada entrada-${e.tipo}${fijadas[e.id] ? ' entrada-fijada' : ''}`}>
-              {e.responder_a_id && (() => {
-                const ref = entradaMap.get(e.responder_a_id)
-                if (!ref) return null
-                return (
-                  <div style={{ margin: '0.3rem 0.8rem 0', padding: '0.3rem 0.6rem', background: 'rgba(180,140,60,0.08)', borderLeft: '3px solid var(--accent)', borderRadius: '0 4px 4px 0', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--text3)' }}
-                    onClick={() => document.getElementById(`entrada-${ref.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
-                    {ref.personaje_nombre && <span style={{ color: ref.personaje_color, fontFamily: 'Cinzel, serif', marginRight: '0.3rem' }}>{ref.personaje_nombre}:</span>}
-                    <span style={{ fontStyle: 'italic' }}>{ref.contenido?.slice(0, 60)}{ref.contenido?.length > 60 ? '…' : ''}</span>
-                  </div>
-                )
-              })()}
-              {e.tipo === 'narrador' && (
-                <div className="entrada-narrador">
-                  <span className="entrada-label">📖 Narrador</span>
-                  {e.contenido && <p className={e.tono && e.tono !== 'normal' ? `entrada-tono-${e.tono}` : ''}>{renderMensaje(e.contenido, miNombrePerfil)}</p>}
-                  {e.imagen_url && <img src={e.imagen_url} alt="imagen" style={{ maxWidth: '240px', borderRadius: '8px', marginTop: '0.4rem', cursor: 'pointer' }} onClick={() => abrirUrlSegura(e.imagen_url)} />}
-                  <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && (e.versiones?.length > 0
-  ? <span className="entrada-editado" style={{ cursor: 'pointer', textDecoration: 'underline dotted' }} onClick={ev => { ev.stopPropagation(); setShowVersiones(e) }}> · editado ({e.versiones.length})</span>
-  : <span className="entrada-editado"> · editado</span>
-)}</span>
-                  {e.user_id === userId && (
-                    <div className="entrada-acciones">
-                      {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
-                      <button onClick={() => setConfirmDeleteEntrada(e)}>🗑️</button>
-                    </div>
-                  )}
+          {/* Virtual list */}
+          <div style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+            {virtualizer.getVirtualItems().map(virtualItem => {
+              const e = sesion[virtualItem.index]
+              return (
+                <div
+                  key={e.id}
+                  data-index={virtualItem.index}
+                  ref={virtualizer.measureElement}
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${virtualItem.start}px)` }}
+                >
+                  <MensajeItem
+                    e={e}
+                    userId={userId}
+                    esDueno={esDueno}
+                    miNombrePerfil={miNombrePerfil}
+                    esFijada={!!fijadas[e.id]}
+                    reacciones={agruparReacciones[e.id] || []}
+                    isReactionOpen={showReacciones === e.id}
+                    entradaMap={entradaMap}
+                    setEditandoEntrada={setEditandoEntrada}
+                    setConfirmDeleteEntrada={setConfirmDeleteEntrada}
+                    toggleFijar={toggleFijar}
+                    setShowReacciones={setShowReacciones}
+                    toggleReaccion={toggleReaccion}
+                    setRespondiendo={setRespondiendo}
+                    setShowVersiones={setShowVersiones}
+                    scrollToEntrada={scrollToEntrada}
+                    inputRef={inputRef}
+                  />
                 </div>
-              )}
-              {(e.tipo === 'dialogo' || e.tipo === 'accion') && (() => {
-                const chunks = e.contenido ? parseMessage(e.contenido, miNombrePerfil) : []
-                const esTipoDialogo = e.tipo === 'dialogo'
-                const containerClass = esTipoDialogo
-                  ? `entrada-dialogo${e.tono && e.tono !== 'normal' ? ` entrada-tono-${e.tono}` : ''}`
-                  : `entrada-accion${e.tono && e.tono !== 'normal' ? ` entrada-tono-${e.tono}` : ''}`
-
-                const avatar = e.personaje?.avatar_url
-                  ? <img src={e.personaje.avatar_url} alt={e.personaje.nombre} className="entrada-avatar avatar-img" />
-                  : <div className="entrada-avatar" style={{ background: e.personaje?.color }}>{e.personaje?.iniciales}</div>
-
-                // Render the content blocks (diálogo + inline-action dentro de una sola burbuja)
-                const renderChunks = (
-                  <div className="burbuja-bloques">
-                    {chunks.map((chunk, ci) => {
-                      const inner = chunk.segments.map((seg, si) => (
-                        <span key={si} className={seg.classes.join(' ') || undefined}>{seg.text}</span>
-                      ))
-                      if (chunk.type === 'inline-action') {
-                        return (
-                          <div key={ci} className="burbuja-inline-accion">
-                            <span className="burbuja-inline-accion-icono">⚡</span>
-                            <span>{inner}</span>
-                          </div>
-                        )
-                      }
-                      return (
-                        <span key={ci} className="burbuja-dialogo-texto">{inner}</span>
-                      )
-                    })}
-                  </div>
-                )
-
-                const acciones = e.user_id === userId && (
-                  <div className="entrada-acciones">
-                    {e.contenido && <button onClick={() => setEditandoEntrada({ id: e.id, contenido: e.contenido })}>✏️</button>}
-                    <button onClick={() => setConfirmDeleteEntrada(e)}>🗑️</button>
-                  </div>
-                )
-                const hora = (
-                  <span className="entrada-hora">{formatHora(e.timestamp)}{e.editado && (e.versiones?.length > 0
-  ? <span className="entrada-editado" style={{ cursor: 'pointer', textDecoration: 'underline dotted' }} onClick={ev => { ev.stopPropagation(); setShowVersiones(e) }}> · editado ({e.versiones.length})</span>
-  : <span className="entrada-editado"> · editado</span>
-)}</span>
-                )
-
-                if (esTipoDialogo) {
-                  return (
-                    <div className={containerClass}>
-                      {avatar}
-                      <div className="entrada-burbuja">
-                        <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
-                        {e.contenido && renderChunks}
-                        {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => abrirUrlSegura(e.imagen_url)} />}
-                        {hora}
-                        {acciones}
-                      </div>
-                    </div>
-                  )
-                }
-
-                // Tipo acción — también en burbuja, pero con estilo de acción (cursiva, borde diferente)
-                return (
-                  <div className="entrada-dialogo">
-                    {avatar}
-                    <div className="entrada-burbuja entrada-burbuja-accion">
-                      <span className="entrada-nombre" style={{ color: e.personaje?.color }}>{e.personaje?.nombre}</span>
-                      {e.contenido && (
-                        <div className="burbuja-bloques">
-                          {chunks.map((chunk, ci) => {
-                            const inner = chunk.segments.map((seg, si) => (
-                              <span key={si} className={seg.classes.join(' ') || undefined}>{seg.text}</span>
-                            ))
-                            if (chunk.type === 'inline-action') {
-                              return (
-                                <div key={ci} className="burbuja-inline-accion">
-                                  <span className="burbuja-inline-accion-icono">⚡</span>
-                                  <span>{inner}</span>
-                                </div>
-                              )
-                            }
-                            return (
-                              <span key={ci} className="burbuja-accion-texto">{inner}</span>
-                            )
-                          })}
-                        </div>
-                      )}
-                      {e.imagen_url && <img src={e.imagen_url} alt="imagen" onClick={() => abrirUrlSegura(e.imagen_url)} />}
-                      {hora}
-                      {acciones}
-                    </div>
-                  </div>
-                )
-              })()}
-              {e.tipo === 'dado' && (
-                <div className="entrada-dado">
-                  <span className="entrada-dado-icono">🎲</span>
-                  <div className="entrada-dado-contenido">
-                    {e.personaje_nombre && <span style={{ color: e.personaje_color, fontFamily: 'Cinzel, serif', fontSize: '0.8rem' }}>{e.personaje_nombre}</span>}
-                    <span>{e.contenido}</span>
-                  </div>
-                  <span className="entrada-hora">{formatHora(e.timestamp)}</span>
-                </div>
-              )}
-
-              {/* Botones hover — fuera de burbujas, posición absoluta respecto a .entrada */}
-              {e.tipo !== 'dado' && (
-                <div className="entrada-acciones-hover">
-                  <div style={{ position: 'relative' }}>
-                    <button onClick={() => setShowReacciones(showReacciones === e.id ? null : e.id)} title="Reaccionar">＋😊</button>
-                    {showReacciones === e.id && (
-                      <div style={{ position: 'absolute', bottom: '100%', right: 0, background: 'var(--bg2)', border: '1px solid var(--border2)', borderRadius: 'var(--radius)', padding: '0.4rem', display: 'flex', flexWrap: 'wrap', gap: '0.3rem', zIndex: 200, boxShadow: 'var(--shadow)', maxWidth: '200px', marginBottom: '0.3rem' }}>
-                        {EMOJIS_RAPIDOS.map(em => (
-                          <button key={em} onClick={() => toggleReaccion(e.id, em)}
-                            style={{ background: 'none', border: 'none', fontSize: '1.1rem', cursor: 'pointer', padding: '0.1rem', borderRadius: '4px' }}>{em}</button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <button onClick={() => { setRespondiendo(e); inputRef.current?.focus() }} title="Responder">↩️</button>
-                  {(e.user_id === userId || esDueno) && (
-                    <button onClick={() => toggleFijar(e)} title={fijadas[e.id] ? 'Desfijar' : 'Fijar'}
-                      style={{ color: fijadas[e.id] ? 'var(--accent)' : undefined }}>
-                      {fijadas[e.id] ? '📌' : '📍'}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Reacciones */}
-              {e.tipo !== 'dado' && (
-                <>
-                  {/* Pills de reacciones existentes — siempre visibles */}
-                  {(agruparReacciones[e.id] || []).length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', padding: '0.1rem 0.8rem 0.3rem' }}>
-                      {(agruparReacciones[e.id] || []).map(({ emoji, count, mia }) => (
-                        <button key={emoji} onClick={() => toggleReaccion(e.id, emoji)}
-                          style={{ background: mia ? 'rgba(180,140,60,0.15)' : 'var(--bg3)', border: `1px solid ${mia ? 'var(--accent)' : 'var(--border)'}`, borderRadius: '999px', padding: '0.1rem 0.5rem', fontSize: '0.82rem', cursor: 'pointer', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                          {emoji} <span style={{ fontSize: '0.75rem', color: mia ? 'var(--accent)' : 'var(--text3)' }}>{count}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          ))}
-          {/* Div centinela: marca el final del historial para scrollIntoView */}
-          <div ref={endRef} style={{ height: 0 }} />
+              )
+            })}
+          </div>
         </div>
 
         {comandoSugerido && (
@@ -2319,7 +2352,7 @@ export default function Mesa({ navigate, selectedUniverso }) {
             <button type="button" className="formato-btn" onClick={() => insertarFormato('negrita')} title="Negrita"><strong>B</strong></button>
             <button type="button" className="formato-btn" onClick={() => insertarFormato('subrayado')} title="Subrayado"><u>S</u></button>
             <div className="tono-separador" />
-            <button type="button" className="formato-btn formato-btn-accion-inline" onClick={() => insertarFormato('accion-inline')} title="Acción inline — envuelve el texto entre *asteriscos* para mostrarla dentro de la burbuja">⚡ Acción</button>
+            <button type="button" className="formato-btn formato-btn-accion-inline" onClick={() => insertarFormato('accion-inline')} title="Acción inline — envuelve el texto entre *asteriscos* para mostrarla dentro de la burbuja">⚡</button>
             <div className="tono-separador" />
             <button type="button" className="formato-btn formato-btn-atajo" onClick={() => insertarFormato('susurro')} title="Susurro — /s/ texto /s/">🤫</button>
             <button type="button" className="formato-btn formato-btn-atajo" onClick={() => insertarFormato('grito')} title="Grito — /g/ texto /g/">📢</button>
@@ -2754,6 +2787,8 @@ export default function Mesa({ navigate, selectedUniverso }) {
         esDueno={esDueno}
         onStatEdit={handleStatEdit}
         onHpChange={handleHpChange}
+        condiciones={condicionesPorPersonaje[fichaPersonaje?.id] || []}
+        onToggleCondicion={(condicion) => toggleCondicion(fichaPersonaje, condicion)}
       />}
 
       {fichaCompartida && (
@@ -2778,53 +2813,81 @@ export default function Mesa({ navigate, selectedUniverso }) {
       )}
       {showChat && <ChatPrivado universo={selectedUniverso} personajes={personajes} userId={userId} onCerrar={() => setShowChat(false)} />}
 
-      {showInvestigacion && selectedUniverso && (
-        <PanelInvestigacion
-          universoId={selectedUniverso.id}
-          sesionId={sesionActiva?.id}
-          userId={userId}
-          esDueno={esDueno}
-          miembrosUniverso={miembrosUniverso}
-          onCerrar={() => setShowInvestigacion(false)}
-        />
-      )}
+      <Suspense fallback={null}>
+        {showInvestigacion && selectedUniverso && (
+          <PanelInvestigacion
+            universoId={selectedUniverso.id}
+            sesionId={sesionActiva?.id}
+            userId={userId}
+            esDueno={esDueno}
+            miembrosUniverso={miembrosUniverso}
+            onCerrar={() => setShowInvestigacion(false)}
+          />
+        )}
 
-      {showGaleria && selectedUniverso && (
-        <PanelGaleria universoId={selectedUniverso.id} onCerrar={() => setShowGaleria(false)} />
-      )}
+        {showGaleria && selectedUniverso && (
+          <PanelGaleria universoId={selectedUniverso.id} onCerrar={() => setShowGaleria(false)} />
+        )}
 
-      {showMapaRelaciones && selectedUniverso && (
-        <PanelMapaRelaciones
-          universoId={selectedUniverso.id}
-          personajes={personajes.filter(p => p.universo_id === selectedUniverso.id || p.universoId === selectedUniverso.id)}
-          onCerrar={() => setShowMapaRelaciones(false)}
-        />
-      )}
+        {showMapaRelaciones && selectedUniverso && (
+          <PanelMapaRelaciones
+            universoId={selectedUniverso.id}
+            personajes={personajes.filter(p => p.universo_id === selectedUniverso.id || p.universoId === selectedUniverso.id)}
+            onCerrar={() => setShowMapaRelaciones(false)}
+          />
+        )}
 
-      {showTimeline && selectedUniverso && (
-        <PanelTimeline
-          universoId={selectedUniverso.id}
-          sesiones={listaSesiones[selectedUniverso.id] || []}
-          onCerrar={() => setShowTimeline(false)}
-        />
-      )}
+        {showTimeline && selectedUniverso && (
+          <PanelTimeline
+            universoId={selectedUniverso.id}
+            sesiones={listaSesiones[selectedUniverso.id] || []}
+            onCerrar={() => setShowTimeline(false)}
+          />
+        )}
 
-      {showMisiones && selectedUniverso && (
-        <PanelMisiones universoId={selectedUniverso.id} userId={userId} esDueno={esDueno} onCerrar={() => setShowMisiones(false)} universoNombre={selectedUniverso.nombre} />
-      )}
+        {showMapa && selectedUniverso && (
+          <PanelMapa
+            universo={selectedUniverso}
+            userId={userId}
+            esDueno={esDueno}
+            onCerrar={() => setShowMapa(false)}
+            personajes={personajes}
+          />
+        )}
 
-      {showObjetos && selectedUniverso && (
-        <PanelObjetos universo={selectedUniverso} personajes={personajes} userId={userId} esDueno={esDueno} onCerrar={() => setShowObjetos(false)} />
-      )}
-      {showDadoEvento && selectedUniverso && (
-        <PanelDadoEvento
-          universoId={selectedUniverso.id}
-          userId={userId}
-          esDueno={esDueno}
-          onPublicarResultado={(texto) => { addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: texto }, sesionActiva?.id); setShowDadoEvento(false) }}
-          onCerrar={() => setShowDadoEvento(false)}
-        />
-      )}
+        {showBestiario && selectedUniverso && (
+          <PanelBestiario
+            universo={selectedUniverso}
+            userId={userId}
+            esDueno={esDueno}
+            sesionActiva={sesionActiva}
+            onEnviarAlChat={(texto) => sesionActiva && addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: texto }, sesionActiva.id)}
+            onCerrar={() => setShowBestiario(false)}
+          />
+        )}
+
+        {showMisiones && selectedUniverso && (
+          <PanelMisiones universoId={selectedUniverso.id} userId={userId} esDueno={esDueno} onCerrar={() => setShowMisiones(false)} universoNombre={selectedUniverso.nombre} />
+        )}
+
+        {showNotas && selectedUniverso && esDueno && (
+          <PanelNotasNarrador universoId={selectedUniverso.id} userId={userId} onCerrar={() => setShowNotas(false)} />
+        )}
+
+        {showObjetos && selectedUniverso && (
+          <PanelObjetos universo={selectedUniverso} personajes={personajes} userId={userId} esDueno={esDueno} onCerrar={() => setShowObjetos(false)} />
+        )}
+
+        {showDadoEvento && selectedUniverso && (
+          <PanelDadoEvento
+            universoId={selectedUniverso.id}
+            userId={userId}
+            esDueno={esDueno}
+            onPublicarResultado={(texto) => { addEntrada(selectedUniverso.id, { tipo: 'narrador', contenido: texto }, sesionActiva?.id); setShowDadoEvento(false) }}
+            onCerrar={() => setShowDadoEvento(false)}
+          />
+        )}
+      </Suspense>
 
       {showTimerConfig && esDueno && selectedUniverso && (
         <div className="modal-overlay" onClick={() => setShowTimerConfig(false)}>
@@ -2910,6 +2973,43 @@ export default function Mesa({ navigate, selectedUniverso }) {
             </div>
             <div className="modal-actions" style={{ marginTop: '1rem' }}>
               <button className="btn-primary" onClick={() => setShowVersiones(null)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {escenaLightbox && escenaImagenUrl && (
+        <div className="modal-overlay" onClick={() => setEscenaLightbox(false)} style={{ zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <img src={escenaImagenUrl} alt="escena" style={{ maxWidth: '95vw', maxHeight: '95vh', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', objectFit: 'contain' }} onClick={e => e.stopPropagation()} />
+        </div>
+      )}
+
+      {showEscenaEditor && sesionActiva && (
+        <div className="modal-overlay" onClick={() => setShowEscenaEditor(false)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>🎬 Tarjeta de escena</h3>
+              <button onClick={() => setShowEscenaEditor(false)}>✕</button>
+            </div>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text3)', marginBottom: '1rem', fontStyle: 'italic' }}>La tarjeta de escena es visible para todos los jugadores encima del historial.</p>
+            <div className="form-group">
+              <label>Título de la escena</label>
+              <input placeholder="La Fortaleza del Norte..." value={escenaTitulo} onChange={e => setEscenaTitulo(e.target.value)} autoFocus />
+            </div>
+            <div className="form-group">
+              <label>Descripción breve (opcional)</label>
+              <textarea placeholder="Una tormenta de nieve azota las murallas..." value={escenaDescripcion} onChange={e => setEscenaDescripcion(e.target.value)} rows={2} style={{ width: '100%', resize: 'vertical' }} />
+            </div>
+            <div className="form-group">
+              <label>URL de imagen (opcional)</label>
+              <input placeholder="https://..." value={escenaImagenUrl} onChange={e => setEscenaImagenUrl(e.target.value)} />
+            </div>
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setShowEscenaEditor(false)}>Cancelar</button>
+              {(escenaTitulo || escenaDescripcion || escenaImagenUrl) && (
+                <button className="btn-ghost" style={{ color: 'var(--danger)' }} onClick={limpiarEscena}>Limpiar</button>
+              )}
+              <button className="btn-primary" onClick={guardarEscena} disabled={!escenaTitulo.trim()}>Guardar</button>
             </div>
           </div>
         </div>

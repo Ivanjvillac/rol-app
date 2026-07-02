@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manual de uso — Tinta y Dados</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0d0d0f;
+      --bg2: #13131a;
+      --bg3: #1a1a24;
+      --bg4: #22222f;
+      --border: #2a2a3a;
+      --border2: #383850;
+      --text: #e8e4d9;
+      --text2: #b8b0cc;
+      --text3: #6a6080;
+      --accent: #c9a84c;
+      --accent2: #a07830;
+      --accent-glow: rgba(201,168,76,0.12);
+      --radius: 8px;
+      --radius-lg: 14px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Crimson Pro', Georgia, serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 18px;
+      line-height: 1.7;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .nav-brand {
+      font-family: 'Cinzel', serif;
+      color: var(--accent);
+      font-size: 1.1rem;
+      white-space: nowrap;
+    }
+    .nav-links {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .nav-links a {
+      color: var(--text2);
+      text-decoration: none;
+      font-size: 0.85rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: var(--radius);
+      transition: background 0.2s, color 0.2s;
+    }
+    .nav-links a:hover { background: var(--bg3); color: var(--text); }
+
+    /* ── LAYOUT ── */
+    .layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      min-height: calc(100vh - 56px);
+    }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      padding: 1.5rem 1rem;
+      position: sticky;
+      top: 56px;
+      height: calc(100vh - 56px);
+      overflow-y: auto;
+    }
+    .sidebar h3 {
+      font-family: 'Cinzel', serif;
+      font-size: 0.7rem;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.6rem;
+      margin-top: 1.2rem;
+      padding-bottom: 0.3rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar h3:first-child { margin-top: 0; }
+    .sidebar a {
+      display: block;
+      color: var(--text2);
+      text-decoration: none;
+      font-size: 0.9rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: var(--radius);
+      margin-bottom: 0.1rem;
+      transition: all 0.15s;
+    }
+    .sidebar a:hover { background: var(--bg3); color: var(--accent); }
+
+    /* ── CONTENT ── */
+    .content {
+      padding: 3rem 3.5rem;
+      max-width: 860px;
+    }
+
+    /* ── HERO ── */
+    .hero {
+      text-align: center;
+      padding: 3rem 2rem 2rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 3rem;
+    }
+    .hero-icon { font-size: 3.5rem; margin-bottom: 1rem; }
+    .hero h1 {
+      font-family: 'Cinzel', serif;
+      font-size: 2.4rem;
+      color: var(--accent);
+      letter-spacing: 0.06em;
+      margin-bottom: 0.5rem;
+    }
+    .hero p { color: var(--text2); font-size: 1.1rem; }
+
+    /* ── SECCIONES ── */
+    section {
+      margin-bottom: 3.5rem;
+      scroll-margin-top: 70px;
+    }
+    section h2 {
+      font-family: 'Cinzel', serif;
+      font-size: 1.5rem;
+      color: var(--accent);
+      margin-bottom: 1.2rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    section h3 {
+      font-family: 'Cinzel', serif;
+      font-size: 1.05rem;
+      color: var(--text);
+      margin: 1.6rem 0 0.6rem;
+    }
+    p { margin-bottom: 0.8rem; color: var(--text2); }
+    strong { color: var(--text); }
+
+    /* ── TIPS / CAJAS ── */
+    .tip, .warning, .info {
+      border-radius: var(--radius-lg);
+      padding: 1rem 1.2rem;
+      margin: 1.2rem 0;
+      display: flex;
+      gap: 0.8rem;
+      align-items: flex-start;
+      font-size: 0.95rem;
+    }
+    .tip { background: rgba(201,168,76,0.08); border: 1px solid rgba(201,168,76,0.25); }
+    .tip .tip-icon { font-size: 1.3rem; flex-shrink: 0; margin-top: 0.1rem; }
+    .warning { background: rgba(192,57,43,0.08); border: 1px solid rgba(192,57,43,0.3); }
+    .warning .tip-icon { font-size: 1.3rem; flex-shrink: 0; }
+    .info { background: rgba(52,152,219,0.08); border: 1px solid rgba(52,152,219,0.25); }
+    .info .tip-icon { font-size: 1.3rem; flex-shrink: 0; }
+
+    /* ── PASOS ── */
+    .steps { list-style: none; margin: 1rem 0; }
+    .steps li {
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+      margin-bottom: 0.8rem;
+      padding: 0.8rem 1rem;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .step-num {
+      background: var(--accent);
+      color: #000;
+      font-family: 'Cinzel', serif;
+      font-size: 0.8rem;
+      font-weight: 700;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 0.1rem;
+    }
+    .step-text { color: var(--text2); }
+    .step-text strong { color: var(--text); }
+
+    /* ── GRID DE TARJETAS ── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+      margin: 1rem 0;
+    }
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1rem 1.1rem;
+      transition: border-color 0.2s;
+    }
+    .card:hover { border-color: var(--border2); }
+    .card-icon { font-size: 1.5rem; margin-bottom: 0.4rem; }
+    .card h4 { font-family: 'Cinzel', serif; font-size: 0.9rem; color: var(--accent); margin-bottom: 0.3rem; }
+    .card p { font-size: 0.88rem; color: var(--text3); margin: 0; }
+
+    /* ── TABLA DE COMANDOS ── */
+    .cmd-table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+    .cmd-table th {
+      background: var(--bg3);
+      color: var(--accent);
+      font-family: 'Cinzel', serif;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.6rem 1rem;
+      text-align: left;
+    }
+    .cmd-table td {
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text2);
+      font-size: 0.95rem;
+    }
+    .cmd-table tr:last-child td { border-bottom: none; }
+    code {
+      background: var(--bg3);
+      color: var(--accent);
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    /* ── BADGE ROLES ── */
+    .badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-family: 'Cinzel', serif;
+      padding: 0.15rem 0.6rem;
+      border-radius: 999px;
+      font-weight: 600;
+      vertical-align: middle;
+      margin-left: 0.3rem;
+    }
+    .badge-narrador { background: rgba(201,168,76,0.15); color: var(--accent); border: 1px solid rgba(201,168,76,0.4); }
+    .badge-jugador  { background: rgba(52,152,219,0.1);  color: #5dade2;       border: 1px solid rgba(52,152,219,0.3); }
+    .badge-ambos    { background: rgba(46,204,113,0.1);  color: #52be80;       border: 1px solid rgba(46,204,113,0.3); }
+
+    /* ── SEPARADOR ── */
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border2), transparent);
+      margin: 2.5rem 0;
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text3);
+      font-size: 0.85rem;
+      border-top: 1px solid var(--border);
+      margin-top: 2rem;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .content { padding: 1.5rem 1.2rem; }
+      .hero h1 { font-size: 1.7rem; }
+      .cards { grid-template-columns: 1fr 1fr; }
+      nav { padding: 0 1rem; }
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <span class="nav-brand">🎲 Tinta y Dados — Manual</span>
+  <div class="nav-links">
+    <a href="#inicio">Inicio</a>
+    <a href="#universos">Universos</a>
+    <a href="#personajes">Personajes</a>
+    <a href="#mesa">Mesa de Rol</a>
+    <a href="#herramientas">Herramientas</a>
+    <a href="#movil">Móvil</a>
+  </div>
+</nav>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <h3>Primeros pasos</h3>
+    <a href="#inicio">¿Qué es Tinta y Dados?</a>
+    <a href="#registro">Registro y acceso</a>
+    <a href="#roles">Narrador y Jugadores</a>
+
+    <h3>Configuración</h3>
+    <a href="#universos">Crear un Universo</a>
+    <a href="#invitar">Invitar jugadores</a>
+    <a href="#personajes">Crear Personajes</a>
+
+    <h3>Mesa de juego</h3>
+    <a href="#mesa">Mesa de Rol</a>
+    <a href="#sesiones">Sesiones</a>
+    <a href="#chat">Escribir en el chat</a>
+    <a href="#comandos">Comandos de chat</a>
+    <a href="#formato">Formato de texto</a>
+    <a href="#dados">Tirar dados</a>
+    <a href="#reacciones">Reacciones y respuestas</a>
+    <a href="#fijar">Fijar mensajes</a>
+
+    <h3>Herramientas</h3>
+    <a href="#ficha">Ficha de personaje</a>
+    <a href="#mapa">Mapa del mundo</a>
+    <a href="#relaciones">Mapa de relaciones</a>
+    <a href="#misiones">Misiones</a>
+    <a href="#objetos">Objetos compartidos</a>
+    <a href="#investigacion">Pistas</a>
+    <a href="#bestiario">Bestiario</a>
+    <a href="#galeria">Galería</a>
+    <a href="#timeline">Línea de tiempo</a>
+    <a href="#juramentos">Juramentos</a>
+    <a href="#notas">Notas del narrador</a>
+    <a href="#dado-evento">Tablas de eventos</a>
+    <a href="#chat-privado">Chat privado</a>
+
+    <h3>Más</h3>
+    <a href="#musica">Música de fondo</a>
+    <a href="#ia">Funciones de IA</a>
+    <a href="#exportar">Exportar sesión</a>
+    <a href="#movil">Usar en móvil</a>
+    <a href="#perfil">Tu perfil</a>
+  </aside>
+
+  <!-- CONTENT -->
+  <main class="content">
+
+    <div class="hero">
+      <div class="hero-icon">🎲</div>
+      <h1>Tinta y Dados</h1>
+      <p>Manual completo de uso · Para todos los niveles</p>
+    </div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="inicio">
+      <h2>🎭 ¿Qué es Tinta y Dados?</h2>
+      <p><strong>Tinta y Dados</strong> es una aplicación para jugar a <strong>rol narrativo escrito</strong> en grupo, en tiempo real, desde cualquier dispositivo con internet.</p>
+      <p>Imagínalo como un chat de grupo temático donde cada jugador escribe lo que dice o hace su personaje, y el <strong>Narrador</strong> (también llamado máster) controla la historia, describe el entorno y da vida al mundo.</p>
+
+      <div class="tip">
+        <span class="tip-icon">💡</span>
+        <div><strong>En resumen:</strong> es como escribir una novela entre varios, con dados, mapas, inventario y mucho más. No hay tablero físico ni miniaturas — todo sucede a través del texto.</div>
+      </div>
+
+      <h3>¿Qué necesito para jugar?</h3>
+      <ul class="steps">
+        <li><span class="step-num">1</span><span class="step-text">Un <strong>navegador web</strong> (Chrome, Firefox, Safari…) en ordenador o móvil</span></li>
+        <li><span class="step-num">2</span><span class="step-text">Una <strong>cuenta gratuita</strong> en la app</span></li>
+        <li><span class="step-num">3</span><span class="step-text">Que alguien cree un <strong>Universo</strong> y te invite, o créalo tú mismo</span></li>
+      </ul>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="registro">
+      <h2>🔑 Registro y acceso</h2>
+
+      <h3>Crear una cuenta</h3>
+      <ul class="steps">
+        <li><span class="step-num">1</span><span class="step-text">Ve a la página de la app y pulsa <strong>"Registrarse"</strong></span></li>
+        <li><span class="step-num">2</span><span class="step-text">Introduce tu <strong>correo electrónico</strong> y una <strong>contraseña</strong></span></li>
+        <li><span class="step-num">3</span><span class="step-text">Revisa tu correo y confirma tu cuenta haciendo clic en el enlace</span></li>
+        <li><span class="step-num">4</span><span class="step-text">¡Listo! Ya puedes entrar</span></li>
+      </ul>
+
+      <div class="tip">
+        <span class="tip-icon">📧</span>
+        <div>Si no ves el correo de confirmación, revisa la carpeta de <strong>spam o correo no deseado</strong>.</div>
+      </div>
+
+      <h3>Iniciar sesión</h3>
+      <p>Introduce tu correo y contraseña. La app recuerda tu sesión, así que no tendrás que volver a hacerlo cada vez.</p>
+
+      <h3>Configurar tu perfil</h3>
+      <p>Ve a <strong>🪪 Perfil</strong> en el menú superior. Allí puedes poner tu nombre visible y subir una foto de perfil. Tu nombre es el que verán los demás jugadores cuando te mencionen con <code>@</code>.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="roles">
+      <h2>👑 Narrador y Jugadores</h2>
+      <p>En Tinta y Dados hay dos tipos de participantes:</p>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card-icon">📖</div>
+          <h4>Narrador</h4>
+          <p>Crea el universo, gestiona la historia, controla NPCs y tiene acceso a herramientas extra. Solo puede haber uno por universo.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">⚔️</div>
+          <h4>Jugador</h4>
+          <p>Participa en la historia con uno o más personajes. Es invitado por el Narrador mediante un enlace.</p>
+        </div>
+      </div>
+
+      <p>A lo largo del manual verás estos indicadores para saber quién puede hacer cada cosa:</p>
+      <p>
+        <span class="badge badge-narrador">Solo Narrador</span>
+        <span class="badge badge-jugador">Solo Jugadores</span>
+        <span class="badge badge-ambos">Todos</span>
+      </p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="universos">
+      <h2>🌍 Universos</h2>
+      <p>Un <strong>Universo</strong> es tu campaña o mundo de juego. Contiene todas las sesiones, personajes, mapas y herramientas de una misma historia.</p>
+
+      <h3>Crear un Universo <span class="badge badge-narrador">Solo Narrador</span></h3>
+      <ul class="steps">
+        <li><span class="step-num">1</span><span class="step-text">Ve a <strong>🌍 Universos</strong> en el menú superior</span></li>
+        <li><span class="step-num">2</span><span class="step-text">Pulsa el botón <strong>"+ Nuevo Universo"</strong></span></li>
+        <li><span class="step-num">3</span><span class="step-text">Ponle un nombre (ej: "La Era de las Sombras") y una descripción opcional</span></li>
+        <li><span class="step-num">4</span><span class="step-text">Pulsa <strong>Crear</strong>. Ya tienes tu universo listo</span></li>
+      </ul>
+
+      <h3>Entrar a la Mesa de Rol</h3>
+      <p>Desde la página de <strong>Universos</strong>, haz clic en tu universo para seleccionarlo. Luego pulsa <strong>⚔️ Mesa de Rol</strong> en el menú.</p>
+
+      <div class="tip">
+        <span class="tip-icon">💡</span>
+        <div>Puedes tener varios universos a la vez para distintas campañas o grupos de amigos.</div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="invitar">
+      <h2>✉️ Invitar jugadores <span class="badge badge-narrador">Solo Narrador</span></h2>
+      <p>Para que otros puedan unirse a tu universo, tienes que invitarlos.</p>
+
+      <ul class="steps">
+        <li><span class="step-num">1</span><span class="step-text">Entra a la <strong>Mesa de Rol</strong> de tu universo</span></li>
+        <li><span class="step-num">2</span><span class="step-text">En la barra superior, busca el botón <strong>✉️ Invitar</strong></span></li>
+        <li><span class="step-num">3</span><span class="step-text">Introduce el <strong>correo electrónico</strong> del jugador y pulsa Invitar</span></li>
+        <li><span class="step-num">4</span><span class="step-text">Se generará un <strong>enlace de invitación</strong>. Cópialo y mándaselo al jugador por donde quieras (WhatsApp, Discord, etc.)</span></li>
+        <li><span class="step-num">5</span><span class="step-text">El jugador hace clic en el enlace, crea su cuenta (si no la tiene) y automáticamente se une al universo</span></li>
+      </ul>
+
+      <div class="tip">
+        <span class="tip-icon">🔗</span>
+        <div>El enlace de invitación solo funciona <strong>una vez</strong> y para el correo que especificaste. Si necesitas invitar a otra persona, genera un nuevo enlace.</div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="personajes">
+      <h2>👥 Personajes</h2>
+      <p>Cada jugador necesita al menos un <strong>personaje</strong> para participar en la historia. El Narrador también puede crear <strong>NPCs</strong> (personajes no jugadores — los secundarios de la historia).</p>
+
+      <h3>Crear un personaje</h3>
+      <ul class="steps">
+        <li><span class="step-num">1</span><span class="step-text">Ve a <strong>👥 Personajes</strong> en el menú o usa el botón <strong>+</strong> en el sidebar de la Mesa</span></li>
+        <li><span class="step-num">2</span><span class="step-text">Selecciona el universo al que pertenecerá</span></li>
+        <li><span class="step-num">3</span><span class="step-text">Rellena: <strong>nombre</strong>, <strong>rol</strong> (guerrero, mago, bardo…), <strong>descripción</strong> y elige un <strong>color</strong> que lo identifique</span></li>
+        <li><span class="step-num">4</span><span class="step-text">Opcionalmente sube una <strong>imagen o avatar</strong> del personaje</span></li>
+        <li><span class="step-num">5</span><span class="step-text">Pulsa <strong>Crear</strong></span></li>
+      </ul>
+
+      <h3>NPCs (Personajes No Jugadores) <span class="badge badge-narrador">Solo Narrador</span></h3>
+      <p>Los NPCs son personajes secundarios que controla el Narrador: villanos, taberneros, aliados… Se crean igual que un personaje normal, pero marcando la opción <strong>"Es NPC"</strong>. El Narrador puede ocultarlos a los jugadores hasta el momento dramático adecuado.</p>
+
+      <h3>Seleccionar personaje activo en la Mesa</h3>
+      <p>En el sidebar izquierdo de la Mesa, verás tu lista de personajes. <strong>Pulsa sobre uno</strong> para activarlo — ese será el que habla cuando escribas en el chat.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="mesa">
+      <h2>⚔️ La Mesa de Rol</h2>
+      <p>La Mesa es el corazón de la app. Es donde ocurre toda la partida: el historial de mensajes, las herramientas y la barra de escritura.</p>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card-icon">📜</div>
+          <h4>Historial</h4>
+          <p>La zona central donde aparecen todos los mensajes de la partida en orden cronológico.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">◀️</div>
+          <h4>Sidebar</h4>
+          <p>Panel lateral izquierdo con sesiones, personajes, herramientas y opciones.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">✍️</div>
+          <h4>Barra de escritura</h4>
+          <p>En la parte de abajo. Aquí escribes los mensajes de tu personaje.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">🎬</div>
+          <h4>Banner de escena</h4>
+          <p>Arriba del historial. El narrador puede poner el título e imagen de la escena actual.</p>
+        </div>
+      </div>
+
+      <div class="tip">
+        <span class="tip-icon">📱</span>
+        <div>En <strong>móvil</strong>, el sidebar se oculta. Pulsa el botón <strong>☰</strong> arriba a la izquierda para abrirlo.</div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="sesiones">
+      <h2>📅 Sesiones</h2>
+      <p>Dentro de un universo, la historia se divide en <strong>sesiones</strong>: como capítulos de un libro. Cada sesión tiene su propio historial de mensajes.</p>
+
+      <h3>Crear una sesión <span class="badge badge-narrador">Solo Narrador</span></h3>
+      <ul class="steps">
+        <li><span class="step-num">1</span><span class="step-text">En el sidebar, sección <strong>📅 Sesiones</strong>, pulsa el botón <strong>＋</strong></span></li>
+        <li><span class="step-num">2</span><span class="step-text">Ponle un nombre a la sesión (ej: "La taberna del cuervo")</span></li>
+        <li><span class="step-num">3</span><span class="step-text">Elige si es <strong>pública</strong> (todos la ven) o <strong>privada</strong> (solo algunos jugadores)</span></li>
+        <li><span class="step-num">4</span><span class="step-text">Pulsa <strong>Crear sesión</strong></span></li>
+      </ul>
+
+      <h3>Cambiar entre sesiones</h3>
+      <p>Pulsa el nombre de cualquier sesión en el sidebar para cambiar a ella. Los mensajes del historial cambiarán inmediatamente.</p>
+
+      <h3>Sesiones archivadas</h3>
+      <p>Cuando una sesión termina, el Narrador puede <strong>archivarla</strong> para que no aparezca en la lista principal pero siga siendo accesible desde la sección <strong>"Archivadas"</strong> del sidebar.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="chat">
+      <h2>✍️ Escribir en el chat <span class="badge badge-ambos">Todos</span></h2>
+      <p>La barra de escritura está en la parte inferior de la pantalla. Hay tres <strong>modos de entrada</strong>:</p>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card-icon">💬</div>
+          <h4>Diálogo</h4>
+          <p>Lo que tu personaje <em>dice</em> en voz alta. Aparece en una burbuja con el nombre y color de tu personaje.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">⚡</div>
+          <h4>Acción</h4>
+          <p>Lo que tu personaje <em>hace</em>. Aparece en cursiva describiendo el movimiento o gesto.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">📖</div>
+          <h4>Narrador</h4>
+          <p>Solo disponible para el Narrador. Describe el entorno o avanza la historia desde una perspectiva externa.</p>
+        </div>
+      </div>
+
+      <p>Selecciona el modo con los botones junto a la barra de texto, luego escribe y pulsa <strong>Enter</strong> o el botón de enviar.</p>
+
+      <h3>Editar y borrar mensajes</h3>
+      <p>Pasa el ratón por encima de un mensaje tuyo (o mantén pulsado en móvil) para ver los botones de <strong>✏️ editar</strong> y <strong>🗑️ borrar</strong>. El Narrador puede borrar cualquier mensaje.</p>
+
+      <h3>Escena activa <span class="badge badge-narrador">Solo Narrador</span></h3>
+      <p>El Narrador puede configurar el título, descripción e imagen de la escena actual pulsando en el banner superior del historial. Todos los jugadores verán la escena en tiempo real.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="comandos">
+      <h2>⌨️ Comandos de chat</h2>
+      <p>Puedes usar comandos especiales escribiendo <code>/</code> al inicio del mensaje:</p>
+
+      <table class="cmd-table">
+        <thead>
+          <tr><th>Comando</th><th>Qué hace</th><th>Quién</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>/narrador texto</code></td><td>Escribe como narrador aunque no seas el dueño</td><td><span class="badge badge-narrador">Narrador</span></td></tr>
+          <tr><td><code>/me acción</code></td><td>Envía una acción del personaje activo</td><td><span class="badge badge-ambos">Todos</span></td></tr>
+          <tr><td><code>/accion texto</code></td><td>Igual que /me</td><td><span class="badge badge-ambos">Todos</span></td></tr>
+          <tr><td><code>/d4</code></td><td>Tira un dado de 4 caras</td><td><span class="badge badge-ambos">Todos</span></td></tr>
+          <tr><td><code>/d6</code></td><td>Tira un dado de 6 caras</td><td><span class="badge badge-ambos">Todos</span></td></tr>
+          <tr><td><code>/d8</code></td><td>Tira un dado de 8 caras</td><td><span class="badge badge-ambos">Todos</span></td></tr>
+          <tr><td><code>/d10</code></td><td>Tira un dado de 10 caras</td><td><span class="badge badge-ambos">Todos</span></td></tr>
+          <tr><td><code>/d12</code></td><td>Tira un dado de 12 caras</td><td><span class="badge badge-ambos">Todos</span></td></tr>
+          <tr><td><code>/d20</code></td><td>Tira un dado de 20 caras</td><td><span class="badge badge-ambos">Todos</span></td></tr>
+          <tr><td><code>/d100</code></td><td>Tira un dado percentil (1-100)</td><td><span class="badge badge-ambos">Todos</span></td></tr>
+          <tr><td><code>@Nombre</code></td><td>Menciona a un jugador (recibe notificación)</td><td><span class="badge badge-ambos">Todos</span></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="formato">
+      <h2>✨ Formato de texto</h2>
+      <p>Puedes dar formato a tus mensajes con estos símbolos:</p>
+
+      <table class="cmd-table">
+        <thead>
+          <tr><th>Escribes</th><th>Resultado</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>**texto**</code></td><td><strong>Negrita</strong></td></tr>
+          <tr><td><code>*texto*</code></td><td><em>Cursiva</em></td></tr>
+          <tr><td><code>__texto__</code></td><td><u>Subrayado</u></td></tr>
+          <tr><td><code>«texto»</code> o <code>"texto"</code></td><td>Diálogo destacado</td></tr>
+          <tr><td><code>*acción entre asteriscos*</code></td><td>Texto de acción en color diferente</td></tr>
+        </tbody>
+      </table>
+
+      <div class="tip">
+        <span class="tip-icon">💡</span>
+        <div>También puedes cambiar el <strong>tono</strong> de un mensaje (susurro, grito, dramático…) con los botones de tono junto a la barra de escritura.</div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="dados">
+      <h2>🎲 Tirar dados</h2>
+      <p>Hay dos formas de tirar dados:</p>
+
+      <h3>Con comandos de chat</h3>
+      <p>Escribe <code>/d20</code> (o el dado que quieras) directamente en la barra de chat y pulsa enviar. El resultado aparecerá en el historial para que todos lo vean.</p>
+
+      <h3>Con el panel de dados</h3>
+      <p>En el sidebar, busca la sección <strong>🎲 Dados</strong>. Verás botones para cada tipo de dado. Pulsa el que quieras para tirar.</p>
+
+      <div class="tip">
+        <span class="tip-icon">✨</span>
+        <div>Si tienes la <strong>IA activada</strong>, los resultados dramáticos (como un 20 natural) pueden generar automáticamente una descripción épica del momento.</div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="reacciones">
+      <h2>😄 Reacciones y respuestas <span class="badge badge-ambos">Todos</span></h2>
+
+      <h3>Reaccionar a un mensaje</h3>
+      <p>Pasa el ratón por encima de un mensaje (o mantén pulsado en móvil) para ver las opciones. Pulsa <strong>＋😊</strong> para abrir el selector de emojis y elige tu reacción. Las reacciones aparecen debajo del mensaje con un contador.</p>
+
+      <h3>Responder a un mensaje</h3>
+      <p>Pulsa el botón <strong>↩️</strong> junto a cualquier mensaje para citarlo. Tu nuevo mensaje aparecerá con una referencia al original — perfecto para conversaciones en grupo.</p>
+
+      <h3>Fijar mensajes importantes <span class="badge badge-ambos">Todos</span></h3>
+      <p>Pulsa el botón <strong>📍</strong> en cualquier mensaje para fijarlo. Los mensajes fijados aparecen en un panel especial en la parte superior del historial, para tenerlos siempre a la vista.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="ficha">
+      <h2>📋 Ficha de personaje</h2>
+      <p>Cada personaje tiene una ficha completa con cuatro pestañas:</p>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card-icon">📊</div>
+          <h4>Stats</h4>
+          <p>Atributos y estadísticas del personaje (fuerza, agilidad, magia…). El narrador puede editarlos.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">🎒</div>
+          <h4>Equipo</h4>
+          <p>Objetos que lleva el personaje en su inventario personal.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">🤝</div>
+          <h4>Relaciones</h4>
+          <p>Vínculos con otros personajes: aliados, enemigos, amores, rivales…</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">💫</div>
+          <h4>Estado</h4>
+          <p>Condiciones activas del personaje: herido, envenenado, bendecido, exhausto…</p>
+        </div>
+      </div>
+
+      <h3>Abrir la ficha</h3>
+      <p>En el sidebar de la Mesa, haz clic en el nombre de cualquier personaje para abrir su ficha. Desde ahí también puedes ver las fichas de los personajes de otros jugadores.</p>
+
+      <div class="tip">
+        <span class="tip-icon">👁️</span>
+        <div>Los jugadores pueden ver la ficha de sus propios personajes y de los demás. Solo el <strong>Narrador</strong> puede editar stats y añadir condiciones.</div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="herramientas">
+      <h2>🛠️ Herramientas del sidebar</h2>
+      <p>En la sección <strong>🛠️ Herramientas</strong> del sidebar encontrarás todos los paneles adicionales. Pulsa cualquiera para abrirlo.</p>
+    </section>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="mapa">
+      <h2>🗺️ Mapa del mundo</h2>
+      <p>El panel de mapa te permite tener un <strong>mapa visual</strong> de tu mundo con marcadores interactivos.</p>
+
+      <h3>Cómo usarlo</h3>
+      <ul class="steps">
+        <li><span class="step-num">1</span><span class="step-text">Abre el panel <strong>Mapa</strong> desde Herramientas en el sidebar</span></li>
+        <li><span class="step-num">2</span><span class="step-text">Sube una imagen de tu mapa (un dibujo, una foto, lo que quieras)</span></li>
+        <li><span class="step-num">3</span><span class="step-text">Haz clic en cualquier punto del mapa para añadir un <strong>marcador</strong></span></li>
+        <li><span class="step-num">4</span><span class="step-text">Dale nombre, tipo (lugar, objeto, personaje…) y descripción</span></li>
+        <li><span class="step-num">5</span><span class="step-text">Puedes vincular un marcador a un <strong>personaje</strong> y mostrará su avatar en el mapa</span></li>
+      </ul>
+
+      <h3>Mover marcadores</h3>
+      <p>Simplemente <strong>arrastra</strong> cualquier marcador con el ratón o el dedo para moverlo a otra posición.</p>
+
+      <div class="tip">
+        <span class="tip-icon">👤</span>
+        <div>Los marcadores de tipo <strong>personaje</strong> muestran el avatar del personaje en el mapa, perfecto para visualizar dónde está cada uno.</div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="relaciones">
+      <h2>🕸️ Mapa de relaciones</h2>
+      <p>Un <strong>grafo interactivo</strong> que muestra visualmente cómo se relacionan todos los personajes entre sí.</p>
+
+      <h3>Interacción</h3>
+      <ul class="steps">
+        <li><span class="step-num">1</span><span class="step-text"><strong>Arrastra</strong> los nodos (bolitas) para reorganizar el grafo como prefieras</span></li>
+        <li><span class="step-num">2</span><span class="step-text">Pulsa el botón <strong>🎯 Enfocar</strong> para resaltar los personajes con relaciones y oscurecer los que no tienen ninguna</span></li>
+        <li><span class="step-num">3</span><span class="step-text">Pulsa en cualquier <strong>tipo de relación</strong> en la leyenda inferior para filtrar y ver solo ese tipo</span></li>
+      </ul>
+
+      <div class="tip">
+        <span class="tip-icon">📱</span>
+        <div>En móvil, también puedes arrastrar los nodos con el dedo.</div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="misiones">
+      <h2>📌 Tablero de misiones <span class="badge badge-narrador">Solo Narrador</span></h2>
+      <p>Un tablero de tipo Kanban para gestionar las misiones y objetivos de la partida.</p>
+      <p>Las misiones tienen diferentes estados: <strong>Pendiente → En curso → Completada → Fallada</strong>. El narrador puede crear misiones, cambiar su estado y asignarlas a personajes concretos.</p>
+      <p>Todos los jugadores pueden <strong>ver</strong> las misiones, pero solo el Narrador puede crearlas y modificarlas.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="objetos">
+      <h2>🎒 Inventario compartido <span class="badge badge-narrador">Solo Narrador</span></h2>
+      <p>Un espacio común donde el Narrador puede añadir <strong>objetos que pertenecen al grupo</strong> en general, no a un personaje en particular. Perfecto para objetos de misión, tesoros encontrados o recursos del grupo.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="investigacion">
+      <h2>🔍 Panel de investigación</h2>
+      <p>Aquí el Narrador puede gestionar <strong>pistas y claves</strong> de la historia. Ideal para partidas de misterio o cuando hay información que los jugadores van descubriendo poco a poco.</p>
+      <p>El Narrador decide qué pistas son visibles para los jugadores y cuáles permanecen ocultas hasta que las descubran.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="bestiario">
+      <h2>🐉 Bestiario <span class="badge badge-narrador">Solo Narrador</span></h2>
+      <p>Un catálogo de <strong>criaturas y enemigos</strong> del mundo. Para cada criatura puedes guardar su nombre, descripción, stats y una imagen. Es privado para el Narrador, aunque puede decidir mostrarlo a los jugadores.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="galeria">
+      <h2>🖼️ Galería</h2>
+      <p>Una colección de <strong>imágenes del universo</strong>: mapas, ilustraciones, referencias visuales… Todos los jugadores pueden ver y añadir imágenes a la galería compartida.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="timeline">
+      <h2>📆 Línea de tiempo</h2>
+      <p>Un registro cronológico de los <strong>eventos importantes</strong> de la historia. El Narrador puede añadir hitos con fecha (usando el calendario in-game del universo) para que todos puedan ver la historia de la campaña de un vistazo.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="juramentos">
+      <h2>🤝 Juramentos</h2>
+      <p>Un sistema para registrar <strong>pactos y promesas</strong> entre personajes. Cada juramento tiene un texto, los personajes implicados y un estado (activo, cumplido, roto). Añade dramatismo y consecuencias a la narrativa.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="notas">
+      <h2>📝 Notas del Narrador <span class="badge badge-narrador">Solo Narrador</span></h2>
+      <p>Un bloc de notas <strong>privado y personal</strong> del Narrador. Los jugadores nunca pueden ver estas notas. Ideal para apuntar planes futuros, secretos de la trama, o cualquier cosa que el narrador quiera recordar.</p>
+
+      <h3>Cómo guardar</h3>
+      <p>Pulsa el botón <strong>💾 Guardar</strong> o usa el atajo <strong>Ctrl+S</strong> (o Cmd+S en Mac). Las notas también se guardan automáticamente al cerrar el panel.</p>
+
+      <div class="tip">
+        <span class="tip-icon">🔒</span>
+        <div>Las notas son completamente privadas. Ni siquiera aparecen en la base de datos de otros usuarios.</div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="dado-evento">
+      <h2>🎰 Tablas de eventos aleatorios <span class="badge badge-narrador">Solo Narrador</span></h2>
+      <p>El Narrador puede crear <strong>tablas de eventos</strong>: listas de posibles sucesos con sus probabilidades. Al tirar el dado de evento, el sistema elige uno al azar. Perfecto para añadir imprevistos a la partida o para rellenar de contenido generado al momento.</p>
+      <p>Ejemplo: una tabla de "encuentros en el bosque" con: lobo solitario (40%), grupo de bandidos (30%), mercader perdido (20%), ruinas antiguas (10%).</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="chat-privado">
+      <h2>💌 Chat privado <span class="badge badge-ambos">Todos</span></h2>
+      <p>Los jugadores pueden enviarse <strong>mensajes privados</strong> entre personajes, visibles solo para los implicados. Ideal para conversaciones en secreto sin que el resto del grupo las vea.</p>
+      <p>Accede desde el botón <strong>💌</strong> en la barra superior de la Mesa. Los mensajes no leídos aparecen con un punto de notificación.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="musica">
+      <h2>🎵 Música de fondo <span class="badge badge-narrador">Solo Narrador</span></h2>
+      <p>El Narrador puede añadir <strong>música de fondo</strong> para todos los jugadores conectados. La música se sincroniza en tiempo real — todos escuchan lo mismo.</p>
+
+      <ul class="steps">
+        <li><span class="step-num">1</span><span class="step-text">Busca el control de música en la barra superior de la Mesa (icono 🎵)</span></li>
+        <li><span class="step-num">2</span><span class="step-text">Pega una URL de YouTube con la música o ambiente que quieras</span></li>
+        <li><span class="step-num">3</span><span class="step-text">Pulsa cargar — todos los jugadores comenzarán a escuchar</span></li>
+      </ul>
+
+      <div class="warning">
+        <span class="tip-icon">⚠️</span>
+        <div>Cada jugador necesita haber interactuado con la página al menos una vez para que el navegador permita reproducir audio automáticamente.</div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="ia">
+      <h2>🤖 Funciones de Inteligencia Artificial</h2>
+      <p>Si el Narrador ha configurado una <strong>API de IA</strong> (Groq), la app ofrece funciones extra:</p>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card-icon">📜</div>
+          <h4>Resumen de sesión</h4>
+          <p>Genera automáticamente un resumen narrativo de lo que ocurrió en la sesión.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">🎭</div>
+          <h4>Generar NPC</h4>
+          <p>Crea un personaje secundario con nombre, descripción y personalidad al instante.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">🌅</div>
+          <h4>Describir escena</h4>
+          <p>Introduce una ubicación y la IA genera una descripción inmersiva y literaria.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">🎲</div>
+          <h4>Narrar tiradas</h4>
+          <p>Cuando tiras dados, la IA describe dramáticamente el resultado según el personaje.</p>
+        </div>
+      </div>
+
+      <div class="info">
+        <span class="tip-icon">ℹ️</span>
+        <div>Estas funciones son <strong>opcionales</strong>. La app funciona perfectamente sin IA. Solo el Narrador necesita configurar la API key de Groq.</div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="exportar">
+      <h2>📤 Exportar la sesión <span class="badge badge-narrador">Solo Narrador</span></h2>
+      <p>Puedes guardar el historial de una sesión en dos formatos:</p>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card-icon">📄</div>
+          <h4>Texto (.txt)</h4>
+          <p>Un archivo de texto limpio con todos los mensajes. Fácil de leer en cualquier dispositivo.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">📕</div>
+          <h4>PDF</h4>
+          <p>Un documento PDF con formato elegante, listo para compartir o imprimir como recuerdo de la partida.</p>
+        </div>
+      </div>
+
+      <p>Accede desde la sección <strong>Opciones</strong> del sidebar → botones <strong>Exportar TXT</strong> y <strong>Exportar PDF</strong>.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="movil">
+      <h2>📱 Usar en móvil</h2>
+      <p>Tinta y Dados funciona perfectamente en móvil. Puedes incluso <strong>instalarla como una app</strong> en tu teléfono (PWA):</p>
+
+      <h3>Instalar en Android (Chrome)</h3>
+      <ul class="steps">
+        <li><span class="step-num">1</span><span class="step-text">Abre la app en Chrome</span></li>
+        <li><span class="step-num">2</span><span class="step-text">Pulsa los 3 puntos del menú → <strong>"Añadir a pantalla de inicio"</strong></span></li>
+        <li><span class="step-num">3</span><span class="step-text">Pulsa <strong>Añadir</strong>. Aparecerá el icono en tu pantalla de inicio como una app normal</span></li>
+      </ul>
+
+      <h3>Instalar en iPhone (Safari)</h3>
+      <ul class="steps">
+        <li><span class="step-num">1</span><span class="step-text">Abre la app en Safari</span></li>
+        <li><span class="step-num">2</span><span class="step-text">Pulsa el icono de <strong>compartir</strong> (cuadrado con flecha hacia arriba)</span></li>
+        <li><span class="step-num">3</span><span class="step-text">Selecciona <strong>"Añadir a pantalla de inicio"</strong></span></li>
+      </ul>
+
+      <h3>Navegación en móvil</h3>
+      <p>En la parte inferior de la pantalla hay una <strong>barra de navegación</strong> con los accesos rápidos a las páginas principales. El sidebar de la Mesa se abre pulsando el botón <strong>☰</strong> arriba a la izquierda.</p>
+
+      <div class="tip">
+        <span class="tip-icon">🔄</span>
+        <div>Si la app se ve desactualizada en el móvil, prueba a borrar el caché del navegador: menú del navegador → Configuración → Privacidad → Borrar datos de navegación → Archivos en caché.</div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="perfil">
+      <h2>🪪 Tu perfil</h2>
+      <p>Desde la página <strong>🪪 Perfil</strong> puedes:</p>
+      <ul style="list-style: none; margin: 1rem 0;">
+        <li style="padding: 0.4rem 0; color: var(--text2);">✔ Cambiar tu <strong>nombre visible</strong></li>
+        <li style="padding: 0.4rem 0; color: var(--text2);">✔ Subir o cambiar tu <strong>foto de perfil</strong></li>
+        <li style="padding: 0.4rem 0; color: var(--text2);">✔ Ver tus estadísticas de participación</li>
+      </ul>
+      <p>Tu nombre de perfil es el que aparece cuando alguien te menciona con <code>@</code> en el chat.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ═══════════════════════════════════ -->
+    <section id="preguntas">
+      <h2>❓ Preguntas frecuentes</h2>
+
+      <h3>¿Cuántos jugadores pueden estar en un universo?</h3>
+      <p>No hay límite técnico establecido. El juego está pensado para grupos de <strong>2 a 8 personas</strong> aproximadamente, aunque funciona con más.</p>
+
+      <h3>¿Los mensajes se guardan?</h3>
+      <p>Sí, <strong>todos los mensajes se guardan permanentemente</strong> en la base de datos. Puedes cerrar la app y volver cuando quieras — todo seguirá ahí.</p>
+
+      <h3>¿Puedo jugar sin estar todos conectados a la vez?</h3>
+      <p>Sí. Tinta y Dados es perfecta para partidas <strong>asíncronas</strong>: cada jugador escribe cuando puede, y los demás ven los mensajes al volver a conectarse.</p>
+
+      <h3>¿Qué pasa si el Narrador se va?</h3>
+      <p>Los jugadores pueden seguir viendo el historial y las herramientas, pero no podrán crear sesiones nuevas ni usar funciones exclusivas del Narrador.</p>
+
+      <h3>¿Puedo tener personajes en varios universos?</h3>
+      <p>Sí. Puedes tener personajes distintos en cada universo al que pertenezcas.</p>
+
+      <h3>¿Es gratuita?</h3>
+      <p>Sí, completamente gratuita.</p>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  <p>🎲 <strong style="color: var(--accent)">Tinta y Dados</strong> · Manual de uso</p>
+  <p style="margin-top: 0.3rem; color: var(--text3); font-size: 0.8rem;">Rol narrativo escrito en tiempo real</p>
+</footer>
+
+<script>
+  // Resaltar enlace activo en sidebar según scroll
+  const sections = document.querySelectorAll('section[id]')
+  const links = document.querySelectorAll('.sidebar a')
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        links.forEach(l => l.style.color = '')
+        const active = document.querySelector(`.sidebar a[href="#${entry.target.id}"]`)
+        if (active) active.style.color = 'var(--accent)'
+      }
+    })
+  }, { rootMargin: '-30% 0px -60% 0px' })
+  sections.forEach(s => observer.observe(s))
+</script>
+
+</body>
+</html>

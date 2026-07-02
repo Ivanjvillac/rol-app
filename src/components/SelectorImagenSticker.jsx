@@ -75,6 +75,7 @@ export default function SelectorImagenSticker({ userId, onEnviarImagen, onEnviar
         console.warn('Error subiendo sticker:', file.name, err)
       }
     }
+
     if (subidos > 0) await cargarTodo()
     // Resetear input para permitir volver a seleccionar los mismos archivos
     e.target.value = ''
