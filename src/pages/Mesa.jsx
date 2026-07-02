@@ -181,7 +181,14 @@ function ChatPrivado({ universo, personajes, userId, onCerrar }) {
     setConversaciones(prev => ({ ...prev, [key]: (prev[key] || []).filter(x => x.id !== m.id) }))
   }
   const handleKey = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }
-  const formatHora = (ts) => { const d = new Date(typeof ts === 'string' && !ts.endsWith('Z') ? ts + 'Z' : ts); return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) }
+  const formatHora = (ts) => { 
+    if (!ts) return ''
+    let dStr = String(ts)
+    if (!dStr.endsWith('Z') && !dStr.includes('+')) dStr += 'Z'
+    const d = new Date(dStr)
+    if (isNaN(d)) return ''
+    return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) 
+  }
   const mensajesActuales = destinatario && miPersonaje ? (conversaciones[claveConv(miPersonaje.id, destinatario.id)] || []) : []
 
   return (
@@ -1029,7 +1036,14 @@ export default function Mesa({ navigate, selectedUniverso }) {
     setEditandoEntrada(null)
   }
 
-  const formatHora = (ts) => { const d = new Date(typeof ts === 'string' && !ts.endsWith('Z') ? ts + 'Z' : ts); return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) }
+  const formatHora = (ts) => { 
+    if (!ts) return ''
+    let dStr = String(ts)
+    if (!dStr.endsWith('Z') && !dStr.includes('+')) dStr += 'Z'
+    const d = new Date(dStr)
+    if (isNaN(d)) return ''
+    return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) 
+  }
 
   const compartirFicha = (personaje) => {
     canalFichaRef.current?.send({ type: 'broadcast', event: 'mostrar_ficha', payload: { personaje } })
