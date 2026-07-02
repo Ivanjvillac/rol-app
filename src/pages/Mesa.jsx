@@ -1282,16 +1282,37 @@ export default function Mesa({ navigate, selectedUniverso }) {
     doc.save(`${selectedUniverso.nombre} - ${sesionActiva.nombre}.pdf`)
   }
 
+  const [dadoAnimando, setDadoAnimando] = useState(null) // { caras, numActual }
+
+  const cryptoRandom = (max) => {
+    const arr = new Uint32Array(1)
+    crypto.getRandomValues(arr)
+    return (arr[0] % max) + 1
+  }
+
+  const DADO_EMOJIS = { 4: '🔺', 6: '🎲', 8: '🔷', 10: '🔟', 12: '💠', 20: '🌟' }
+
   const tirarDado = async (caras) => {
-    const resultado = Math.floor(Math.random() * caras) + 1
-    setResultadoDado({ caras, resultado })
+    // Calcular resultado real con crypto para mejor aleatoriedad
+    const resultado = cryptoRandom(caras)
+
+    // Animar: mostrar números aleatorios durante 1.2s antes del resultado real
+    setDadoAnimando({ caras, numActual: cryptoRandom(caras) })
+    const intervalId = setInterval(() => {
+      setDadoAnimando(prev => prev ? { ...prev, numActual: cryptoRandom(caras) } : null)
+    }, 80)
+    setTimeout(() => {
+      clearInterval(intervalId)
+      setDadoAnimando(null)
+      setResultadoDado({ caras, resultado })
+    }, 1200)
+
     if (sesionActiva) {
       await addEntrada(selectedUniverso.id, {
         tipo: 'dado',
         contenido: `🎲 ${personajeActivo?.nombre || 'Narrador'} tiró d${caras} → ${resultado}`,
         personaje: personajeActivo
       }, sesionActiva.id)
-      // Descripción dramática con IA (fire-and-forget)
       if (dadoDramatico && tieneApiKey()) {
         generarDescripcionDado(caras, resultado, personajeActivo?.nombre).then(frase => {
           if (frase && sesionActiva) {
@@ -2038,10 +2059,24 @@ export default function Mesa({ navigate, selectedUniverso }) {
           </h4>
           {seccionDados && (<>
             <div className="dados-grid">
-              {[4, 6, 8, 10, 12, 20].map(c => <button key={c} className="dado-btn" onClick={() => tirarDado(c)}>d{c}</button>)}
+              {[4, 6, 8, 10, 12, 20].map(c => (
+                <button key={c} className={`dado-btn${dadoAnimando?.caras === c ? ' dado-btn-animando' : ''}`}
+                  onClick={() => !dadoAnimando && tirarDado(c)}
+                  disabled={!!dadoAnimando}>
+                  d{c}
+                </button>
+              ))}
             </div>
-            {resultadoDado && (
-              <div className="dado-resultado">
+            {/* Animación de dado rodando */}
+            {dadoAnimando && (
+              <div className="dado-animando-overlay">
+                <div className="dado-animando-icono">{DADO_EMOJIS[dadoAnimando.caras] || '🎲'}</div>
+                <div className="dado-animando-num">{dadoAnimando.numActual}</div>
+                <div className="dado-animando-label">d{dadoAnimando.caras} rodando…</div>
+              </div>
+            )}
+            {!dadoAnimando && resultadoDado && (
+              <div className="dado-resultado dado-resultado-final">
                 <span>🎲 d{resultadoDado.caras}: <strong>{resultadoDado.resultado}</strong></span>
                 <button onClick={() => setResultadoDado(null)}>✕</button>
               </div>

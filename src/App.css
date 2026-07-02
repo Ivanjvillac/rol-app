@@ -869,6 +869,76 @@ input, textarea, select {
   font-family: 'Cinzel', serif;
 }
 
+/* Dado animando */
+.dado-btn-animando {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent);
+  animation: dado-pulse 0.08s ease-in-out infinite alternate;
+}
+.dado-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.dado-btn-animando:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.dado-animando-overlay {
+  margin-top: 0.6rem;
+  background: var(--accent-glow);
+  border: 1px solid var(--accent2);
+  border-radius: var(--radius);
+  padding: 0.7rem 0.5rem 0.5rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.dado-animando-icono {
+  font-size: 1.8rem;
+  animation: dado-spin-icon 0.3s linear infinite;
+  display: inline-block;
+  line-height: 1;
+}
+
+.dado-animando-num {
+  font-family: 'Cinzel', serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--accent);
+  animation: dado-num-flicker 0.08s steps(1) infinite;
+  min-width: 2ch;
+  text-align: center;
+}
+
+.dado-animando-label {
+  font-size: 0.7rem;
+  color: var(--text3);
+  letter-spacing: 0.05em;
+}
+
+@keyframes dado-pulse {
+  from { box-shadow: 0 0 4px var(--accent2); }
+  to   { box-shadow: 0 0 10px var(--accent); }
+}
+@keyframes dado-spin-icon {
+  0%   { transform: rotate(0deg) scale(1); }
+  25%  { transform: rotate(15deg) scale(1.1); }
+  50%  { transform: rotate(0deg) scale(1); }
+  75%  { transform: rotate(-15deg) scale(1.1); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+@keyframes dado-num-flicker {
+  0%   { opacity: 1; }
+  49%  { opacity: 1; }
+  50%  { opacity: 0.4; }
+  100% { opacity: 0.4; }
+}
+
 /* ===== BANNERS ===== */
 .banner-ok {
   display: flex;
